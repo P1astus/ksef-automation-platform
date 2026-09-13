@@ -12,7 +12,7 @@ export function generateOptimaXml(invoices: any[]) {
 `;
 
     const salesInvoices = invoices.filter(inv => inv.direction === 'sales');
-    const purchaseInvoices = invoices.filter(inv => inv.direction === 'purchases');
+    const purchaseInvoices = invoices.filter(inv => inv.direction === 'purchase');
 
     // Sales (Rejestry Sprzedaży)
     if (salesInvoices.length > 0) {

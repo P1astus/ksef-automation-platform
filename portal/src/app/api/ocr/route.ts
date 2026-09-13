@@ -96,7 +96,7 @@ export async function POST(request: Request) {
                 vat_amount,
                 gross_amount,
                 'PLN',
-                'purchases'
+                'purchase'
             ]);
 
             return NextResponse.json({

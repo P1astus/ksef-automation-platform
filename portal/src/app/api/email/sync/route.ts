@@ -58,7 +58,7 @@ async function extractAndSaveInvoice(buffer: Buffer, mimeType: string, firmId: n
                 issue_date, net_amount, vat_amount, gross_amount, currency, direction
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `, [
-            invoice_number, defaultKsef, nip, nip, sourceName, firmId, `My Firm`, issueDate, net_amount, vat_amount, gross_amount, 'PLN', 'purchases'
+            invoice_number, defaultKsef, nip, nip, sourceName, firmId, `My Firm`, issueDate, net_amount, vat_amount, gross_amount, 'PLN', 'purchase'
         ]);
 
         return { invoice_number, gross_amount };

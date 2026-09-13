@@ -30,7 +30,7 @@ export async function GET(request: Request) {
             if (row.direction === 'sales') {
                 salesNet = parseFloat(row.net_sum || '0');
                 salesVat = parseFloat(row.vat_sum || '0');
-            } else if (row.direction === 'purchase' || row.direction === 'purchases') {
+            } else if (row.direction === 'purchase') {
                 purchaseNet = parseFloat(row.net_sum || '0');
                 purchaseVat = parseFloat(row.vat_sum || '0');
             }
