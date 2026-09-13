@@ -1,5 +1,6 @@
 # Claude Code per-machine local settings (personal, not shared project config)
 .claude/settings.local.json
+.claude/skills/
 
 # Secrets and credentials
 .env
@@ -30,15 +31,6 @@ __pycache__/
 *.log
 tsconfig.tsbuildinfo
 .DS_Store
-
-# Unrelated projects living in this folder (kept out of the repo, not deleted)
-polymarket-mcp-server/
-claude-code-grok-mcp/
-skills/
-fixed_signal_pipeline.json
-deploy_fixed_pipeline.py
-vrt_analysis.py
-gmail-summarizer-v2.json
 
 # Debugging-session leftovers under portal/, found during the Phase 1 survey (not in the
 # original brief's list). Every one of these except fix-newlines.js hardcodes a live
