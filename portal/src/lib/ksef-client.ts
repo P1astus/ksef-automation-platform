@@ -19,13 +19,22 @@ export const BASE_URL = process.env.KSEF_ENVIRONMENT === 'prod'
 
 const XADES_SIDECAR = process.env.XADES_SIDECAR_URL || 'http://xades_sidecar:8090';
 
-// Cache public key certificate (valid for 1 hour)
-let cachedCert: string | null = null;
-let cachedCertTs = 0;
+// GET /security/public-key-certificates returns certificates for two
+// distinct purposes (confirmed against the real test API): KsefTokenEncryption
+// for the auth flow's token encryption, SymmetricKeyEncryption for wrapping
+// the AES key used to encrypt invoices in an online/batch session. They are
+// different certificates - fetching without specifying which one silently
+// picked KsefTokenEncryption (or data[0]), which is the wrong cert for
+// opening an invoice-sending session.
+export type CertificateUsage = 'KsefTokenEncryption' | 'SymmetricKeyEncryption';
 
-export async function getPublicKeyCertificate(): Promise<string> {
+// Cache public key certificates (valid for 1 hour), keyed by usage
+const certCache = new Map<CertificateUsage, { certificate: string; ts: number }>();
+
+export async function getPublicKeyCertificate(usage: CertificateUsage = 'KsefTokenEncryption'): Promise<string> {
     const now = Date.now();
-    if (cachedCert && now - cachedCertTs < 3600_000) return cachedCert;
+    const cached = certCache.get(usage);
+    if (cached && now - cached.ts < 3600_000) return cached.certificate;
 
     const res = await fetch(`${BASE_URL}/security/public-key-certificates`, {
         signal: AbortSignal.timeout(8000),
@@ -33,13 +42,11 @@ export async function getPublicKeyCertificate(): Promise<string> {
     if (!res.ok) throw new Error(`Failed to fetch KSeF public key certificates: ${res.status}`);
     const data: Array<{ certificate: string; usage: string[] }> = await res.json();
 
-    // Find the certificate intended for token encryption
-    const entry = data.find(c => c.usage?.includes('KsefTokenEncryption')) ?? data[0];
-    if (!entry) throw new Error('No KsefTokenEncryption certificate found');
+    const entry = data.find(c => c.usage?.includes(usage));
+    if (!entry) throw new Error(`No ${usage} certificate found`);
 
-    cachedCert = entry.certificate;
-    cachedCertTs = now;
-    return cachedCert as string;
+    certCache.set(usage, { certificate: entry.certificate, ts: now });
+    return entry.certificate;
 }
 
 export async function getChallenge(): Promise<{ challenge: string; timestamp: string; timestampMs: number }> {
@@ -64,7 +71,7 @@ export async function initInteractiveSession(
     tokenPlaintext: string
 ): Promise<string> {
     const [certificate, { challenge, timestampMs }] = await Promise.all([
-        getPublicKeyCertificate(),
+        getPublicKeyCertificate('KsefTokenEncryption'),
         getChallenge(),
     ]);
 
@@ -189,11 +196,121 @@ export async function queryInvoices(
     return res.json();
 }
 
+const FA3_FORM_CODE = { systemCode: 'FA (3)', schemaVersion: '1-0E', value: 'FA' };
+
 /**
- * Send an invoice (KSeF 2.0 — invoice must be encrypted).
- * In KSeF 2.0, invoices are encrypted with AES-256-GCM;
- * the session referenceNumber comes from the auth flow.
- * This is a placeholder — full encryption requires XAdES sidecar support.
+ * Opens a KSeF 2.0 "online session" (wysyłka interaktywna) for sending
+ * single invoices — POST /sessions/online. Distinct from the auth flow's
+ * accessToken: this returns a *session* referenceNumber that sendInvoice()
+ * needs, plus the raw AES key/IV that encryptInvoiceForSession() needs for
+ * every invoice sent within this session (the key is generated once, here,
+ * and reused — KSeF's SendInvoiceRequest has no per-invoice IV field, so a
+ * fresh key per invoice would be incompatible with the API's own contract).
+ *
+ * The raw key/IV live only in this Node process for the caller-managed
+ * lifetime of the session (same trust boundary as the accessToken already
+ * held across calls) — the actual AES-256-CBC/PKCS7 encryption still always
+ * happens in the XAdES sidecar, never in the portal itself.
+ */
+export async function openOnlineSession(
+    accessToken: string
+): Promise<{ referenceNumber: string; validUntil: string; keyBase64: string; ivBase64: string }> {
+    const symmetricKeyCert = await getPublicKeyCertificate('SymmetricKeyEncryption');
+
+    const keyRes = await fetch(`${XADES_SIDECAR}/generate-session-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ksefPublicKeyPem: symmetricKeyCert }),
+        signal: AbortSignal.timeout(10_000),
+    });
+    if (!keyRes.ok) {
+        const body = await keyRes.text().catch(() => '');
+        throw new Error(`XAdES generate-session-key failed (${keyRes.status}): ${body}`);
+    }
+    const { keyBase64, ivBase64, encryptedKeyBase64 } = await keyRes.json();
+
+    const openRes = await fetch(`${BASE_URL}/sessions/online`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+            formCode: FA3_FORM_CODE,
+            encryption: {
+                encryptedSymmetricKey: encryptedKeyBase64,
+                initializationVector: ivBase64,
+            },
+        }),
+        signal: AbortSignal.timeout(10_000),
+    });
+    if (!openRes.ok) {
+        const body = await openRes.text().catch(() => '');
+        throw new Error(`KSeF sessions/online (open) failed (${openRes.status}): ${body}`);
+    }
+    const { referenceNumber, validUntil } = await openRes.json();
+    if (!referenceNumber) throw new Error('KSeF: no referenceNumber in sessions/online response');
+
+    return { referenceNumber, validUntil, keyBase64, ivBase64 };
+}
+
+/**
+ * Encrypts one invoice XML for sending within an already-open online
+ * session, using that session's key/IV (from openOnlineSession above).
+ * Per the vendored spec (ksef-openapi.json: SendInvoiceRequest.
+ * encryptedInvoiceContent) this is AES-256-CBC with PKCS#7 padding — NOT
+ * AES-256-GCM. Earlier notes in this codebase (CLAUDE.md, HANDOVER.md,
+ * FIXES-2026-09-13.md) assumed GCM; the vendored spec has zero occurrences
+ * of "GCM" anywhere, and both the online-session and batch-session flows
+ * use CBC+PKCS7 — confirmed by grepping ksef-openapi.json directly rather
+ * than trusting the earlier assumption.
+ */
+export async function encryptInvoiceForSession(
+    invoiceXml: string,
+    keyBase64: string,
+    ivBase64: string
+): Promise<{
+    invoiceHash: string;
+    invoiceSize: number;
+    encryptedInvoiceHash: string;
+    encryptedInvoiceSize: number;
+    encryptedInvoiceContent: string;
+}> {
+    const res = await fetch(`${XADES_SIDECAR}/encrypt-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceXml, keyBase64, ivBase64 }),
+        signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`XAdES encrypt-invoice failed (${res.status}): ${body}`);
+    }
+    return res.json();
+}
+
+/**
+ * Closes an online session — POST /sessions/online/{referenceNumber}/close.
+ * Distinct from terminateSession() (DELETE /auth/sessions/current), which
+ * ends the *authentication* session, not the invoice-sending one. Both
+ * should be cleaned up; a session left open simply expires at validUntil.
+ */
+export async function closeOnlineSession(accessToken: string, referenceNumber: string): Promise<void> {
+    try {
+        await fetch(`${BASE_URL}/sessions/online/${referenceNumber}/close`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+            signal: AbortSignal.timeout(8000),
+        });
+    } catch {
+        // Non-critical — the session expires on its own at validUntil.
+    }
+}
+
+/**
+ * Send an invoice within an already-open online session (see
+ * openOnlineSession + encryptInvoiceForSession above). KSeF 2.0 requires
+ * the invoice body encrypted with the session's key before this call.
  */
 export async function sendInvoice(
     accessToken: string,

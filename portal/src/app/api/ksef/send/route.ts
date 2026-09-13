@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
-import { initInteractiveSession, sendInvoice, terminateSession } from '@/lib/ksef-client';
+import { initInteractiveSession, openOnlineSession, encryptInvoiceForSession, sendInvoice, closeOnlineSession, terminateSession } from '@/lib/ksef-client';
 
 export async function POST(request: Request) {
     const session = await getSession();
@@ -52,13 +52,27 @@ export async function POST(request: Request) {
         }
 
         const tokenPlaintext = Buffer.from(ksef_token_encrypted, 'base64').toString('utf8');
-        let sessionToken: string | null = null;
+        let accessToken: string | null = null;
 
         try {
-            sessionToken = await initInteractiveSession(nip, tokenPlaintext);
+            accessToken = await initInteractiveSession(nip, tokenPlaintext);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Błąd inicjalizacji sesji KSeF';
             for (const inv of invoices) results.push({ id: inv.id, error: msg });
+            continue;
+        }
+
+        // Opening the online (invoice-sending) session is separate from the
+        // auth session above: it needs its own referenceNumber and its own
+        // AES key/IV (see openOnlineSession in ksef-client.ts). One failure
+        // here fails every invoice for this client, same as an auth failure.
+        let onlineSession: Awaited<ReturnType<typeof openOnlineSession>> | null = null;
+        try {
+            onlineSession = await openOnlineSession(accessToken);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Błąd otwarcia sesji wysyłki KSeF';
+            for (const inv of invoices) results.push({ id: inv.id, error: msg });
+            await terminateSession(accessToken);
             continue;
         }
 
@@ -68,7 +82,8 @@ export async function POST(request: Request) {
                 continue;
             }
             try {
-                const ksefRef = await sendInvoice(sessionToken, inv.raw_xml);
+                const encryptedPayload = await encryptInvoiceForSession(inv.raw_xml, onlineSession.keyBase64, onlineSession.ivBase64);
+                const ksefRef = await sendInvoice(accessToken, onlineSession.referenceNumber, encryptedPayload);
                 await query(
                     `UPDATE invoices
                      SET processing_status = 'exported_jpk',
@@ -83,7 +98,8 @@ export async function POST(request: Request) {
             }
         }
 
-        if (sessionToken) await terminateSession(sessionToken);
+        await closeOnlineSession(accessToken, onlineSession.referenceNumber);
+        await terminateSession(accessToken);
     }
 
     const sentCount = results.filter(r => r.ksefReferenceNumber).length;
