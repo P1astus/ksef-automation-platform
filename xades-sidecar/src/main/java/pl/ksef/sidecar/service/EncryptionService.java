@@ -6,13 +6,15 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.security.spec.MGF1ParameterSpec;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -122,15 +124,108 @@ public class EncryptionService {
         return result;
     }
 
-    private PublicKey parsePublicKey(String pem) throws Exception {
-        String cleaned = pem
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
+    /**
+     * KSeF's GET /security/public-key-certificates returns a full X.509
+     * certificate (DER, Base64) in its "certificate" field, not a bare
+     * SubjectPublicKeyInfo - confirmed 2026-09-13 against the real test API
+     * (api-test.ksef.mf.gov.pl): the returned bytes parse with `openssl
+     * x509` into a real certificate with subject "Ministerstwo Finansów"
+     * and a real CA issuer chain. Every caller in this codebase
+     * (ksef-client.ts's getPublicKeyCertificate()) passes that value
+     * straight through as ksefPublicKeyPem, so this always receives a
+     * certificate, never a bare key - the previous implementation, which
+     * fed the raw bytes into X509EncodedKeySpec (only valid for a bare
+     * SubjectPublicKeyInfo, a different and smaller ASN.1 structure nested
+     * inside a certificate), would throw on every real call. Confirmed
+     * broken, not just theoretically: a full KSeF certificate is ~1.6KB;
+     * the SubjectPublicKeyInfo X509EncodedKeySpec expects is ~294 bytes.
+     */
+    private PublicKey parsePublicKey(String certificateOrPemBase64) throws Exception {
+        String cleaned = certificateOrPemBase64
+                .replace("-----BEGIN CERTIFICATE-----", "")
+                .replace("-----END CERTIFICATE-----", "")
                 .replaceAll("\\s+", "");
-        byte[] keyBytes = Base64.getDecoder().decode(cleaned);
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return kf.generatePublic(spec);
+        byte[] certBytes = Base64.getDecoder().decode(cleaned);
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        X509Certificate cert = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(certBytes));
+        return cert.getPublicKey();
+    }
+
+    /**
+     * Generates a random AES-256 key + 16-byte IV for a KSeF 2.0 online
+     * session, and RSA-OAEP-SHA256-encrypts the key for the certificate
+     * whose usage is SymmetricKeyEncryption (a different cert than the
+     * KsefTokenEncryption one used for the auth flow - see
+     * getPublicKeyCertificate(usage) in ksef-client.ts). Per the vendored
+     * spec (ksef-openapi.json: EncryptionInfo, OpenOnlineSessionRequest,
+     * SendInvoiceRequest), the SAME key+IV pair is reused for every invoice
+     * sent within that session - SendInvoiceRequest carries no per-invoice
+     * IV field, so the caller must hold onto keyBase64/ivBase64 for the
+     * session's lifetime and pass them to encryptInvoiceForSession() for
+     * each invoice.
+     */
+    public Map<String, Object> generateSessionKey(String publicKeyPem) throws Exception {
+        PublicKey publicKey = parsePublicKey(publicKeyPem);
+
+        KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+        keyGen.init(256);
+        SecretKey aesKey = keyGen.generateKey();
+
+        byte[] iv = new byte[16];
+        new SecureRandom().nextBytes(iv);
+
+        OAEPParameterSpec oaepParams = new OAEPParameterSpec(
+                "SHA-256",
+                "MGF1",
+                MGF1ParameterSpec.SHA256,
+                PSource.PSpecified.DEFAULT
+        );
+        Cipher rsaCipher = Cipher.getInstance("RSA/ECB/OAEPPadding");
+        rsaCipher.init(Cipher.ENCRYPT_MODE, publicKey, oaepParams);
+        byte[] encryptedKey = rsaCipher.doFinal(aesKey.getEncoded());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("keyBase64", Base64.getEncoder().encodeToString(aesKey.getEncoded()));
+        result.put("ivBase64", Base64.getEncoder().encodeToString(iv));
+        result.put("encryptedKeyBase64", Base64.getEncoder().encodeToString(encryptedKey));
+        result.put("success", true);
+        return result;
+    }
+
+    /**
+     * Encrypts a single invoice XML for KSeF 2.0's online session ("wysyłka
+     * interaktywna") flow: POST /sessions/online/{referenceNumber}/invoices.
+     * Per the vendored spec's SendInvoiceRequest.encryptedInvoiceContent
+     * description: "Faktura zaszyfrowana algorytmem AES-256-CBC z
+     * dopełnianiem PKCS#7" - AES-256-CBC with PKCS#7 padding, using the key
+     * established when the session was opened (generateSessionKey above).
+     * This is NOT AES-256-GCM - this codebase's earlier notes (CLAUDE.md,
+     * HANDOVER.md, FIXES-2026-09-13.md) all assumed GCM, but the vendored
+     * ksef-openapi.json contains zero occurrences of "GCM" anywhere; both
+     * the online-session and batch-session flows use CBC+PKCS7, differing
+     * only in chunking and which endpoint opens the session.
+     */
+    public Map<String, Object> encryptInvoiceForSession(String invoiceXml, String keyBase64, String ivBase64) throws Exception {
+        byte[] plaintext = invoiceXml.getBytes(StandardCharsets.UTF_8);
+        byte[] keyBytes = Base64.getDecoder().decode(keyBase64);
+        byte[] iv = Base64.getDecoder().decode(ivBase64);
+
+        SecretKey aesKey = new SecretKeySpec(keyBytes, "AES");
+        Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding"); // PKCS5Padding == PKCS7 for a 16-byte block cipher
+        aesCipher.init(Cipher.ENCRYPT_MODE, aesKey, new IvParameterSpec(iv));
+        byte[] ciphertext = aesCipher.doFinal(plaintext);
+
+        byte[] plainHash = MessageDigest.getInstance("SHA-256").digest(plaintext);
+        byte[] cipherHash = MessageDigest.getInstance("SHA-256").digest(ciphertext);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("invoiceHash", Base64.getEncoder().encodeToString(plainHash));
+        result.put("invoiceSize", plaintext.length);
+        result.put("encryptedInvoiceHash", Base64.getEncoder().encodeToString(cipherHash));
+        result.put("encryptedInvoiceSize", ciphertext.length);
+        result.put("encryptedInvoiceContent", Base64.getEncoder().encodeToString(ciphertext));
+        result.put("success", true);
+        return result;
     }
 
     private static String bytesToHex(byte[] bytes) {
