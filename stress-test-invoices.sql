@@ -26,8 +26,7 @@ INSERT INTO invoices (
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
     ksef_acquisition_date, ksef_permanent_storage_date,
-    processing_status, jpk_marker, jpk_period,
-    is_offline, offline_mode, offline_upload_deadline, offline_uploaded
+    processing_status, jpk_marker, jpk_period
 )
 SELECT
     ct.nip,
@@ -58,14 +57,7 @@ SELECT
         WHEN s % 20 IN (2, 3) THEN 'OFF'
         ELSE 'NrKSeF'
     END,
-    TO_CHAR(base_date, 'YYYY-MM'),
-    -- ~8% offline
-    (s % 13 = 0),
-    CASE WHEN s % 13 = 0 THEN
-        (ARRAY['offline24','unavailability','emergency','total_outage'])[1 + (s % 4)]
-    ELSE NULL END,
-    CASE WHEN s % 13 = 0 THEN base_date::timestamptz + INTERVAL '24 hours' ELSE NULL END,
-    CASE WHEN s % 13 = 0 AND s % 26 = 0 THEN true ELSE false END
+    TO_CHAR(base_date, 'YYYY-MM')
 FROM client_tiers ct
 CROSS JOIN LATERAL (
     SELECT s, DATE '2025-10-01' + ((s - 1) % 150 * INTERVAL '1 day') AS base_date
@@ -83,8 +75,7 @@ INSERT INTO invoices (
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
     ksef_acquisition_date, ksef_permanent_storage_date,
-    processing_status, jpk_marker, jpk_period,
-    is_offline, offline_mode, offline_upload_deadline, offline_uploaded
+    processing_status, jpk_marker, jpk_period
 )
 SELECT
     ct.nip,
@@ -112,13 +103,7 @@ SELECT
         WHEN s % 20 IN (2, 3) THEN 'OFF'
         ELSE 'NrKSeF'
     END,
-    TO_CHAR(base_date, 'YYYY-MM'),
-    (s % 13 = 0),
-    CASE WHEN s % 13 = 0 THEN
-        (ARRAY['offline24','unavailability','emergency','total_outage'])[1 + (s % 4)]
-    ELSE NULL END,
-    CASE WHEN s % 13 = 0 THEN base_date::timestamptz + INTERVAL '24 hours' ELSE NULL END,
-    CASE WHEN s % 13 = 0 AND s % 26 = 0 THEN true ELSE false END
+    TO_CHAR(base_date, 'YYYY-MM')
 FROM client_tiers ct
 CROSS JOIN LATERAL (
     SELECT s, DATE '2025-10-01' + ((s - 1) % 150 * INTERVAL '1 day') AS base_date
@@ -136,8 +121,7 @@ INSERT INTO invoices (
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
     ksef_acquisition_date, ksef_permanent_storage_date,
-    processing_status, jpk_marker, jpk_period,
-    is_offline, offline_mode, offline_upload_deadline, offline_uploaded
+    processing_status, jpk_marker, jpk_period
 )
 SELECT
     ct.nip,
@@ -165,13 +149,7 @@ SELECT
         WHEN s % 20 IN (2, 3) THEN 'OFF'
         ELSE 'NrKSeF'
     END,
-    TO_CHAR(base_date, 'YYYY-MM'),
-    (s % 15 = 0),
-    CASE WHEN s % 15 = 0 THEN
-        (ARRAY['offline24','unavailability','emergency','total_outage'])[1 + (s % 4)]
-    ELSE NULL END,
-    CASE WHEN s % 15 = 0 THEN base_date::timestamptz + INTERVAL '24 hours' ELSE NULL END,
-    false
+    TO_CHAR(base_date, 'YYYY-MM')
 FROM client_tiers ct
 CROSS JOIN LATERAL (
     SELECT s, DATE '2025-10-01' + ((s - 1) % 150 * INTERVAL '1 day') AS base_date
@@ -189,8 +167,7 @@ INSERT INTO invoices (
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
     ksef_acquisition_date, ksef_permanent_storage_date,
-    processing_status, jpk_marker, jpk_period,
-    is_offline, offline_mode, offline_upload_deadline, offline_uploaded
+    processing_status, jpk_marker, jpk_period
 )
 SELECT
     ct.nip,
@@ -218,13 +195,7 @@ SELECT
         WHEN s % 20 IN (2, 3) THEN 'OFF'
         ELSE 'NrKSeF'
     END,
-    TO_CHAR(base_date, 'YYYY-MM'),
-    (s % 15 = 0),
-    CASE WHEN s % 15 = 0 THEN
-        (ARRAY['offline24','unavailability','emergency','total_outage'])[1 + (s % 4)]
-    ELSE NULL END,
-    CASE WHEN s % 15 = 0 THEN base_date::timestamptz + INTERVAL '24 hours' ELSE NULL END,
-    false
+    TO_CHAR(base_date, 'YYYY-MM')
 FROM client_tiers ct
 CROSS JOIN LATERAL (
     SELECT s, DATE '2025-10-01' + ((s - 1) % 150 * INTERVAL '1 day') AS base_date
@@ -242,8 +213,7 @@ INSERT INTO invoices (
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
     ksef_acquisition_date, ksef_permanent_storage_date,
-    processing_status, jpk_marker, jpk_period,
-    is_offline, offline_mode, offline_upload_deadline, offline_uploaded
+    processing_status, jpk_marker, jpk_period
 )
 SELECT
     ct.nip,
@@ -265,8 +235,7 @@ SELECT
     base_date::timestamptz + INTERVAL '2 hours',
     'new',
     CASE WHEN s % 20 = 0 THEN 'DI' WHEN s % 20 = 1 THEN 'BFK' WHEN s % 10 = 2 THEN 'OFF' ELSE 'NrKSeF' END,
-    TO_CHAR(base_date, 'YYYY-MM'),
-    false, NULL, NULL, false
+    TO_CHAR(base_date, 'YYYY-MM')
 FROM client_tiers ct
 CROSS JOIN (VALUES ('S', 'sales'), ('P', 'purchase')) AS dir(code, direction)
 CROSS JOIN LATERAL (
@@ -285,8 +254,7 @@ INSERT INTO invoices (
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
     ksef_acquisition_date, ksef_permanent_storage_date,
-    processing_status, jpk_marker, jpk_period,
-    is_offline, offline_mode, offline_upload_deadline, offline_uploaded
+    processing_status, jpk_marker, jpk_period
 )
 SELECT
     ct.nip,
@@ -313,11 +281,7 @@ SELECT
         WHEN s % 20 IN (2, 3) THEN 'OFF'
         ELSE 'NrKSeF'
     END,
-    TO_CHAR(base_date, 'YYYY-MM'),
-    (s % 12 = 0),
-    CASE WHEN s % 12 = 0 THEN 'offline24' ELSE NULL END,
-    CASE WHEN s % 12 = 0 THEN base_date::timestamptz + INTERVAL '24 hours' ELSE NULL END,
-    false
+    TO_CHAR(base_date, 'YYYY-MM')
 FROM clients ct
 CROSS JOIN (VALUES ('S', 'sales'), ('P', 'purchase')) AS dir(code, direction)
 CROSS JOIN LATERAL (
@@ -369,8 +333,8 @@ WHERE ksef_number LIKE 'ST%'
 GROUP BY jpk_marker
 ORDER BY cnt DESC;
 
--- Offline invoice distribution
-SELECT is_offline, offline_mode, COUNT(*)
-FROM invoices
-WHERE ksef_number LIKE 'ST%' AND is_offline = true
-GROUP BY is_offline, offline_mode;
+-- Offline invoice distribution now lives in offline_invoices, not invoices
+-- (see migrations/2026-09-13-offline-invoice-linking.sql / stress-test-offline.sql).
+SELECT offline_mode, COUNT(*)
+FROM offline_invoices
+GROUP BY offline_mode;
