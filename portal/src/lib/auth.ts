@@ -2,7 +2,12 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
-const secretKey = process.env.JWT_SECRET || 'fallback-secret-for-dev-only-change-in-prod';
+if (!process.env.JWT_SECRET) {
+    throw new Error(
+        'JWT_SECRET is not set. Refusing to start: a missing secret would let anyone forge a session for any firmId.'
+    );
+}
+const secretKey = process.env.JWT_SECRET;
 const key = new TextEncoder().encode(secretKey);
 
 export async function encrypt(payload: any) {
