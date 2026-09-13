@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { XADES_SIDECAR } from '@/lib/ksef-client';
 
 // Simple reversible obfuscation for storing tokens
 // In production, replace with proper encryption (e.g. AES-256-GCM with KMS)
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
         let connectionOk = false;
         let connectionMsg = 'Nie można połączyć się z serwisem KSeF';
         try {
-            const ping = await fetch('http://xades_sidecar:8080/actuator/health', {
+            const ping = await fetch(`${XADES_SIDECAR}/actuator/health`, {
                 signal: AbortSignal.timeout(3000),
             });
             connectionOk = ping.ok;

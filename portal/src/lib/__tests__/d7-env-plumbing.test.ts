@@ -38,7 +38,45 @@ describe('D7: no hardcoded KSeF host remains in any workflow url field', () => {
 describe('D7: ksef-client.ts sidecar port source check', () => {
     it('the default XADES_SIDECAR fallback string is :8090, not :8080', () => {
         const src = readFileSync(join(__dirname, '..', 'ksef-client.ts'), 'utf8');
-        expect(src).toContain("'http://xades_sidecar:8090'");
+        expect(src).toContain("'http://xades-sidecar:8090'");
         expect(src).not.toContain(':8080');
+    });
+});
+
+// Tomcat's embedded HTTP parser 400s on any Host header containing an
+// underscore - confirmed live against the running sidecar container
+// (curl -H "Host: xades_sidecar:8090" -> 400, curl -H "Host:
+// xades-sidecar:8090" -> 200). docker-compose.yml's service name is
+// "xades-sidecar" (hyphen); container_name is "xades_sidecar" (underscore) -
+// both resolve via DNS, but only the hyphenated one is safe to put in a URL
+// that becomes a Host header. Every place that builds a sidecar URL - the
+// portal's own default, docker-compose's explicit overrides for the portal
+// and n8n services, and settings/ksef/route.ts's connection-test ping - must
+// never regress to the underscored hostname (or, independently, the wrong
+// port that route.ts was still hardcoding: 8080, not 8090).
+describe('sidecar hostname must never contain an underscore (Tomcat 400s on it)', () => {
+    it('ksef-client.ts', () => {
+        const src = readFileSync(join(__dirname, '..', 'ksef-client.ts'), 'utf8');
+        // The comment explaining the bug legitimately quotes the broken
+        // "xades_sidecar" form for context - check the actual URL literal,
+        // not the whole file, so this doesn't flag its own documentation.
+        expect(src).toContain("'http://xades-sidecar:8090'");
+        expect(src).not.toMatch(/['"`]http:\/\/xades_sidecar/);
+    });
+
+    it('settings/ksef/route.ts uses the shared XADES_SIDECAR constant, not its own literal', () => {
+        const src = readFileSync(join(__dirname, '..', '..', 'app', 'api', 'settings', 'ksef', 'route.ts'), 'utf8');
+        expect(src).not.toMatch(/xades_sidecar/);
+        expect(src).not.toMatch(/:8080/);
+        expect(src).toContain('XADES_SIDECAR');
+    });
+
+    it('docker-compose.yml', () => {
+        const src = readFileSync(join(__dirname, '..', '..', '..', '..', 'docker-compose.yml'), 'utf8');
+        const sidecarUrlLines = src.match(/XADES_SIDECAR_URL=[^\s]+/g) || [];
+        expect(sidecarUrlLines.length).toBeGreaterThan(0);
+        for (const line of sidecarUrlLines) {
+            expect(line).not.toMatch(/xades_sidecar/);
+        }
     });
 });

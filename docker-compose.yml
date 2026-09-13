@@ -9,7 +9,11 @@ services:
       - DATABASE_URL=postgresql://ksef_app:${KSEF_DB_PASSWORD}@ksef_db:5432/ksef_platform
       - "JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env - generate with: openssl rand -hex 32}"
       - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
-      - XADES_SIDECAR_URL=http://xades_sidecar:8090
+      # Hyphenated hostname, not the underscored container_name below -
+      # Tomcat's embedded HTTP parser 400s on any Host header containing an
+      # underscore (see ksef-client.ts). "xades-sidecar" is the service name
+      # in this file and Compose always registers it as a DNS alias too.
+      - XADES_SIDECAR_URL=http://xades-sidecar:8090
     depends_on:
       ksef_db:
         condition: service_healthy
@@ -93,6 +97,9 @@ services:
       # false here is a deliberate, scoped exception for this one variable.
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       - KSEF_API_BASE=${KSEF_API_BASE:-https://api-test.ksef.mf.gov.pl}
+      # Hyphenated, not the underscored container_name - see the portal
+      # service's XADES_SIDECAR_URL comment above for why.
+      - XADES_SIDECAR_URL=${XADES_SIDECAR_URL:-http://xades-sidecar:8090}
     ports:
       - "5678:5678"
     volumes:

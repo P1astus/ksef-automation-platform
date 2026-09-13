@@ -17,7 +17,16 @@ export const BASE_URL = process.env.KSEF_ENVIRONMENT === 'prod'
     ? 'https://api.ksef.mf.gov.pl/v2'
     : 'https://api-test.ksef.mf.gov.pl/v2';
 
-const XADES_SIDECAR = process.env.XADES_SIDECAR_URL || 'http://xades_sidecar:8090';
+// Docker Compose's service name is "xades-sidecar" (hyphen) - the container
+// also gets an underscored alias from its container_name, but Tomcat's
+// embedded HTTP parser rejects any Host header containing an underscore
+// with a 400 (confirmed live: curl -H "Host: xades_sidecar:8090" against
+// the running container returns 400, curl -H "Host: xades-sidecar:8090"
+// returns 200). Every real call through this file was hitting that 400 in
+// the actual running docker-compose stack - `curl localhost:8090/...`
+// worked in every prior verification because the Host header there is
+// "localhost", never the underscored container hostname.
+export const XADES_SIDECAR = process.env.XADES_SIDECAR_URL || 'http://xades-sidecar:8090';
 
 // GET /security/public-key-certificates returns certificates for two
 // distinct purposes (confirmed against the real test API): KsefTokenEncryption
