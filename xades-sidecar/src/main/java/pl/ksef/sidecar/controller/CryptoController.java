@@ -1,11 +1,9 @@
 package pl.ksef.sidecar.controller;
 
 import pl.ksef.sidecar.model.BatchEncryptRequest;
-import pl.ksef.sidecar.model.ChallengeSignRequest;
 import pl.ksef.sidecar.model.EncryptInvoiceRequest;
 import pl.ksef.sidecar.model.EncryptTokenRequest;
 import pl.ksef.sidecar.model.GenerateSessionKeyRequest;
-import pl.ksef.sidecar.service.ChallengeSigningService;
 import pl.ksef.sidecar.service.EncryptionService;
 
 import org.springframework.http.ResponseEntity;
@@ -18,35 +16,10 @@ import java.util.Map;
 @RestController
 public class CryptoController {
 
-    private final ChallengeSigningService challengeSigningService;
     private final EncryptionService encryptionService;
 
-    public CryptoController(ChallengeSigningService challengeSigningService,
-                            EncryptionService encryptionService) {
-        this.challengeSigningService = challengeSigningService;
+    public CryptoController(EncryptionService encryptionService) {
         this.encryptionService = encryptionService;
-    }
-
-    @PostMapping("/sign-challenge")
-    public ResponseEntity<Map<String, Object>> signChallenge(@RequestBody ChallengeSignRequest request) {
-        try {
-            String signedChallenge = challengeSigningService.signChallenge(
-                    request.challenge(),
-                    request.timestamp(),
-                    request.certificatePath(),
-                    request.certificatePassword(),
-                    request.nip()
-            );
-            return ResponseEntity.ok(Map.of(
-                    "signedChallenge", signedChallenge,
-                    "success", true
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage()
-            ));
-        }
     }
 
     @PostMapping("/encrypt-for-session")
