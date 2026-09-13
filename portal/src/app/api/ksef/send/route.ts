@@ -91,6 +91,15 @@ export async function POST(request: Request) {
                      WHERE id = $1`,
                     [inv.id]
                 );
+                // No-op for a non-offline invoice (matches zero rows). For an
+                // offline one, this is the moment of upload success - closing
+                // it here rather than waiting for 05-offline24-monitor.json's
+                // next 2-hourly pass to notice it independently.
+                await query(
+                    `UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = $1
+                     WHERE invoice_id = $2 AND uploaded_to_ksef = false`,
+                    [ksefRef, inv.id]
+                );
                 results.push({ id: inv.id, ksefReferenceNumber: ksefRef });
             } catch (err: unknown) {
                 const msg = err instanceof Error ? err.message : 'Błąd wysyłki faktury';

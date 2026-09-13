@@ -45,6 +45,13 @@ function computeTotals(lines: InvoiceLine[]): Totals {
 
 const DEFAULT_LINE: InvoiceLine = { name: '', qty: 1, unit: 'szt.', netPrice: 0, vatRate: '23' };
 
+const OFFLINE_MODES: { label: string; value: string }[] = [
+    { label: 'Offline-24 (przerwa w działaniu KSeF)', value: 'offline24' },
+    { label: 'Niedostępność KSeF (planowana)', value: 'unavailability' },
+    { label: 'Awaria KSeF', value: 'emergency' },
+    { label: 'Całkowita awaria (tryb offline)', value: 'total_outage' },
+];
+
 export default function NewInvoicePage() {
     const router = useRouter();
     const [clients, setClients] = useState<Client[]>([]);
@@ -57,7 +64,9 @@ export default function NewInvoicePage() {
     const [dueDate, setDueDate] = useState('');
     const [lines, setLines] = useState<InvoiceLine[]>([{ ...DEFAULT_LINE }]);
     const [sending, setSending] = useState(false);
-    const [result, setResult] = useState<{ ksefReferenceNumber?: string; error?: string } | null>(null);
+    const [result, setResult] = useState<{ ksefReferenceNumber?: string; error?: string; queuedOffline?: boolean } | null>(null);
+    const [isOffline, setIsOffline] = useState(false);
+    const [offlineMode, setOfflineMode] = useState('offline24');
 
     useEffect(() => {
         fetch('/api/clients').then(r => r.json()).then(d => {
@@ -111,10 +120,19 @@ export default function NewInvoicePage() {
                     buyerName,
                     lines,
                     totals,
+                    offlineMode: isOffline ? offlineMode : undefined,
                 }),
             });
             if (!saveRes.ok) throw new Error('Błąd zapisu faktury');
             const saved = await saveRes.json();
+
+            // Offline: KSeF isn't reachable right now, so there's nothing to
+            // send yet - the invoice sits in the offline queue (with its
+            // upload deadline already ticking) until it's pushed from there.
+            if (isOffline) {
+                setResult({ queuedOffline: true });
+                return;
+            }
 
             // 2. Send to KSeF
             const sendRes = await fetch('/api/ksef/send', {
@@ -136,20 +154,30 @@ export default function NewInvoicePage() {
         }
     }
 
-    if (result?.ksefReferenceNumber) {
+    if (result?.ksefReferenceNumber || result?.queuedOffline) {
         return (
             <div style={{ paddingTop: 40, maxWidth: 580 }}>
-                <div style={{ background: 'var(--bg-surface)', border: '1px solid #22c55e', borderRadius: 12, padding: 32, textAlign: 'center' }}>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-                    <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>Faktura wysłana do KSeF!</h2>
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>Numer referencyjny KSeF:</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 13, background: 'var(--bg-base)', padding: '8px 16px', borderRadius: 6, marginBottom: 24 }}>{result.ksefReferenceNumber}</div>
+                <div style={{ background: 'var(--bg-surface)', border: `1px solid ${result.queuedOffline ? '#f59e0b' : '#22c55e'}`, borderRadius: 12, padding: 32, textAlign: 'center' }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>{result.queuedOffline ? '🕒' : '✅'}</div>
+                    <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>
+                        {result.queuedOffline ? 'Faktura zapisana w trybie offline' : 'Faktura wysłana do KSeF!'}
+                    </h2>
+                    {result.queuedOffline ? (
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24 }}>
+                            KSeF nie jest teraz dostępny — faktura czeka w kolejce offline. Termin wysyłki już biegnie.
+                        </div>
+                    ) : (
+                        <>
+                            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>Numer referencyjny KSeF:</div>
+                            <div style={{ fontFamily: 'monospace', fontSize: 13, background: 'var(--bg-base)', padding: '8px 16px', borderRadius: 6, marginBottom: 24 }}>{result.ksefReferenceNumber}</div>
+                        </>
+                    )}
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setInvoiceNumber(''); }}>
+                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setInvoiceNumber(''); setIsOffline(false); }}>
                             Wystaw kolejną
                         </button>
-                        <Link href="/dashboard/invoices" className="btn-primary" style={{ textDecoration: 'none', padding: '9px 20px', borderRadius: 7 }}>
-                            Wróć do faktur
+                        <Link href={result.queuedOffline ? '/dashboard/invoices/offline' : '/dashboard/invoices'} className="btn-primary" style={{ textDecoration: 'none', padding: '9px 20px', borderRadius: 7 }}>
+                            {result.queuedOffline ? 'Kolejka offline' : 'Wróć do faktur'}
                         </Link>
                     </div>
                 </div>
@@ -236,6 +264,24 @@ export default function NewInvoicePage() {
                             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ width: '100%' }} />
                         </div>
                     </div>
+
+                    <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={isOffline} onChange={e => setIsOffline(e.target.checked)} />
+                            KSeF niedostępny — wystawiam w trybie offline
+                        </label>
+                        {isOffline && (
+                            <div style={{ marginTop: 10 }}>
+                                <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Tryb offline</label>
+                                <select value={offlineMode} onChange={e => setOfflineMode(e.target.value)} style={{ width: '100%', maxWidth: 320 }}>
+                                    {OFFLINE_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </select>
+                                <div style={{ fontSize: 11.5, color: '#f59e0b', marginTop: 6 }}>
+                                    Faktura trafi do kolejki offline zamiast wysyłki do KSeF. Termin wysyłki: koniec następnego dnia roboczego.
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Line items */}
@@ -320,7 +366,11 @@ export default function NewInvoicePage() {
                         Anuluj
                     </Link>
                     <button type="submit" disabled={sending} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        {sending ? 'Wysyłanie…' : <><Send size={15} /> Wyślij do KSeF</>}
+                        {sending
+                            ? 'Zapisywanie…'
+                            : isOffline
+                                ? <><Send size={15} /> Zapisz w trybie offline</>
+                                : <><Send size={15} /> Wyślij do KSeF</>}
                     </button>
                 </div>
             </form>

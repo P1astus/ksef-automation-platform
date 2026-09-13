@@ -10,10 +10,15 @@ export async function POST(request: Request) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json().catch(() => ({}));
-    const { clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName, lines, totals } = body;
+    const { clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName, lines, totals, offlineMode } = body;
 
     if (!clientId || !invoiceNumber || !issueDate || !buyerNip || !buyerName || !lines?.length) {
         return NextResponse.json({ error: 'Brakujące dane faktury' }, { status: 400 });
+    }
+
+    const OFFLINE_MODES = ['offline24', 'unavailability', 'emergency', 'total_outage'];
+    if (offlineMode !== undefined && offlineMode !== null && !OFFLINE_MODES.includes(offlineMode)) {
+        return NextResponse.json({ error: `Nieprawidłowy tryb offline: ${offlineMode}` }, { status: 400 });
     }
 
     // Verify client belongs to firm + get seller NIP
@@ -65,6 +70,24 @@ export async function POST(request: Request) {
 
     const invoiceId = insertRes.rows[0]?.id;
     await logActivity(session.firmId, 'invoice_created', `Wystawiono fakturę: ${invoiceNumber} dla ${buyerName}`);
+
+    // Offline24: the invoice is issued now but KSeF wasn't reachable, so the
+    // compliance clock (upload_deadline, escalating alerts) starts here. The
+    // deadline is the end of the next business day after issueDate - per
+    // CLAUDE.md's rule, computed via next_business_day(), never ad-hoc JS
+    // date math, since it has to account for weekends and Polish holidays
+    // (business_days table). offline_invoices is what
+    // 05-offline24-monitor.json exclusively queries; invoice_id links back
+    // here so the offline queue can display real invoice data without
+    // duplicating it onto offline_invoices itself.
+    if (offlineMode) {
+        await query(
+            `INSERT INTO offline_invoices
+             (firm_id, client_nip, invoice_number, offline_mode, issue_timestamp, upload_deadline, invoice_id)
+             VALUES ($1, $2, $3, $4, NOW(), (next_business_day($5::date) + INTERVAL '1 day' - INTERVAL '1 second'), $6)`,
+            [session.firmId, client.nip, invoiceNumber, offlineMode, issueDate, invoiceId]
+        );
+    }
 
     return NextResponse.json({ id: invoiceId, ok: true });
 }
