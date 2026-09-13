@@ -38,10 +38,10 @@ export async function POST(request: Request) {
                 net_amount, vat_amount, gross_amount, direction,
                 jpk_marker, jpk_period, jpk_correction_needed, ksef_number
          FROM invoices
-         WHERE client_nip = $1
-           AND (jpk_period = $2 OR (jpk_period IS NULL AND issue_date BETWEEN $3 AND $4))
+         WHERE client_nip = $1 AND firm_id = $2
+           AND (jpk_period = $3 OR (jpk_period IS NULL AND issue_date BETWEEN $4 AND $5))
          ORDER BY issue_date ASC, id ASC`,
-        [clientNip, period, periodStart, periodEnd]
+        [clientNip, session.firmId, period, periodStart, periodEnd]
     );
 
     const invoices = invRes.rows;

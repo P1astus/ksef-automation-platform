@@ -9,7 +9,7 @@ export async function GET() {
 
     const result = await query(`
         SELECT c.*,
-            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip) as invoice_count
+            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id) as invoice_count
         FROM clients c
         WHERE c.firm_id = $1
         ORDER BY c.client_name ASC

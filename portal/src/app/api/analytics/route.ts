@@ -13,9 +13,8 @@ export async function GET(request: Request) {
         // Since we are assuming PostgreSQL
         const currentMonthRes = await query(`
             SELECT direction, SUM(net_amount) as net_sum, SUM(vat_amount) as vat_sum, SUM(gross_amount) as gross_sum
-            FROM invoices i 
-            JOIN clients c ON i.client_nip = c.nip
-            WHERE c.firm_id = $1 
+            FROM invoices i
+            WHERE i.firm_id = $1
               AND EXTRACT(MONTH FROM i.issue_date) = EXTRACT(MONTH FROM CURRENT_DATE)
               AND EXTRACT(YEAR FROM i.issue_date) = EXTRACT(YEAR FROM CURRENT_DATE)
             GROUP BY direction

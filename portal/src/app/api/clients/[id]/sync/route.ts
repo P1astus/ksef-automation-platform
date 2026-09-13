@@ -51,8 +51,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (process.env.ANTHROPIC_API_KEY) {
         const unclassified = await query(
             `SELECT id, seller_name, buyer_name, invoice_number, net_amount FROM invoices
-             WHERE client_nip = $1 AND direction = 'purchase' AND cost_category IS NULL LIMIT 20`,
-            [client.nip]
+             WHERE client_nip = $1 AND firm_id = $2 AND direction = 'purchase' AND cost_category IS NULL LIMIT 20`,
+            [client.nip, session.firmId]
         );
         for (const inv of unclassified.rows) {
             const result = await classifyInvoice(inv);

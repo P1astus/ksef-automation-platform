@@ -37,10 +37,14 @@ export async function GET(request: Request) {
         const where = conditions.join(' AND ');
 
         // Total count
+        // Join is scoped by firm_id on both sides - a NIP can now belong to
+        // more than one firm, so joining on client_nip alone could match an
+        // invoice to a different firm's client row and leak it through the
+        // WHERE c.firm_id = $1 filter below.
         const countRes = await query(
             `SELECT COUNT(*)::int AS total
              FROM invoices i
-             JOIN clients c ON i.client_nip = c.nip
+             JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
              WHERE ${where}`,
             params
         );
@@ -51,7 +55,7 @@ export async function GET(request: Request) {
         const invoicesRes = await query(
             `SELECT i.*, c.client_name
              FROM invoices i
-             JOIN clients c ON i.client_nip = c.nip
+             JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
              WHERE ${where}
              ORDER BY i.created_at DESC
              LIMIT $${params.length - 1} OFFSET $${params.length}`,

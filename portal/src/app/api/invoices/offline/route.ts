@@ -12,8 +12,8 @@ export async function GET() {
                 i.offline_mode, i.offline_upload_deadline, i.is_offline,
                 c.client_name
          FROM invoices i
-         JOIN clients c ON i.client_nip = c.nip
-         WHERE c.firm_id = $1
+         JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
+         WHERE i.firm_id = $1
            AND i.is_offline = true
            AND i.offline_uploaded = false
          ORDER BY i.offline_upload_deadline ASC NULLS LAST`,

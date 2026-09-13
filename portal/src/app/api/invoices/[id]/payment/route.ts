@@ -18,9 +18,12 @@ export async function PATCH(
         return NextResponse.json({ error: 'Nieprawidłowy status płatności' }, { status: 400 });
     }
 
-    // Verify invoice belongs to firm
+    // Verify invoice belongs to firm (checked directly against invoices.firm_id,
+    // not via a clients join on client_nip - a NIP can now belong to more than
+    // one firm, so a join without firm_id in the ON clause could match another
+    // firm's client row and authorize access to someone else's invoice)
     const check = await query(
-        `SELECT i.id FROM invoices i JOIN clients c ON i.client_nip = c.nip WHERE i.id = $1 AND c.firm_id = $2`,
+        `SELECT i.id FROM invoices i WHERE i.id = $1 AND i.firm_id = $2`,
         [id, session.firmId]
     );
     if (!check.rows[0]) return NextResponse.json({ error: 'Nie znaleziono faktury' }, { status: 404 });

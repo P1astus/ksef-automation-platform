@@ -41,12 +41,13 @@ export async function POST(request: Request) {
     // Insert invoice record
     const insertRes = await query(
         `INSERT INTO invoices
-         (client_nip, invoice_number, seller_name, buyer_name, buyer_nip,
+         (firm_id, client_nip, invoice_number, seller_name, buyer_name, buyer_nip,
           net_amount, vat_amount, gross_amount, issue_date, due_date,
           direction, processing_status, invoice_lines, raw_xml)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sales','new',$11,$12)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'sales','new',$12,$13)
          RETURNING id`,
         [
+            session.firmId,
             client.nip,
             invoiceNumber,
             client.client_name || firmName,

@@ -10,11 +10,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const clientRes = await query(
         `SELECT c.*,
-            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip) as invoice_count,
-            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.direction = 'sales') as sales_count,
-            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.direction = 'purchase') as purchase_count,
-            (SELECT SUM(gross_amount) FROM invoices i WHERE i.client_nip = c.nip AND i.direction = 'sales') as total_sales,
-            (SELECT SUM(gross_amount) FROM invoices i WHERE i.client_nip = c.nip AND i.direction = 'purchase') as total_purchases
+            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id) as invoice_count,
+            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id AND i.direction = 'sales') as sales_count,
+            (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id AND i.direction = 'purchase') as purchase_count,
+            (SELECT SUM(gross_amount) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id AND i.direction = 'sales') as total_sales,
+            (SELECT SUM(gross_amount) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id AND i.direction = 'purchase') as total_purchases
          FROM clients c
          WHERE c.id = $1 AND c.firm_id = $2`,
         [id, session.firmId]
@@ -26,10 +26,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         `SELECT id, invoice_number, ksef_number, issue_date, direction,
                 seller_name, buyer_name, gross_amount, currency, processing_status
          FROM invoices
-         WHERE client_nip = $1
+         WHERE client_nip = $1 AND firm_id = $2
          ORDER BY created_at DESC
          LIMIT 20`,
-        [clientRes.rows[0].nip]
+        [clientRes.rows[0].nip, session.firmId]
     );
 
     return NextResponse.json({

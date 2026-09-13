@@ -14,14 +14,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Brak faktur do wysłania' }, { status: 400 });
     }
 
-    // Fetch invoices with client token — must belong to this firm
+    // Fetch invoices with client token — must belong to this firm. The join
+    // is scoped by firm_id on both sides: a NIP can now belong to more than
+    // one firm, so joining on client_nip alone could match another firm's
+    // client row and send that firm's invoice using this firm's token.
     const placeholders = invoiceIds.map((_, i) => `$${i + 2}`).join(',');
     const invRes = await query(
         `SELECT i.id, i.invoice_number, i.raw_xml, i.direction,
                 c.nip, c.client_name, c.ksef_token_encrypted
          FROM invoices i
-         JOIN clients c ON i.client_nip = c.nip
-         WHERE i.id IN (${placeholders}) AND c.firm_id = $1`,
+         JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
+         WHERE i.id IN (${placeholders}) AND i.firm_id = $1`,
         [session.firmId, ...invoiceIds]
     );
 

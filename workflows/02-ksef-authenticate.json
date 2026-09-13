@@ -62,7 +62,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT nip, client_name, auth_method, ksef_token_encrypted, certificate_id, sync_enabled FROM clients WHERE nip = '{{ $json.client_nip }}' AND sync_enabled = true LIMIT 1;",
+        "query": "=SELECT nip, client_name, auth_method, ksef_token_encrypted, certificate_id, sync_enabled FROM clients WHERE nip = '{{ $json.client_nip }}' AND firm_id = {{ $json.firm_id }} AND sync_enabled = true LIMIT 1;",
         "options": {}
       },
       "credentials": {
@@ -311,7 +311,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE clients SET last_sync_success = NOW() WHERE nip = '{{ $json.client_nip }}';",
+        "query": "=UPDATE clients SET last_sync_success = NOW() WHERE nip = '{{ $json.client_nip }}' AND firm_id = {{ $json.firm_id }};",
         "options": {}
       },
       "credentials": {
@@ -651,7 +651,7 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=SELECT nip, client_name, auth_method, ksef_token_encrypted, certificate_id, sync_enabled FROM clients WHERE nip = '{{ $json.client_nip }}' AND sync_enabled = true LIMIT 1;",
+          "query": "=SELECT nip, client_name, auth_method, ksef_token_encrypted, certificate_id, sync_enabled FROM clients WHERE nip = '{{ $json.client_nip }}' AND firm_id = {{ $json.firm_id }} AND sync_enabled = true LIMIT 1;",
           "options": {}
         },
         "credentials": {
@@ -900,7 +900,7 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE clients SET last_sync_success = NOW() WHERE nip = '{{ $json.client_nip }}';",
+          "query": "=UPDATE clients SET last_sync_success = NOW() WHERE nip = '{{ $json.client_nip }}' AND firm_id = {{ $json.firm_id }};",
           "options": {}
         },
         "credentials": {

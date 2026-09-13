@@ -54,11 +54,11 @@ async function extractAndSaveInvoice(buffer: Buffer, mimeType: string, firmId: n
 
         await client.query(`
             INSERT INTO invoices (
-                invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
+                firm_id, invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
                 issue_date, net_amount, vat_amount, gross_amount, currency, direction
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         `, [
-            invoice_number, defaultKsef, nip, nip, sourceName, firmId, `My Firm`, issueDate, net_amount, vat_amount, gross_amount, 'PLN', 'purchase'
+            firmId, invoice_number, defaultKsef, nip, nip, sourceName, firmId, `My Firm`, issueDate, net_amount, vat_amount, gross_amount, 'PLN', 'purchase'
         ]);
 
         return { invoice_number, gross_amount };

@@ -24,12 +24,13 @@ export async function POST(request: Request) {
         // Connect to DB and fetch the selected invoices
         const client = await pool.connect();
         try {
-            // Ensure the firm only exports their own invoices (via client relationships)
+            // Ensure the firm only exports their own invoices - filtered directly
+            // on invoices.firm_id, not via a clients join on client_nip (a NIP can
+            // now belong to more than one firm, so that join alone isn't safe)
             const query = `
-        SELECT i.* 
+        SELECT i.*
         FROM invoices i
-        JOIN clients c ON i.client_nip = c.nip
-        WHERE i.id = ANY($1::int[]) AND c.firm_id = $2
+        WHERE i.id = ANY($1::int[]) AND i.firm_id = $2
       `;
             const result = await client.query(query, [invoiceIds, session.firmId]);
 

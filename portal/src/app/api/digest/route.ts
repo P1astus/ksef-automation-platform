@@ -26,8 +26,7 @@ export async function POST(request: Request) {
                     COUNT(*) FILTER (WHERE i.created_at >= NOW() - INTERVAL '1 day') as yesterday,
                     COUNT(*) as total
                 FROM invoices i
-                JOIN clients c ON i.client_nip = c.nip
-                WHERE c.firm_id = $1
+                WHERE i.firm_id = $1
             `, [firm.id]);
 
             const errRes = await query(`

@@ -80,10 +80,11 @@ export async function POST(request: Request) {
             // Save the invoice to the DB
             await client.query(`
                 INSERT INTO invoices (
-                    invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
+                    firm_id, invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
                     issue_date, net_amount, vat_amount, gross_amount, currency, direction
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             `, [
+                session.firmId,
                 invoice_number,
                 defaultKsef,
                 nip, // Associate with this client

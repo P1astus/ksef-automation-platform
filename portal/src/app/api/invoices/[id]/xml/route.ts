@@ -8,15 +8,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
 
-    // Fetch invoice and verify firm ownership via clients join
+    // Fetch invoice and verify firm ownership directly against invoices.firm_id
+    // (not via a clients join on client_nip, which a shared NIP could defeat)
     const res = await query(
         `SELECT i.id, i.invoice_number, i.ksef_number, i.direction, i.processing_status,
                 i.seller_name, i.buyer_name, i.seller_nip, i.buyer_nip,
                 i.net_amount, i.vat_amount, i.gross_amount, i.currency,
                 i.issue_date, i.raw_xml
          FROM invoices i
-         JOIN clients c ON i.client_nip = c.nip
-         WHERE i.id = $1 AND c.firm_id = $2`,
+         WHERE i.id = $1 AND i.firm_id = $2`,
         [id, session.firmId]
     );
 
@@ -38,10 +38,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         return NextResponse.json({ error: 'Nieprawidłowy status' }, { status: 400 });
     }
 
-    // Verify ownership
+    // Verify ownership directly against invoices.firm_id
     const check = await query(
-        `SELECT i.id FROM invoices i JOIN clients c ON i.client_nip = c.nip
-         WHERE i.id = $1 AND c.firm_id = $2`,
+        `SELECT i.id FROM invoices i WHERE i.id = $1 AND i.firm_id = $2`,
         [id, session.firmId]
     );
     if (!check.rows[0]) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });

@@ -49,7 +49,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, invoice_number, client_nip, offline_mode, issue_timestamp, upload_deadline, uploaded_to_ksef, ksef_number, alert_sent_overdue, alert_sent_1h, alert_sent_4h FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC",
+        "query": "SELECT id, firm_id, invoice_number, client_nip, offline_mode, issue_timestamp, upload_deadline, uploaded_to_ksef, ksef_number, alert_sent_overdue, alert_sent_1h, alert_sent_4h FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC",
         "options": {}
       },
       "credentials": {
@@ -132,7 +132,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
+        "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND firm_id = {{ $json.firm_id }} AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
         "options": {}
       },
       "credentials": {
@@ -904,7 +904,7 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "SELECT id, invoice_number, client_nip, offline_mode, issue_timestamp, upload_deadline, uploaded_to_ksef, ksef_number, alert_sent_overdue, alert_sent_1h, alert_sent_4h FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC",
+          "query": "SELECT id, firm_id, invoice_number, client_nip, offline_mode, issue_timestamp, upload_deadline, uploaded_to_ksef, ksef_number, alert_sent_overdue, alert_sent_1h, alert_sent_4h FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC",
           "options": {}
         },
         "credentials": {
@@ -987,7 +987,7 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
+          "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND firm_id = {{ $json.firm_id }} AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
           "options": {}
         },
         "credentials": {

@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Prepare auth request data\nreturn [{\n  json: {\n    client_nip: '1111111111'\n  }\n}];"
+        "jsCode": "// Prepare auth request data\n// firm_id is now required by the shared ksef-auth webhook (D1/D2 tenancy fix) -\n// this is a placeholder for manual testing only. Set it to the actual firm_id\n// that owns NIP 1111111111 in your local DB before running this workflow.\nreturn [{\n  json: {\n    client_nip: '1111111111',\n    firm_id: 1 /* TODO: verify this matches your local test firm */\n  }\n}];"
       },
       "id": "72dd554d-c7ac-41c2-9bd0-fe0cbbb5a655",
       "name": "Prepare Auth Request",
@@ -72,7 +72,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ client_nip: $json.client_nip }) }}",
+        "jsonBody": "={{ JSON.stringify({ client_nip: $json.client_nip, firm_id: $json.firm_id }) }}",
         "options": {
           "timeout": 30000
         }

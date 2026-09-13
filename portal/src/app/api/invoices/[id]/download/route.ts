@@ -11,12 +11,12 @@ export async function GET(
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Fetch invoice — verify firm ownership via JOIN
+        // Fetch invoice — verify firm ownership directly against invoices.firm_id
+        // (not via a clients join on client_nip, which a shared NIP could defeat)
         const res = await query(`
             SELECT i.ksef_number, i.invoice_number, i.raw_xml
             FROM invoices i
-            JOIN clients c ON i.client_nip = c.nip
-            WHERE i.id = $1 AND c.firm_id = $2
+            WHERE i.id = $1 AND i.firm_id = $2
         `, [id, session.firmId]);
 
         if (res.rows.length === 0) {
