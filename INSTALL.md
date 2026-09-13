@@ -81,14 +81,13 @@ ksef-platform/
 ├── docker-compose.yml          # Stack definition (4 services)
 ├── ksef-schema.sql             # Database schema (auto-runs on first start)
 ├── ksef-holidays-init.sql      # Polish holidays 2026-2028 (auto-runs on first start)
-├── workflows/                  # 8 n8n workflow JSON files
+├── workflows/                  # 7 n8n workflow JSON files
 │   ├── 01-send-alert.json
 │   ├── 02-ksef-authenticate.json
 │   ├── 03-health-check.json
 │   ├── 04-ksef-invoice-retrieval.json
 │   ├── 05-offline24-monitor.json
 │   ├── 06-jpk-vat-preparation.json
-│   ├── 07-document-collection.json
 │   └── 08-ksef-submit-test-invoice.json
 ├── xades-sidecar/              # Java XAdES-BES signing service (built by Docker)
 │   ├── Dockerfile
@@ -235,7 +234,11 @@ docker compose logs postgres        # n8n internal DB errors
 
 ## 6. Import Workflows
 
-The platform consists of 8 workflows that must be imported in a specific order (dependencies first).
+The platform consists of 7 workflows that must be imported in a specific order (dependencies first).
+
+> **Note:** `07-document-collection.json` (an unauthenticated webhook that wrote to `invoices`/
+> `ocr_queue` for any NIP supplied in the payload, and that nothing in the codebase called) has been
+> deleted rather than fixed. See `CLAUDE.md`'s Known Issues section.
 
 ### Import Order
 
@@ -247,8 +250,7 @@ The platform consists of 8 workflows that must be imported in a specific order (
 | 4 | `04-ksef-invoice-retrieval.json` | KSeF - Invoice Retrieval v2 | Depends on Authenticate |
 | 5 | `05-offline24-monitor.json` | KSeF - Offline24 Monitor | Uses Send Alert |
 | 6 | `06-jpk-vat-preparation.json` | KSeF - JPK_VAT Preparation | Uses Send Alert |
-| 7 | `07-document-collection.json` | KSeF - Document Collection | Uses Send Alert |
-| 8 | `08-ksef-submit-test-invoice.json` | KSeF - Submit Test Invoice | Manual test tool |
+| 7 | `08-ksef-submit-test-invoice.json` | KSeF - Submit Test Invoice | Manual test tool |
 
 ### How to Import Each Workflow
 
@@ -315,14 +317,14 @@ This credential is used for sending alert emails and JPK reports.
 
 ### 7.3 Re-link Credentials in All Workflows
 
-After creating both credentials, you must select them in every Postgres and Email node across all 8 workflows:
+After creating both credentials, you must select them in every Postgres and Email node across all 7 workflows:
 
 1. Open each workflow
 2. Click on each **Postgres** node > select `KSeF App DB` from the credential dropdown
 3. Click on each **Email Send** node > select `SMTP account` from the credential dropdown
 4. **Save** the workflow after updating all nodes
 
-**Workflows with Postgres nodes:** All 8 workflows
+**Workflows with Postgres nodes:** All 7 workflows
 **Workflows with Email nodes:** Send Alert v2, JPK_VAT Preparation
 
 ---
@@ -492,7 +494,6 @@ Activate workflows in this order (dependencies first):
 | 4 | KSeF - Invoice Retrieval v2 | Every 30 minutes | Pulls invoices from KSeF |
 | 5 | KSeF - Offline24 Monitor | Every 2 hours | Tracks offline upload deadlines |
 | 6 | KSeF - JPK_VAT Preparation | 5th of month, 08:00 | Monthly JPK report generation |
-| 7 | KSeF - Document Collection | Webhook (always on) | Document upload and OCR |
 
 **Do NOT activate** KSeF - Submit Test Invoice in production.
 
@@ -731,7 +732,6 @@ ORDER BY upload_deadline;
 | **Invoice Retrieval v2** | Every 30 min | Pulls sales + purchase invoices from KSeF, deduplicates, classifies |
 | **Offline24 Monitor** | Every 2 hours | Tracks offline upload deadlines, sends urgency alerts |
 | **JPK_VAT Preparation** | 5th of month | Generates JPK-ready CSV reports per client, emails them |
-| **Document Collection** | Webhook | Accepts document uploads, parses XML or queues for OCR |
 | **Submit Test Invoice** | Manual | Test tool for submitting invoices to KSeF |
 
 ### Database Tables
