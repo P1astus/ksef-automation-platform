@@ -1,0 +1,36 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js Portal (dev)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "portal",
+      "port": 3000
+    },
+    {
+      "name": "Docker Stack (all services)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up"],
+      "port": 80
+    },
+    {
+      "name": "n8n Workflow Engine",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "n8n", "postgres"],
+      "port": 5678
+    },
+    {
+      "name": "XAdES Sidecar (Java signing service)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "xades-sidecar"],
+      "port": 8090
+    },
+    {
+      "name": "KSeF Database (PostgreSQL)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "ksef_db"],
+      "port": 5433
+    }
+  ]
+}

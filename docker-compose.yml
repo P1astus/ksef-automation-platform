@@ -1,0 +1,111 @@
+name: ksef-automation-platform
+
+services:
+  portal:
+    build: ./portal
+    container_name: ksef_portal
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://ksef_app:${KSEF_DB_PASSWORD}@ksef_db:5432/ksef_platform
+      - JWT_SECRET=${JWT_SECRET:-changeme_in_production_12345}
+    depends_on:
+      ksef_db:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    container_name: ksef_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - portal
+      - n8n
+  postgres:
+    image: postgres:16-alpine
+    container_name: n8n_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U n8n" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ksef_db:
+    image: postgres:16-alpine
+    container_name: ksef_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=ksef_platform
+      - POSTGRES_USER=ksef_app
+      - POSTGRES_PASSWORD=${KSEF_DB_PASSWORD}
+    volumes:
+      - ksef_db_data:/var/lib/postgresql/data
+      - ./ksef-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./ksef-holidays-init.sql:/docker-entrypoint-initdb.d/02-holidays.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ksef_app -d ksef_platform" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto,url,buffer,zlib
+      - NODE_FUNCTION_ALLOW_EXTERNAL=fast-xml-parser,xml2js
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - N8N_PAYLOAD_SIZE_MAX=64
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=2160
+      - GENERIC_TIMEZONE=Europe/Warsaw
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_API_KEY=${N8N_API_KEY}
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - n8n_files:/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ksef_db:
+        condition: service_healthy
+
+  xades-sidecar:
+    build: ./xades-sidecar
+    container_name: xades_sidecar
+    restart: unless-stopped
+    environment:
+      - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./certificates:/app/certificates
+
+volumes:
+  postgres_data:
+  ksef_db_data:
+  n8n_data:
+  n8n_files:

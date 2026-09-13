@@ -1,0 +1,1031 @@
+{
+  "updatedAt": "2026-03-02T23:10:33.203Z",
+  "createdAt": "2026-03-02T06:22:42.120Z",
+  "id": "XguLuI6jKghH71BL",
+  "name": "KSeF - Health Check",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Run Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        340
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Check KSeF API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        340
+      ],
+      "parameters": {
+        "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Check Java Sidecar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        340
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://xades-sidecar:8090/actuator/health",
+        "authentication": "none",
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Check App DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        960,
+        340
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as client_count FROM clients",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Aggregate Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        340
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const now = new Date().toISOString();\n\nlet ksefStatus = 'healthy';\nlet ksefError = null;\ntry {\n  const ksefResult = $('Check KSeF API').first().json;\n  if (ksefResult.error || ksefResult.code === 'ERR_GOT_REQUEST_ERROR' || ksefResult.statusCode >= 400) {\n    ksefStatus = 'unhealthy';\n    ksefError = ksefResult.error || ksefResult.message || `HTTP ${ksefResult.statusCode}`;\n  }\n} catch (e) {\n  ksefStatus = 'unhealthy';\n  ksefError = e.message;\n}\n\nlet sidecarStatus = 'healthy';\nlet sidecarError = null;\ntry {\n  const sidecarResult = $('Check Java Sidecar').first().json;\n  if (sidecarResult.error || sidecarResult.code === 'ERR_GOT_REQUEST_ERROR' || sidecarResult.statusCode >= 400) {\n    sidecarStatus = 'unhealthy';\n    sidecarError = sidecarResult.error || sidecarResult.message || `HTTP ${sidecarResult.statusCode}`;\n  } else if (sidecarResult.status && sidecarResult.status !== 'UP') {\n    sidecarStatus = 'degraded';\n    sidecarError = `Actuator status: ${sidecarResult.status}`;\n  }\n} catch (e) {\n  sidecarStatus = 'unhealthy';\n  sidecarError = e.message;\n}\n\nlet dbStatus = 'healthy';\nlet dbError = null;\ntry {\n  const dbResult = $('Check App DB').first().json;\n  if (dbResult.client_count === undefined) {\n    dbStatus = 'unhealthy';\n    dbError = 'Query returned no results';\n  }\n} catch (e) {\n  dbStatus = 'unhealthy';\n  dbError = e.message;\n}\n\nconst statuses = [ksefStatus, sidecarStatus, dbStatus];\nlet overallStatus = 'healthy';\nif (statuses.includes('unhealthy')) overallStatus = 'unhealthy';\nelse if (statuses.includes('degraded')) overallStatus = 'degraded';\n\nconst hasFailures = overallStatus !== 'healthy';\nconst summary = `Health: ${overallStatus.toUpperCase()} | KSeF: ${ksefStatus} | Sidecar: ${sidecarStatus} | DB: ${dbStatus}`;\n\nreturn [{\n  json: {\n    overall_status: overallStatus,\n    has_failures: hasFailures,\n    checked_at: now,\n    summary,\n    services: [\n      { check_type: 'ksef_api', status: ksefStatus, details: { error: ksefError } },\n      { check_type: 'java_sidecar', status: sidecarStatus, details: { error: sidecarError } },\n      { check_type: 'app_database', status: dbStatus, details: { error: dbError } }\n    ]\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Log Health Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1440,
+        340
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO system_health (check_type, status, details, checked_at) VALUES ('ksef_api', '{{ $('Aggregate Health').first().json.services[0].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[0].details) }}', NOW()), ('java_sidecar', '{{ $('Aggregate Health').first().json.services[1].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[1].details) }}', NOW()), ('app_database', '{{ $('Aggregate Health').first().json.services[2].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[2].details) }}', NOW())",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "All Healthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        340
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.overall_status }}",
+              "rightValue": "healthy",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "id": "check-failures"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Send Health Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1920,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'warning', message: 'KSeF Platform Health Check FAILED: ' + $('Aggregate Health').first().json.summary, workflow_name: 'KSeF - Health Check', details: { overall_status: $('Aggregate Health').first().json.overall_status, checked_at: $('Aggregate Health').first().json.checked_at } }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        640
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-000a-4000-8000-000000000010",
+      "name": "Log Workflow Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        640
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const errorData = $input.first().json;\nreturn [{\n  json: {\n    error_type: 'workflow_error',\n    workflow_name: errorData.workflow?.name || 'KSeF - Health Check',\n    execution_id: errorData.execution?.id,\n    error_message: errorData.execution?.error?.message || 'Unknown workflow error',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-000b-4000-8000-000000000011",
+      "name": "Send Error Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"severity\": \"critical\",\n  \"channel\": \"email\",\n  \"source\": \"health-check-error\",\n  \"message\": \"KSeF Health Check workflow FAILED: {{ $json.error_message }}\",\n  \"details\": {\n    \"execution_id\": \"{{ $json.execution_id }}\",\n    \"error_type\": \"{{ $json.error_type }}\",\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-1001-4000-8000-000000000101",
+      "name": "Workflow Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        40,
+        140
+      ],
+      "parameters": {
+        "content": "## KSeF - Health Check\n\n**Purpose:** Monitors all KSeF 2.0 platform services every 15 minutes.\n\n**Services Checked:**\n- KSeF Test API (api-test.ksef.mf.gov.pl)\n- Java XAdES Sidecar (xades-sidecar:8090)\n- Application Database (PostgreSQL ksef_platform)\n\n**Flow:** Schedule -> Check Services -> Aggregate -> Log to system_health -> Alert on Failure",
+        "width": 380,
+        "height": 300,
+        "color": 4
+      }
+    },
+    {
+      "id": "a1b2c3d4-1002-4000-8000-000000000102",
+      "name": "Health Checks Stage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        440,
+        160
+      ],
+      "parameters": {
+        "content": "## Stage 1: Health Checks\n\nSequentially checks each service.\n- **KSeF API** - GET status endpoint (10s timeout)\n- **Java Sidecar** - Actuator health (5s timeout)\n- **App DB** - Real Postgres query: SELECT COUNT(*) FROM clients\n\nAll nodes use onError: continueRegularOutput.",
+        "width": 560,
+        "height": 160,
+        "color": 2
+      }
+    },
+    {
+      "id": "a1b2c3d4-1003-4000-8000-000000000103",
+      "name": "Aggregation & Logging Stage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        160
+      ],
+      "parameters": {
+        "content": "## Stage 2: Aggregate & Log\n\nCombines results into a health summary. Logs all 3 service statuses into system_health table via Postgres INSERT.",
+        "width": 380,
+        "height": 160,
+        "color": 3
+      }
+    },
+    {
+      "id": "a1b2c3d4-1004-4000-8000-000000000104",
+      "name": "Alert Stage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1620,
+        100
+      ],
+      "parameters": {
+        "content": "## Stage 3: Alert on Failure\n\nIf any service is unhealthy/degraded, sends warning via Send Alert workflow.\n\nTrue = failures -> Send Alert\nFalse = all healthy -> End",
+        "width": 400,
+        "height": 160,
+        "color": 5
+      }
+    },
+    {
+      "id": "a1b2c3d4-1005-4000-8000-000000000105",
+      "name": "Error Handling",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        540
+      ],
+      "parameters": {
+        "content": "## Error Handling\n\nCatches uncaught workflow errors and sends critical alert.",
+        "width": 600,
+        "height": 100,
+        "color": 1
+      }
+    }
+  ],
+  "connections": {
+    "Run Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Check KSeF API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check KSeF API": {
+      "main": [
+        [
+          {
+            "node": "Check Java Sidecar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Java Sidecar": {
+      "main": [
+        [
+          {
+            "node": "Check App DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check App DB": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Health": {
+      "main": [
+        [
+          {
+            "node": "All Healthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Healthy?": {
+      "main": [
+        [
+          {
+            "node": "Log Health Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Health Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Health Alert": {
+      "main": [
+        [
+          {
+            "node": "Log Health Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Workflow Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Send Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Run Every 15 Minutes": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+  "activeVersionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+  "versionCounter": 64,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-02T06:22:42.120Z",
+      "createdAt": "2026-03-02T06:22:42.120Z",
+      "role": "workflow:owner",
+      "workflowId": "XguLuI6jKghH71BL",
+      "projectId": "82yo94M2HLVa6k3U",
+      "project": {
+        "updatedAt": "2026-02-18T00:46:14.338Z",
+        "createdAt": "2026-02-18T00:42:53.216Z",
+        "id": "82yo94M2HLVa6k3U",
+        "name": "Antoni Potrykowski <antekpotrykowski@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-02T19:22:24.654Z",
+    "createdAt": "2026-03-02T19:22:24.654Z",
+    "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+    "workflowId": "XguLuI6jKghH71BL",
+    "nodes": [
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000001",
+        "name": "Run Every 15 Minutes",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          240,
+          340
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 15
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0002-4000-8000-000000000002",
+        "name": "Check KSeF API",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          480,
+          340
+        ],
+        "parameters": {
+          "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0003-4000-8000-000000000003",
+        "name": "Check Java Sidecar",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          720,
+          340
+        ],
+        "parameters": {
+          "method": "GET",
+          "url": "http://xades-sidecar:8090/actuator/health",
+          "authentication": "none",
+          "sendHeaders": false,
+          "sendBody": false,
+          "options": {
+            "timeout": 5000
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0004-4000-8000-000000000004",
+        "name": "Check App DB",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          960,
+          340
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT COUNT(*) as client_count FROM clients",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0005-4000-8000-000000000005",
+        "name": "Aggregate Health",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          340
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const now = new Date().toISOString();\n\nlet ksefStatus = 'healthy';\nlet ksefError = null;\ntry {\n  const ksefResult = $('Check KSeF API').first().json;\n  if (ksefResult.error || ksefResult.code === 'ERR_GOT_REQUEST_ERROR' || ksefResult.statusCode >= 400) {\n    ksefStatus = 'unhealthy';\n    ksefError = ksefResult.error || ksefResult.message || `HTTP ${ksefResult.statusCode}`;\n  }\n} catch (e) {\n  ksefStatus = 'unhealthy';\n  ksefError = e.message;\n}\n\nlet sidecarStatus = 'healthy';\nlet sidecarError = null;\ntry {\n  const sidecarResult = $('Check Java Sidecar').first().json;\n  if (sidecarResult.error || sidecarResult.code === 'ERR_GOT_REQUEST_ERROR' || sidecarResult.statusCode >= 400) {\n    sidecarStatus = 'unhealthy';\n    sidecarError = sidecarResult.error || sidecarResult.message || `HTTP ${sidecarResult.statusCode}`;\n  } else if (sidecarResult.status && sidecarResult.status !== 'UP') {\n    sidecarStatus = 'degraded';\n    sidecarError = `Actuator status: ${sidecarResult.status}`;\n  }\n} catch (e) {\n  sidecarStatus = 'unhealthy';\n  sidecarError = e.message;\n}\n\nlet dbStatus = 'healthy';\nlet dbError = null;\ntry {\n  const dbResult = $('Check App DB').first().json;\n  if (dbResult.client_count === undefined) {\n    dbStatus = 'unhealthy';\n    dbError = 'Query returned no results';\n  }\n} catch (e) {\n  dbStatus = 'unhealthy';\n  dbError = e.message;\n}\n\nconst statuses = [ksefStatus, sidecarStatus, dbStatus];\nlet overallStatus = 'healthy';\nif (statuses.includes('unhealthy')) overallStatus = 'unhealthy';\nelse if (statuses.includes('degraded')) overallStatus = 'degraded';\n\nconst hasFailures = overallStatus !== 'healthy';\nconst summary = `Health: ${overallStatus.toUpperCase()} | KSeF: ${ksefStatus} | Sidecar: ${sidecarStatus} | DB: ${dbStatus}`;\n\nreturn [{\n  json: {\n    overall_status: overallStatus,\n    has_failures: hasFailures,\n    checked_at: now,\n    summary,\n    services: [\n      { check_type: 'ksef_api', status: ksefStatus, details: { error: ksefError } },\n      { check_type: 'java_sidecar', status: sidecarStatus, details: { error: sidecarError } },\n      { check_type: 'app_database', status: dbStatus, details: { error: dbError } }\n    ]\n  }\n}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0006-4000-8000-000000000006",
+        "name": "Log Health Status",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1440,
+          340
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO system_health (check_type, status, details, checked_at) VALUES ('ksef_api', '{{ $('Aggregate Health').first().json.services[0].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[0].details) }}', NOW()), ('java_sidecar', '{{ $('Aggregate Health').first().json.services[1].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[1].details) }}', NOW()), ('app_database', '{{ $('Aggregate Health').first().json.services[2].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[2].details) }}', NOW())",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0007-4000-8000-000000000007",
+        "name": "All Healthy?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1680,
+          340
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict",
+              "combinator": "and"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.overall_status }}",
+                "rightValue": "healthy",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEquals"
+                },
+                "id": "check-failures"
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "a1b2c3d4-0008-4000-8000-000000000008",
+        "name": "Send Health Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1920,
+          240
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ severity: 'warning', message: 'KSeF Platform Health Check FAILED: ' + $('Aggregate Health').first().json.summary, workflow_name: 'KSeF - Health Check', details: { overall_status: $('Aggregate Health').first().json.overall_status, checked_at: $('Aggregate Health').first().json.checked_at } }) }}",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0009-4000-8000-000000000009",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          240,
+          640
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-000a-4000-8000-000000000010",
+        "name": "Log Workflow Error",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          480,
+          640
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const errorData = $input.first().json;\nreturn [{\n  json: {\n    error_type: 'workflow_error',\n    workflow_name: errorData.workflow?.name || 'KSeF - Health Check',\n    execution_id: errorData.execution?.id,\n    error_message: errorData.execution?.error?.message || 'Unknown workflow error',\n    timestamp: new Date().toISOString()\n  }\n}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-000b-4000-8000-000000000011",
+        "name": "Send Error Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          720,
+          640
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"severity\": \"critical\",\n  \"channel\": \"email\",\n  \"source\": \"health-check-error\",\n  \"message\": \"KSeF Health Check workflow FAILED: {{ $json.error_message }}\",\n  \"details\": {\n    \"execution_id\": \"{{ $json.execution_id }}\",\n    \"error_type\": \"{{ $json.error_type }}\",\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-1001-4000-8000-000000000101",
+        "name": "Workflow Overview",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          40,
+          140
+        ],
+        "parameters": {
+          "content": "## KSeF - Health Check\n\n**Purpose:** Monitors all KSeF 2.0 platform services every 15 minutes.\n\n**Services Checked:**\n- KSeF Test API (api-test.ksef.mf.gov.pl)\n- Java XAdES Sidecar (xades-sidecar:8090)\n- Application Database (PostgreSQL ksef_platform)\n\n**Flow:** Schedule -> Check Services -> Aggregate -> Log to system_health -> Alert on Failure",
+          "width": 380,
+          "height": 300,
+          "color": 4
+        }
+      },
+      {
+        "id": "a1b2c3d4-1002-4000-8000-000000000102",
+        "name": "Health Checks Stage",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          440,
+          160
+        ],
+        "parameters": {
+          "content": "## Stage 1: Health Checks\n\nSequentially checks each service.\n- **KSeF API** - GET status endpoint (10s timeout)\n- **Java Sidecar** - Actuator health (5s timeout)\n- **App DB** - Real Postgres query: SELECT COUNT(*) FROM clients\n\nAll nodes use onError: continueRegularOutput.",
+          "width": 560,
+          "height": 160,
+          "color": 2
+        }
+      },
+      {
+        "id": "a1b2c3d4-1003-4000-8000-000000000103",
+        "name": "Aggregation & Logging Stage",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1140,
+          160
+        ],
+        "parameters": {
+          "content": "## Stage 2: Aggregate & Log\n\nCombines results into a health summary. Logs all 3 service statuses into system_health table via Postgres INSERT.",
+          "width": 380,
+          "height": 160,
+          "color": 3
+        }
+      },
+      {
+        "id": "a1b2c3d4-1004-4000-8000-000000000104",
+        "name": "Alert Stage",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1620,
+          100
+        ],
+        "parameters": {
+          "content": "## Stage 3: Alert on Failure\n\nIf any service is unhealthy/degraded, sends warning via Send Alert workflow.\n\nTrue = failures -> Send Alert\nFalse = all healthy -> End",
+          "width": 400,
+          "height": 160,
+          "color": 5
+        }
+      },
+      {
+        "id": "a1b2c3d4-1005-4000-8000-000000000105",
+        "name": "Error Handling",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          180,
+          540
+        ],
+        "parameters": {
+          "content": "## Error Handling\n\nCatches uncaught workflow errors and sends critical alert.",
+          "width": 600,
+          "height": 100,
+          "color": 1
+        }
+      }
+    ],
+    "connections": {
+      "Run Every 15 Minutes": {
+        "main": [
+          [
+            {
+              "node": "Check KSeF API",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check KSeF API": {
+        "main": [
+          [
+            {
+              "node": "Check Java Sidecar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Java Sidecar": {
+        "main": [
+          [
+            {
+              "node": "Check App DB",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check App DB": {
+        "main": [
+          [
+            {
+              "node": "Aggregate Health",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate Health": {
+        "main": [
+          [
+            {
+              "node": "All Healthy?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "All Healthy?": {
+        "main": [
+          [
+            {
+              "node": "Log Health Status",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Send Health Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Health Alert": {
+        "main": [
+          [
+            {
+              "node": "Log Health Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Log Workflow Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Workflow Error": {
+        "main": [
+          [
+            {
+              "node": "Send Error Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Antoni Potrykowski",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-02T19:22:24.674Z",
+        "id": 143,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T19:22:24.683Z",
+        "id": 144,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T19:25:37.179Z",
+        "id": 145,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T19:25:37.195Z",
+        "id": 146,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T19:25:37.230Z",
+        "id": 147,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T19:25:37.241Z",
+        "id": 148,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:04:34.851Z",
+        "id": 159,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:04:34.860Z",
+        "id": 160,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:04:34.893Z",
+        "id": 161,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:04:34.903Z",
+        "id": 162,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:10:22.996Z",
+        "id": 163,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:10:23.013Z",
+        "id": 164,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:10:23.054Z",
+        "id": 165,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T23:10:33.252Z",
+        "id": 169,
+        "workflowId": "XguLuI6jKghH71BL",
+        "versionId": "735ed668-e4ff-416b-b7c8-764c1719672a",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    ]
+  }
+}

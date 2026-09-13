@@ -1,0 +1,67 @@
+# Claude Code per-machine local settings (personal, not shared project config)
+.claude/settings.local.json
+
+# Secrets and credentials
+.env
+.env.*
+!.env.template
+portal/.env.local
+portal/.env*
+!portal/.env.example
+.mcp.json
+certificates/
+*.p12
+*.pem
+*.key
+tmp/
+set_pass.js
+signed_response.json
+
+# Build output and dependencies
+node_modules/
+.next/
+out/
+target/
+test-results/
+playwright-report/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.log
+tsconfig.tsbuildinfo
+.DS_Store
+
+# Unrelated projects living in this folder (kept out of the repo, not deleted)
+polymarket-mcp-server/
+claude-code-grok-mcp/
+skills/
+fixed_signal_pipeline.json
+deploy_fixed_pipeline.py
+vrt_analysis.py
+gmail-summarizer-v2.json
+
+# Debugging-session leftovers under portal/, found during the Phase 1 survey (not in the
+# original brief's list). Every one of these except fix-newlines.js hardcodes a live
+# credential — the ksef_app Postgres password, the n8n/portal admin password, or a live-looking
+# KSeF auth token. None are referenced by package.json. Kept out of the repo, not deleted.
+portal/activate-n8n.js
+portal/debug-ksef.js
+portal/e2e-test.js
+portal/fix-hash.js
+portal/fix-insert-node.js
+portal/fix-newlines.js
+portal/fix-sql-nodes.js
+portal/gen-hash.js
+portal/import-n8n.js
+portal/patch-insert-node.js
+portal/reimport-retrieval.js
+portal/reset-n8n-password.js
+portal/reset-password.js
+portal/seed-xml.js
+portal/test-ksef.js
+portal/test-optima.js
+portal/update-client.js
+portal/update-token.js
+portal/auth_test.txt
+portal/optima_test.xml
+portal/test_out.txt

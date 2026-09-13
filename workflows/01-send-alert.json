@@ -1,0 +1,1077 @@
+{
+  "updatedAt": "2026-03-02T18:19:48.693Z",
+  "createdAt": "2026-03-02T06:23:11.542Z",
+  "id": "f683A6qBbBoYY8hV",
+  "name": "KSeF - Send Alert v2",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Receive Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        480,
+        340
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ksef-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "ksef-alert-webhook-v2"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Validate & Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        340
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json.body || item.json;\n  const { channel, severity, message, client_nip, workflow_name, source, details } = data;\n  if (!message) throw new Error('Missing required field: message');\n\n  const validSeverities = ['critical', 'warning', 'info'];\n  const normalizedSeverity = validSeverities.includes(severity) ? severity : 'info';\n\n  const timestamp = new Date().toISOString();\n  const prefix = `[${normalizedSeverity.toUpperCase()}]`;\n\n  results.push({\n    json: {\n      severity: normalizedSeverity,\n      message,\n      client_nip: client_nip || null,\n      workflow_name: workflow_name || source || null,\n      details: details || null,\n      timestamp,\n      prefix\n    }\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000003",
+      "name": "Route by Severity",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        920,
+        340
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.severity }}",
+                    "rightValue": "critical",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Critical"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.severity }}",
+                    "rightValue": "warning",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Warning"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.severity }}",
+                    "rightValue": "info",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Info"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Default (Info)"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000020",
+      "name": "Send Critical Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1180,
+        120
+      ],
+      "parameters": {
+        "fromEmail": "antekpotrykowski@gmail.com",
+        "toEmail": "antekpotrykowski@gmail.com",
+        "subject": "=[CRITICAL] KSeF: {{ $json.message.substring(0, 60) }}",
+        "emailType": "text",
+        "message": "=CRITICAL ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nThis alert requires IMMEDIATE attention.",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "dta7keSusweqUJpa",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000021",
+      "name": "Send Warning Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1180,
+        340
+      ],
+      "parameters": {
+        "fromEmail": "antekpotrykowski@gmail.com",
+        "toEmail": "antekpotrykowski@gmail.com",
+        "subject": "=[WARNING] KSeF: {{ $json.message.substring(0, 60) }}",
+        "emailType": "text",
+        "message": "=WARNING ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nPlease review at your earliest convenience.",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "dta7keSusweqUJpa",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000008",
+      "name": "Log Critical to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1440,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_critical', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000009",
+      "name": "Log Warning to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1440,
+        340
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_warning', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000010",
+      "name": "Log Info to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1440,
+        560
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000011",
+      "name": "Log Default to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1440,
+        780
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000012",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1700,
+        340
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', severity: $json.severity || 'processed', message: $json.message || 'Alert logged' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000013",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        480,
+        980
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000014",
+      "name": "Handle Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        980
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const errorData = $input.first().json;\nreturn [{\n  json: {\n    status: 'error',\n    message: errorData.execution?.error?.message || 'Unknown error',\n    failedNode: errorData.execution?.lastNodeExecuted || 'Unknown',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000015",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        980
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.message || 'Unknown error' }) }}",
+        "options": {
+          "responseCode": 500
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000016",
+      "name": "Workflow Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        100
+      ],
+      "parameters": {
+        "content": "## KSeF - Send Alert v2\n\n**Webhook**: POST /webhook/ksef-alert\n**Input**: {severity, message, client_nip?, workflow_name?}\n\n**Routing**:\n- Critical -> Email + audit_log\n- Warning -> Email + audit_log\n- Info -> audit_log only\n\n**Credentials**: SMTP (Gmail) + Postgres (KSeF App DB)",
+        "width": 240,
+        "height": 400,
+        "color": 4
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000019",
+      "name": "Dispatch Stage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        20
+      ],
+      "parameters": {
+        "content": "## Stage 3: Email + Audit Log\nCritical/Warning: Send email via SMTP then log to audit_log.\nInfo/Default: Log to audit_log only.",
+        "width": 380,
+        "height": 80,
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Receive Alert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate & Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Format": {
+      "main": [
+        [
+          {
+            "node": "Route by Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Severity": {
+      "main": [
+        [
+          {
+            "node": "Send Critical Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Warning Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Info to Audit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Default to Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Critical Email": {
+      "main": [
+        [
+          {
+            "node": "Log Critical to Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Warning Email": {
+      "main": [
+        [
+          {
+            "node": "Log Warning to Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Critical to Audit": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Warning to Audit": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Info to Audit": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Default to Audit": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Handle Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Error": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+  "activeVersionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+  "versionCounter": 45,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-02T06:23:11.542Z",
+      "createdAt": "2026-03-02T06:23:11.542Z",
+      "role": "workflow:owner",
+      "workflowId": "f683A6qBbBoYY8hV",
+      "projectId": "82yo94M2HLVa6k3U",
+      "project": {
+        "updatedAt": "2026-02-18T00:46:14.338Z",
+        "createdAt": "2026-02-18T00:42:53.216Z",
+        "id": "82yo94M2HLVa6k3U",
+        "name": "Antoni Potrykowski <antekpotrykowski@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-02T18:19:48.694Z",
+    "createdAt": "2026-03-02T18:19:48.694Z",
+    "versionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+    "workflowId": "f683A6qBbBoYY8hV",
+    "nodes": [
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000001",
+        "name": "Receive Alert Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          480,
+          340
+        ],
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "ksef-alert",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "onError": "continueRegularOutput",
+        "webhookId": "ksef-alert-webhook-v2"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000002",
+        "name": "Validate & Format",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          700,
+          340
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json.body || item.json;\n  const { channel, severity, message, client_nip, workflow_name, source, details } = data;\n  if (!message) throw new Error('Missing required field: message');\n\n  const validSeverities = ['critical', 'warning', 'info'];\n  const normalizedSeverity = validSeverities.includes(severity) ? severity : 'info';\n\n  const timestamp = new Date().toISOString();\n  const prefix = `[${normalizedSeverity.toUpperCase()}]`;\n\n  results.push({\n    json: {\n      severity: normalizedSeverity,\n      message,\n      client_nip: client_nip || null,\n      workflow_name: workflow_name || source || null,\n      details: details || null,\n      timestamp,\n      prefix\n    }\n  });\n}\n\nreturn results;"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000003",
+        "name": "Route by Severity",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          920,
+          340
+        ],
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": false,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.severity }}",
+                      "rightValue": "critical",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "Critical"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": false,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.severity }}",
+                      "rightValue": "warning",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "Warning"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": false,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.severity }}",
+                      "rightValue": "info",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "Info"
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "Default (Info)"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000020",
+        "name": "Send Critical Email",
+        "type": "n8n-nodes-base.emailSend",
+        "typeVersion": 2.1,
+        "position": [
+          1180,
+          120
+        ],
+        "parameters": {
+          "fromEmail": "antekpotrykowski@gmail.com",
+          "toEmail": "antekpotrykowski@gmail.com",
+          "subject": "=[CRITICAL] KSeF: {{ $json.message.substring(0, 60) }}",
+          "emailType": "text",
+          "message": "=CRITICAL ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nThis alert requires IMMEDIATE attention.",
+          "options": {}
+        },
+        "credentials": {
+          "smtp": {
+            "id": "dta7keSusweqUJpa",
+            "name": "SMTP account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000021",
+        "name": "Send Warning Email",
+        "type": "n8n-nodes-base.emailSend",
+        "typeVersion": 2.1,
+        "position": [
+          1180,
+          340
+        ],
+        "parameters": {
+          "fromEmail": "antekpotrykowski@gmail.com",
+          "toEmail": "antekpotrykowski@gmail.com",
+          "subject": "=[WARNING] KSeF: {{ $json.message.substring(0, 60) }}",
+          "emailType": "text",
+          "message": "=WARNING ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nPlease review at your earliest convenience.",
+          "options": {}
+        },
+        "credentials": {
+          "smtp": {
+            "id": "dta7keSusweqUJpa",
+            "name": "SMTP account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000008",
+        "name": "Log Critical to Audit",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1440,
+          120
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_critical', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000009",
+        "name": "Log Warning to Audit",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1440,
+          340
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_warning', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000010",
+        "name": "Log Info to Audit",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1440,
+          560
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000011",
+        "name": "Log Default to Audit",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1440,
+          780
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000012",
+        "name": "Respond Success",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          1700,
+          340
+        ],
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ status: 'ok', severity: $json.severity || 'processed', message: $json.message || 'Alert logged' }) }}",
+          "options": {
+            "responseCode": 200
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000013",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          480,
+          980
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000014",
+        "name": "Handle Error",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          700,
+          980
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const errorData = $input.first().json;\nreturn [{\n  json: {\n    status: 'error',\n    message: errorData.execution?.error?.message || 'Unknown error',\n    failedNode: errorData.execution?.lastNodeExecuted || 'Unknown',\n    timestamp: new Date().toISOString()\n  }\n}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000015",
+        "name": "Respond Error",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          920,
+          980
+        ],
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.message || 'Unknown error' }) }}",
+          "options": {
+            "responseCode": 500
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000016",
+        "name": "Workflow Overview",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          200,
+          100
+        ],
+        "parameters": {
+          "content": "## KSeF - Send Alert v2\n\n**Webhook**: POST /webhook/ksef-alert\n**Input**: {severity, message, client_nip?, workflow_name?}\n\n**Routing**:\n- Critical -> Email + audit_log\n- Warning -> Email + audit_log\n- Info -> audit_log only\n\n**Credentials**: SMTP (Gmail) + Postgres (KSeF App DB)",
+          "width": 240,
+          "height": 400,
+          "color": 4
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000019",
+        "name": "Dispatch Stage",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1140,
+          20
+        ],
+        "parameters": {
+          "content": "## Stage 3: Email + Audit Log\nCritical/Warning: Send email via SMTP then log to audit_log.\nInfo/Default: Log to audit_log only.",
+          "width": 380,
+          "height": 80,
+          "color": 5
+        }
+      }
+    ],
+    "connections": {
+      "Receive Alert Webhook": {
+        "main": [
+          [
+            {
+              "node": "Validate & Format",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate & Format": {
+        "main": [
+          [
+            {
+              "node": "Route by Severity",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route by Severity": {
+        "main": [
+          [
+            {
+              "node": "Send Critical Email",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Send Warning Email",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Log Info to Audit",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Log Default to Audit",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Critical Email": {
+        "main": [
+          [
+            {
+              "node": "Log Critical to Audit",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Warning Email": {
+        "main": [
+          [
+            {
+              "node": "Log Warning to Audit",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Critical to Audit": {
+        "main": [
+          [
+            {
+              "node": "Respond Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Warning to Audit": {
+        "main": [
+          [
+            {
+              "node": "Respond Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Info to Audit": {
+        "main": [
+          [
+            {
+              "node": "Respond Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Default to Audit": {
+        "main": [
+          [
+            {
+              "node": "Respond Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Handle Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Handle Error": {
+        "main": [
+          [
+            {
+              "node": "Respond Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Antoni Potrykowski",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-02T18:19:48.716Z",
+        "id": 93,
+        "workflowId": "f683A6qBbBoYY8hV",
+        "versionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T18:19:48.725Z",
+        "id": 94,
+        "workflowId": "f683A6qBbBoYY8hV",
+        "versionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T18:19:48.757Z",
+        "id": 95,
+        "workflowId": "f683A6qBbBoYY8hV",
+        "versionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-02T18:19:48.767Z",
+        "id": 96,
+        "workflowId": "f683A6qBbBoYY8hV",
+        "versionId": "23288846-0d1a-4aa2-a262-79eb7f2ae697",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    ]
+  }
+}

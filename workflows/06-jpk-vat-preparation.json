@@ -1,0 +1,1163 @@
+{
+  "updatedAt": "2026-03-03T08:38:19.741Z",
+  "createdAt": "2026-03-02T06:28:45.129Z",
+  "id": "UhdVvKlOQ3GVaaMI",
+  "name": "KSeF - JPK_VAT Preparation",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Schedule JPK Monthly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8,
+              "field": "cronExpression",
+              "expression": "0 8 5 * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        520
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Determine JPK Period",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        400
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const now = new Date();\nlet year, month;\nconst dayOfMonth = now.getDate();\nif (dayOfMonth === 5) {\n  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);\n  year = prevMonth.getFullYear();\n  month = prevMonth.getMonth() + 1;\n} else {\n  year = now.getFullYear();\n  month = now.getMonth() + 1;\n}\nconst period = `${year}-${String(month).padStart(2, '0')}`;\nconst periodStart = `${period}-01`;\nconst lastDay = new Date(year, month, 0).getDate();\nconst periodEnd = `${period}-${String(lastDay).padStart(2, '0')}`;\nreturn [{json: {period, year, month, periodStart, periodEnd, generatedAt: now.toISOString()}}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Get Clients for Period",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        760,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT DISTINCT i.client_nip, c.client_name FROM invoices i JOIN clients c ON c.nip = i.client_nip WHERE i.jpk_period = '{{ $json.period }}' OR (i.issue_date >= '{{ $json.periodStart }}' AND i.issue_date <= '{{ $json.periodEnd }}') ORDER BY c.client_name",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-4000-8000-000000000040",
+      "name": "Enrich with Period",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const periodData = $('Determine JPK Period').first().json;\nconst clients = $input.all();\nreturn clients.map(c => ({json: {...c.json, ...periodData}}));"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Has Clients?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1060,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-clients-check",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "No Clients Found",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        580
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Per Client",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1300,
+        400
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Get Client Invoices",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1540,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id, client_nip, ksef_number, invoice_number, invoice_type, direction, seller_nip, seller_name, buyer_nip, buyer_name, net_amount, vat_amount, gross_amount, currency, issue_date, jpk_marker, jpk_period, processing_status FROM invoices WHERE client_nip = '{{ $json.client_nip }}' AND (jpk_period = '{{ $json.period }}' OR (issue_date >= '{{ $json.periodStart }}' AND issue_date <= '{{ $json.periodEnd }}')) ORDER BY issue_date",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Assign JPK Markers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        400
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const invoices = $input.all();\nconst clientData = $('Per Client').first().json;\nconst results = [];\n\nfor (const item of invoices) {\n  const inv = item.json;\n  let jpk_marker = inv.jpk_marker || 'DI';\n  let marker_reason = '';\n\n  if (inv.ksef_number && inv.ksef_number.trim() !== '') {\n    jpk_marker = 'NrKSeF';\n    marker_reason = `KSeF number: ${inv.ksef_number}`;\n  } else if (!inv.ksef_number && inv.jpk_marker === 'OFF') {\n    jpk_marker = 'OFF';\n    marker_reason = 'Offline invoice, uploaded within deadline';\n  } else if (!inv.ksef_number && inv.jpk_marker === 'BFK') {\n    jpk_marker = 'BFK';\n    marker_reason = 'Offline invoice, uploaded late - correction needed';\n  } else {\n    jpk_marker = 'DI';\n    marker_reason = 'Cannot determine - manual review required';\n  }\n\n  results.push({json: {...inv, jpk_marker, marker_reason, client_name: clientData.client_name, period: clientData.period, is_NrKSeF: jpk_marker === 'NrKSeF' ? 'TAK' : '', is_OFF: jpk_marker === 'OFF' ? 'TAK' : '', is_BFK: jpk_marker === 'BFK' ? 'TAK' : '', is_DI: jpk_marker === 'DI' ? 'TAK' : ''}});\n}\nreturn results;"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0010-4000-8000-000000000010",
+      "name": "Generate CSV Export",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const invoices = $input.all();\nconst csvHeader = 'Numer_faktury;Data;NIP_kontrahenta;Kwota_netto;Kwota_VAT;Kwota_brutto;NrKSeF;OFF;BFK;DI;Numer_KSeF;Uwagi';\nconst csvRows = invoices.map(item => {\n  const inv = item.json;\n  const contractorNip = inv.direction === 'sales' ? (inv.buyer_nip || '') : (inv.seller_nip || '');\n  return [inv.invoice_number || '', inv.issue_date || '', contractorNip, Number(inv.net_amount || 0).toFixed(2), Number(inv.vat_amount || 0).toFixed(2), Number(inv.gross_amount || 0).toFixed(2), inv.is_NrKSeF, inv.is_OFF, inv.is_BFK, inv.is_DI, inv.ksef_number || '', `\"${inv.marker_reason}\"`].join(';');\n});\nconst csvContent = [csvHeader, ...csvRows].join('\\n');\nconst client = invoices[0]?.json || {};\nconst filename = `JPK_VAT_${client.client_nip}_${client.period}.csv`;\nreturn [{json: {csvContent, filename, client_nip: client.client_nip, client_name: client.client_name, period: client.period, invoiceCount: invoices.length, invoices: invoices.map(i => i.json)}}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Calculate Summary Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2260,
+        400
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst invoices = data.invoices || [];\nconst stats = {total: invoices.length, nrksef: invoices.filter(i => i.jpk_marker === 'NrKSeF').length, off: invoices.filter(i => i.jpk_marker === 'OFF').length, bfk: invoices.filter(i => i.jpk_marker === 'BFK').length, di: invoices.filter(i => i.jpk_marker === 'DI').length};\nconst totalNet = invoices.reduce((s, i) => s + (parseFloat(i.net_amount) || 0), 0);\nconst totalVat = invoices.reduce((s, i) => s + (parseFloat(i.vat_amount) || 0), 0);\nconst totalGross = invoices.reduce((s, i) => s + (parseFloat(i.gross_amount) || 0), 0);\nreturn [{json: {...data, stats, financials: {totalNet: totalNet.toFixed(2), totalVat: totalVat.toFixed(2), totalGross: totalGross.toFixed(2)}, hasWarnings: stats.bfk > 0 || stats.di > 0, warningMessage: stats.bfk > 0 ? `${stats.bfk} faktur z BFK wymaga korekty!` : (stats.di > 0 ? `${stats.di} faktur wymaga weryfikacji (DI)` : '')}}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0012-4000-8000-000000000012",
+      "name": "UPSERT JPK Preparation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2500,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO jpk_preparations (client_nip, period, status, total_invoices, nr_ksef_count, off_count, bfk_count, di_count, generated_at) VALUES ('{{ $json.client_nip }}', '{{ $json.period }}', CASE WHEN {{ $json.stats.bfk }} > 0 THEN 'correction_needed' WHEN {{ $json.stats.di }} > 0 THEN 'in_progress' ELSE 'ready' END, {{ $json.stats.total }}, {{ $json.stats.nrksef }}, {{ $json.stats.off }}, {{ $json.stats.bfk }}, {{ $json.stats.di }}, NOW()) ON CONFLICT (client_nip, period) DO UPDATE SET status = EXCLUDED.status, total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count, off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count, di_count = EXCLUDED.di_count, generated_at = NOW()",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0013-4000-8000-000000000013",
+      "name": "Format Email Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2740,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const data = $('Calculate Summary Stats').first().json;\nconst { stats, financials, client_nip, client_name, period, warningMessage, filename } = data;\nconst warningHtml = warningMessage ? `<tr><td colspan=\"2\" style=\"background:#fff3cd;color:#856404;padding:12px;border:1px solid #ffc107;font-weight:bold;\">UWAGA: ${warningMessage}</td></tr>` : '';\nconst emailBody = `<html><body style=\"font-family:Arial,sans-serif;max-width:700px;margin:0 auto;\">\n<div style=\"background:#1a5276;color:white;padding:20px;\"><h1 style=\"margin:0;font-size:22px;\">JPK_VAT - ${period}</h1><p style=\"margin:5px 0 0;opacity:0.9;\">${client_name} (NIP: ${client_nip})</p></div>\n<div style=\"padding:20px;border:1px solid #ddd;\">\n<table style=\"width:100%;border-collapse:collapse;\">${warningHtml}\n<tr style=\"background:#f8f9fa;\"><td style=\"padding:8px;border:1px solid #ddd;\">Lacznie</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;\">${stats.total}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">NrKSeF</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#28a745;\">${stats.nrksef}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">OFF</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#17a2b8;\">${stats.off}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">BFK</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#dc3545;\">${stats.bfk}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">DI</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#ffc107;\">${stats.di}</td></tr>\n</table>\n<p>Netto: ${financials.totalNet} PLN | VAT: ${financials.totalVat} PLN | Brutto: ${financials.totalGross} PLN</p>\n<p style=\"color:#666;font-size:12px;\">Zalacznik: ${filename}</p>\n</div></body></html>`;\nreturn [{json: {...data, emailBody, emailSubject: `JPK_VAT ${period} - ${client_name} (${stats.total} faktur)`}}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0014-4000-8000-000000000014",
+      "name": "Send JPK Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2980,
+        400
+      ],
+      "parameters": {
+        "fromEmail": "antekpotrykowski@gmail.com",
+        "toEmail": "antekpotrykowski@gmail.com",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "html",
+        "html": "={{ $json.emailBody }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "dta7keSusweqUJpa",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0015-4000-8000-000000000015",
+      "name": "Log to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3220,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $('Calculate Summary Stats').first().json.client_nip }}', 'jpk_vat_preparation', 'KSeF - JPK_VAT Preparation', '{{ JSON.stringify({period: $('Calculate Summary Stats').first().json.period, stats: $('Calculate Summary Stats').first().json.stats, financials: $('Calculate Summary Stats').first().json.financials}) }}', true, NOW())"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0016-4000-8000-000000000016",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        820
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0017-4000-8000-000000000017",
+      "name": "Alert on Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        820
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({severity: 'critical', message: 'JPK_VAT preparation workflow failed', workflow_name: 'JPK_VAT Preparation'}) }}",
+        "sendHeaders": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "a1b2c3d4-0018-4000-8000-000000000018",
+      "name": "Workflow Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        20,
+        40
+      ],
+      "parameters": {
+        "content": "## KSeF - JPK_VAT Preparation\n\n**Schedule:** 5th of month at 08:00 Warsaw\n**Process:** Query clients -> Get invoices -> Assign JPK markers -> CSV + Email -> Audit log\n\n**JPK Markers:** NrKSeF (e-invoice OK), OFF (offline OK), BFK (late upload), DI (manual review)\n\nAll DB queries use real Postgres nodes.",
+        "width": 440,
+        "height": 280,
+        "color": 4
+      }
+    },
+    {
+      "id": "a1b2c3d4-0019-4000-8000-000000000019",
+      "name": "JPK Markers Reference",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1620,
+        600
+      ],
+      "parameters": {
+        "content": "## JPK Markers\n- **NrKSeF** - Has KSeF number\n- **OFF** - Offline, uploaded on time\n- **BFK** - Offline, uploaded late (correction needed)\n- **DI** - Cannot determine, manual review",
+        "width": 300,
+        "height": 200,
+        "color": 6
+      }
+    }
+  ],
+  "connections": {
+    "Schedule JPK Monthly": {
+      "main": [
+        [
+          {
+            "node": "Determine JPK Period",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Determine JPK Period",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine JPK Period": {
+      "main": [
+        [
+          {
+            "node": "Get Clients for Period",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Clients for Period": {
+      "main": [
+        [
+          {
+            "node": "Enrich with Period",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich with Period": {
+      "main": [
+        [
+          {
+            "node": "Has Clients?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Clients?": {
+      "main": [
+        [
+          {
+            "node": "Per Client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Clients Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Per Client": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Get Client Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client Invoices": {
+      "main": [
+        [
+          {
+            "node": "Assign JPK Markers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign JPK Markers": {
+      "main": [
+        [
+          {
+            "node": "Generate CSV Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate CSV Export": {
+      "main": [
+        [
+          {
+            "node": "Calculate Summary Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Summary Stats": {
+      "main": [
+        [
+          {
+            "node": "UPSERT JPK Preparation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPSERT JPK Preparation": {
+      "main": [
+        [
+          {
+            "node": "Format Email Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Email Body": {
+      "main": [
+        [
+          {
+            "node": "Send JPK Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send JPK Email": {
+      "main": [
+        [
+          {
+            "node": "Log to Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Audit": {
+      "main": [
+        [
+          {
+            "node": "Per Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Alert on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule JPK Monthly": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "a4af8ce3-71ba-422c-95d1-ad9f6119e7aa",
+  "activeVersionId": "a4af8ce3-71ba-422c-95d1-ad9f6119e7aa",
+  "versionCounter": 49,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-02T06:28:45.129Z",
+      "createdAt": "2026-03-02T06:28:45.129Z",
+      "role": "workflow:owner",
+      "workflowId": "UhdVvKlOQ3GVaaMI",
+      "projectId": "82yo94M2HLVa6k3U",
+      "project": {
+        "updatedAt": "2026-02-18T00:46:14.338Z",
+        "createdAt": "2026-02-18T00:42:53.216Z",
+        "id": "82yo94M2HLVa6k3U",
+        "name": "Antoni Potrykowski <antekpotrykowski@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-03T08:38:19.743Z",
+    "createdAt": "2026-03-03T08:38:19.743Z",
+    "versionId": "a4af8ce3-71ba-422c-95d1-ad9f6119e7aa",
+    "workflowId": "UhdVvKlOQ3GVaaMI",
+    "nodes": [
+      {
+        "id": "a1b2c3d4-0001-4000-8000-000000000001",
+        "name": "Schedule JPK Monthly",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          260,
+          300
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "triggerAtHour": 8,
+                "field": "cronExpression",
+                "expression": "0 8 5 * *"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0002-4000-8000-000000000002",
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          260,
+          520
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0003-4000-8000-000000000003",
+        "name": "Determine JPK Period",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          520,
+          400
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const now = new Date();\nlet year, month;\nconst dayOfMonth = now.getDate();\nif (dayOfMonth === 5) {\n  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);\n  year = prevMonth.getFullYear();\n  month = prevMonth.getMonth() + 1;\n} else {\n  year = now.getFullYear();\n  month = now.getMonth() + 1;\n}\nconst period = `${year}-${String(month).padStart(2, '0')}`;\nconst periodStart = `${period}-01`;\nconst lastDay = new Date(year, month, 0).getDate();\nconst periodEnd = `${period}-${String(lastDay).padStart(2, '0')}`;\nreturn [{json: {period, year, month, periodStart, periodEnd, generatedAt: now.toISOString()}}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0004-4000-8000-000000000004",
+        "name": "Get Clients for Period",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          760,
+          400
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=SELECT DISTINCT i.client_nip, c.client_name FROM invoices i JOIN clients c ON c.nip = i.client_nip WHERE i.jpk_period = '{{ $json.period }}' OR (i.issue_date >= '{{ $json.periodStart }}' AND i.issue_date <= '{{ $json.periodEnd }}') ORDER BY c.client_name",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0004-4000-8000-000000000040",
+        "name": "Enrich with Period",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          900,
+          400
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "const periodData = $('Determine JPK Period').first().json;\nconst clients = $input.all();\nreturn clients.map(c => ({json: {...c.json, ...periodData}}));"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0005-4000-8000-000000000005",
+        "name": "Has Clients?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1060,
+          400
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-clients-check",
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                },
+                "leftValue": "={{ $input.all().length }}",
+                "rightValue": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0006-4000-8000-000000000006",
+        "name": "No Clients Found",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          1300,
+          580
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0007-4000-8000-000000000007",
+        "name": "Per Client",
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          1300,
+          400
+        ],
+        "parameters": {
+          "batchSize": 1,
+          "options": {}
+        }
+      },
+      {
+        "id": "a1b2c3d4-0008-4000-8000-000000000008",
+        "name": "Get Client Invoices",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1540,
+          400
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=SELECT id, client_nip, ksef_number, invoice_number, invoice_type, direction, seller_nip, seller_name, buyer_nip, buyer_name, net_amount, vat_amount, gross_amount, currency, issue_date, jpk_marker, jpk_period, processing_status FROM invoices WHERE client_nip = '{{ $json.client_nip }}' AND (jpk_period = '{{ $json.period }}' OR (issue_date >= '{{ $json.periodStart }}' AND issue_date <= '{{ $json.periodEnd }}')) ORDER BY issue_date",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0009-4000-8000-000000000009",
+        "name": "Assign JPK Markers",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1780,
+          400
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const invoices = $input.all();\nconst clientData = $('Per Client').first().json;\nconst results = [];\n\nfor (const item of invoices) {\n  const inv = item.json;\n  let jpk_marker = inv.jpk_marker || 'DI';\n  let marker_reason = '';\n\n  if (inv.ksef_number && inv.ksef_number.trim() !== '') {\n    jpk_marker = 'NrKSeF';\n    marker_reason = `KSeF number: ${inv.ksef_number}`;\n  } else if (!inv.ksef_number && inv.jpk_marker === 'OFF') {\n    jpk_marker = 'OFF';\n    marker_reason = 'Offline invoice, uploaded within deadline';\n  } else if (!inv.ksef_number && inv.jpk_marker === 'BFK') {\n    jpk_marker = 'BFK';\n    marker_reason = 'Offline invoice, uploaded late - correction needed';\n  } else {\n    jpk_marker = 'DI';\n    marker_reason = 'Cannot determine - manual review required';\n  }\n\n  results.push({json: {...inv, jpk_marker, marker_reason, client_name: clientData.client_name, period: clientData.period, is_NrKSeF: jpk_marker === 'NrKSeF' ? 'TAK' : '', is_OFF: jpk_marker === 'OFF' ? 'TAK' : '', is_BFK: jpk_marker === 'BFK' ? 'TAK' : '', is_DI: jpk_marker === 'DI' ? 'TAK' : ''}});\n}\nreturn results;"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0010-4000-8000-000000000010",
+        "name": "Generate CSV Export",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2020,
+          400
+        ],
+        "parameters": {
+          "jsCode": "const invoices = $input.all();\nconst csvHeader = 'Numer_faktury;Data;NIP_kontrahenta;Kwota_netto;Kwota_VAT;Kwota_brutto;NrKSeF;OFF;BFK;DI;Numer_KSeF;Uwagi';\nconst csvRows = invoices.map(item => {\n  const inv = item.json;\n  const contractorNip = inv.direction === 'sales' ? (inv.buyer_nip || '') : (inv.seller_nip || '');\n  return [inv.invoice_number || '', inv.issue_date || '', contractorNip, Number(inv.net_amount || 0).toFixed(2), Number(inv.vat_amount || 0).toFixed(2), Number(inv.gross_amount || 0).toFixed(2), inv.is_NrKSeF, inv.is_OFF, inv.is_BFK, inv.is_DI, inv.ksef_number || '', `\"${inv.marker_reason}\"`].join(';');\n});\nconst csvContent = [csvHeader, ...csvRows].join('\\n');\nconst client = invoices[0]?.json || {};\nconst filename = `JPK_VAT_${client.client_nip}_${client.period}.csv`;\nreturn [{json: {csvContent, filename, client_nip: client.client_nip, client_name: client.client_name, period: client.period, invoiceCount: invoices.length, invoices: invoices.map(i => i.json)}}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0011-4000-8000-000000000011",
+        "name": "Calculate Summary Stats",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2260,
+          400
+        ],
+        "parameters": {
+          "language": "javaScript",
+          "mode": "runOnceForAllItems",
+          "jsCode": "const data = $input.first().json;\nconst invoices = data.invoices || [];\nconst stats = {total: invoices.length, nrksef: invoices.filter(i => i.jpk_marker === 'NrKSeF').length, off: invoices.filter(i => i.jpk_marker === 'OFF').length, bfk: invoices.filter(i => i.jpk_marker === 'BFK').length, di: invoices.filter(i => i.jpk_marker === 'DI').length};\nconst totalNet = invoices.reduce((s, i) => s + (parseFloat(i.net_amount) || 0), 0);\nconst totalVat = invoices.reduce((s, i) => s + (parseFloat(i.vat_amount) || 0), 0);\nconst totalGross = invoices.reduce((s, i) => s + (parseFloat(i.gross_amount) || 0), 0);\nreturn [{json: {...data, stats, financials: {totalNet: totalNet.toFixed(2), totalVat: totalVat.toFixed(2), totalGross: totalGross.toFixed(2)}, hasWarnings: stats.bfk > 0 || stats.di > 0, warningMessage: stats.bfk > 0 ? `${stats.bfk} faktur z BFK wymaga korekty!` : (stats.di > 0 ? `${stats.di} faktur wymaga weryfikacji (DI)` : '')}}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0012-4000-8000-000000000012",
+        "name": "UPSERT JPK Preparation",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2500,
+          400
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO jpk_preparations (client_nip, period, status, total_invoices, nr_ksef_count, off_count, bfk_count, di_count, generated_at) VALUES ('{{ $json.client_nip }}', '{{ $json.period }}', CASE WHEN {{ $json.stats.bfk }} > 0 THEN 'correction_needed' WHEN {{ $json.stats.di }} > 0 THEN 'in_progress' ELSE 'ready' END, {{ $json.stats.total }}, {{ $json.stats.nrksef }}, {{ $json.stats.off }}, {{ $json.stats.bfk }}, {{ $json.stats.di }}, NOW()) ON CONFLICT (client_nip, period) DO UPDATE SET status = EXCLUDED.status, total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count, off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count, di_count = EXCLUDED.di_count, generated_at = NOW()",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0013-4000-8000-000000000013",
+        "name": "Format Email Body",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2740,
+          400
+        ],
+        "parameters": {
+          "jsCode": "const data = $('Calculate Summary Stats').first().json;\nconst { stats, financials, client_nip, client_name, period, warningMessage, filename } = data;\nconst warningHtml = warningMessage ? `<tr><td colspan=\"2\" style=\"background:#fff3cd;color:#856404;padding:12px;border:1px solid #ffc107;font-weight:bold;\">UWAGA: ${warningMessage}</td></tr>` : '';\nconst emailBody = `<html><body style=\"font-family:Arial,sans-serif;max-width:700px;margin:0 auto;\">\n<div style=\"background:#1a5276;color:white;padding:20px;\"><h1 style=\"margin:0;font-size:22px;\">JPK_VAT - ${period}</h1><p style=\"margin:5px 0 0;opacity:0.9;\">${client_name} (NIP: ${client_nip})</p></div>\n<div style=\"padding:20px;border:1px solid #ddd;\">\n<table style=\"width:100%;border-collapse:collapse;\">${warningHtml}\n<tr style=\"background:#f8f9fa;\"><td style=\"padding:8px;border:1px solid #ddd;\">Lacznie</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;\">${stats.total}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">NrKSeF</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#28a745;\">${stats.nrksef}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">OFF</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#17a2b8;\">${stats.off}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">BFK</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#dc3545;\">${stats.bfk}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\">DI</td><td style=\"padding:8px;border:1px solid #ddd;text-align:right;color:#ffc107;\">${stats.di}</td></tr>\n</table>\n<p>Netto: ${financials.totalNet} PLN | VAT: ${financials.totalVat} PLN | Brutto: ${financials.totalGross} PLN</p>\n<p style=\"color:#666;font-size:12px;\">Zalacznik: ${filename}</p>\n</div></body></html>`;\nreturn [{json: {...data, emailBody, emailSubject: `JPK_VAT ${period} - ${client_name} (${stats.total} faktur)`}}];"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0014-4000-8000-000000000014",
+        "name": "Send JPK Email",
+        "type": "n8n-nodes-base.emailSend",
+        "typeVersion": 2.1,
+        "position": [
+          2980,
+          400
+        ],
+        "parameters": {
+          "fromEmail": "antekpotrykowski@gmail.com",
+          "toEmail": "antekpotrykowski@gmail.com",
+          "subject": "={{ $json.emailSubject }}",
+          "emailType": "html",
+          "html": "={{ $json.emailBody }}",
+          "options": {}
+        },
+        "credentials": {
+          "smtp": {
+            "id": "dta7keSusweqUJpa",
+            "name": "SMTP account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0015-4000-8000-000000000015",
+        "name": "Log to Audit",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          3220,
+          400
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $('Calculate Summary Stats').first().json.client_nip }}', 'jpk_vat_preparation', 'KSeF - JPK_VAT Preparation', '{{ JSON.stringify({period: $('Calculate Summary Stats').first().json.period, stats: $('Calculate Summary Stats').first().json.stats, financials: $('Calculate Summary Stats').first().json.financials}) }}', true, NOW())"
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0016-4000-8000-000000000016",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          260,
+          820
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0017-4000-8000-000000000017",
+        "name": "Alert on Error",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          520,
+          820
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({severity: 'critical', message: 'JPK_VAT preparation workflow failed', workflow_name: 'JPK_VAT Preparation'}) }}",
+          "sendHeaders": false,
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "id": "a1b2c3d4-0018-4000-8000-000000000018",
+        "name": "Workflow Overview",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          20,
+          40
+        ],
+        "parameters": {
+          "content": "## KSeF - JPK_VAT Preparation\n\n**Schedule:** 5th of month at 08:00 Warsaw\n**Process:** Query clients -> Get invoices -> Assign JPK markers -> CSV + Email -> Audit log\n\n**JPK Markers:** NrKSeF (e-invoice OK), OFF (offline OK), BFK (late upload), DI (manual review)\n\nAll DB queries use real Postgres nodes.",
+          "width": 440,
+          "height": 280,
+          "color": 4
+        }
+      },
+      {
+        "id": "a1b2c3d4-0019-4000-8000-000000000019",
+        "name": "JPK Markers Reference",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1620,
+          600
+        ],
+        "parameters": {
+          "content": "## JPK Markers\n- **NrKSeF** - Has KSeF number\n- **OFF** - Offline, uploaded on time\n- **BFK** - Offline, uploaded late (correction needed)\n- **DI** - Cannot determine, manual review",
+          "width": 300,
+          "height": 200,
+          "color": 6
+        }
+      }
+    ],
+    "connections": {
+      "Schedule JPK Monthly": {
+        "main": [
+          [
+            {
+              "node": "Determine JPK Period",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Determine JPK Period",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Determine JPK Period": {
+        "main": [
+          [
+            {
+              "node": "Get Clients for Period",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Clients for Period": {
+        "main": [
+          [
+            {
+              "node": "Enrich with Period",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Enrich with Period": {
+        "main": [
+          [
+            {
+              "node": "Has Clients?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Clients?": {
+        "main": [
+          [
+            {
+              "node": "Per Client",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "No Clients Found",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Per Client": {
+        "main": [
+          [],
+          [
+            {
+              "node": "Get Client Invoices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Client Invoices": {
+        "main": [
+          [
+            {
+              "node": "Assign JPK Markers",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Assign JPK Markers": {
+        "main": [
+          [
+            {
+              "node": "Generate CSV Export",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Generate CSV Export": {
+        "main": [
+          [
+            {
+              "node": "Calculate Summary Stats",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculate Summary Stats": {
+        "main": [
+          [
+            {
+              "node": "UPSERT JPK Preparation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "UPSERT JPK Preparation": {
+        "main": [
+          [
+            {
+              "node": "Format Email Body",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Email Body": {
+        "main": [
+          [
+            {
+              "node": "Send JPK Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send JPK Email": {
+        "main": [
+          [
+            {
+              "node": "Log to Audit",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log to Audit": {
+        "main": [
+          [
+            {
+              "node": "Per Client",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Alert on Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Antoni Potrykowski",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-03T08:38:19.764Z",
+        "id": 203,
+        "workflowId": "UhdVvKlOQ3GVaaMI",
+        "versionId": "a4af8ce3-71ba-422c-95d1-ad9f6119e7aa",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-03T08:38:19.777Z",
+        "id": 204,
+        "workflowId": "UhdVvKlOQ3GVaaMI",
+        "versionId": "a4af8ce3-71ba-422c-95d1-ad9f6119e7aa",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    ]
+  }
+}

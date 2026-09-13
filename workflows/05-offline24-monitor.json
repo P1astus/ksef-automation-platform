@@ -1,0 +1,1698 @@
+{
+  "updatedAt": "2026-03-03T08:34:23.533Z",
+  "createdAt": "2026-03-02T06:27:22.328Z",
+  "id": "wx6Oa7KjTDGxn77j",
+  "name": "KSeF - Offline24 Deadline Monitor",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000001",
+      "name": "Schedule Every 2 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        260,
+        460
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000002",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        660
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000003",
+      "name": "Get Pending Invoices",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        520,
+        460
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, invoice_number, client_nip, offline_mode, issue_timestamp, upload_deadline, uploaded_to_ksef, ksef_number, alert_sent_overdue, alert_sent_1h, alert_sent_4h FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000004",
+      "name": "Has Pending Invoices?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        760,
+        460
+      ],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-has-data",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.id }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000005",
+      "name": "Process Each Invoice",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1000,
+        360
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000006",
+      "name": "Calculate Time Remaining",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const now = new Date();\nconst deadline = new Date($json.upload_deadline);\nconst diffMs = deadline.getTime() - now.getTime();\nconst diffHours = diffMs / (1000 * 60 * 60);\nconst diffMinutes = Math.round(diffMs / (1000 * 60));\n\nlet urgency;\nlet urgencyLabel;\n\nif (diffMs <= 0) {\n  urgency = 'overdue';\n  urgencyLabel = `OVERDUE by ${Math.abs(diffMinutes)} minutes`;\n} else if (diffHours < 1) {\n  urgency = 'urgent_1h';\n  urgencyLabel = `${diffMinutes} minutes remaining`;\n} else if (diffHours < 4) {\n  urgency = 'urgent_4h';\n  urgencyLabel = `${Math.round(diffHours * 10) / 10} hours remaining`;\n} else {\n  urgency = 'ok';\n  urgencyLabel = `${Math.round(diffHours * 10) / 10} hours remaining - safe`;\n}\n\nreturn {\n  json: {\n    ...$json,\n    urgency,\n    urgencyLabel,\n    hoursRemaining: Math.round(diffHours * 100) / 100,\n    minutesRemaining: diffMinutes,\n    checkedAt: now.toISOString()\n  }\n};"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000007",
+      "name": "Check KSeF Match",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1520,
+        360
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000030",
+      "name": "Merge KSeF Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Merge KSeF lookup result with invoice data from Calculate Time Remaining\nconst calcData = $('Calculate Time Remaining').first().json;\nconst ksefResult = $json;\nconst ksefNumber = ksefResult.ksef_number || null;\n\nlet updatedUrgency = calcData.urgency;\nif (ksefNumber) updatedUrgency = 'found_in_ksef';\n\nreturn {\n  json: {\n    ...calcData,\n    urgency: updatedUrgency,\n    ksef_number: ksefNumber\n  }\n};"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000008",
+      "name": "Route by Urgency",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1850,
+        360
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "rule-found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.urgency }}",
+                    "rightValue": "found_in_ksef"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Found in KSeF"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "rule-overdue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.urgency }}",
+                    "rightValue": "overdue"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Overdue"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "rule-1h",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.urgency }}",
+                    "rightValue": "urgent_1h"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Urgent 1h"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "rule-4h",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.urgency }}",
+                    "rightValue": "urgent_4h"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Urgent 4h"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "OK - No Action"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000009",
+      "name": "Mark Uploaded in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2160,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = '{{ $json.ksef_number }}', updated_at = NOW() WHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000010",
+      "name": "Flag JPK Correction",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2420,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}' < NOW()::text THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000011",
+      "name": "Alert Critical - Overdue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2160,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'critical', client_nip: $json.client_nip, message: 'CRITICAL: Offline24 deadline EXCEEDED for invoice ' + $json.invoice_number + '. ' + $json.urgencyLabel + '. Immediate upload required!', workflow_name: 'Offline24 Monitor' }) }}",
+        "sendHeaders": false,
+        "sendQuery": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000012",
+      "name": "Alert Warning - 1h Left",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2160,
+        460
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'warning', client_nip: $json.client_nip, message: 'WARNING: Less than 1 hour until Offline24 deadline for invoice ' + $json.invoice_number + '. ' + $json.urgencyLabel, workflow_name: 'Offline24 Monitor' }) }}",
+        "sendHeaders": false,
+        "sendQuery": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000013",
+      "name": "Alert Info - 4h Left",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2160,
+        660
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'info', client_nip: $json.client_nip, message: 'INFO: Less than 4 hours until Offline24 deadline for invoice ' + $json.invoice_number + '. ' + $json.urgencyLabel, workflow_name: 'Offline24 Monitor' }) }}",
+        "sendHeaders": false,
+        "sendQuery": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000014",
+      "name": "Update Alert Flags - Overdue",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2420,
+        260
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE offline_invoices SET alert_sent_overdue = true, updated_at = NOW() WHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000015",
+      "name": "Update Alert Flags - 1h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2420,
+        460
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE offline_invoices SET alert_sent_1h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000016",
+      "name": "Update Alert Flags - 4h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2420,
+        660
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE offline_invoices SET alert_sent_4h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "Gun9basfq8zF7tYe",
+          "name": "KSeF App DB"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000017",
+      "name": "No Action Needed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        860
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000018",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        1100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000019",
+      "name": "Alert on Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        1100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'critical', message: 'CRITICAL: Offline24 Deadline Monitor workflow failed! Check execution logs.', workflow_name: 'Offline24 Monitor' }) }}",
+        "sendHeaders": false,
+        "sendQuery": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000020",
+      "name": "No Pending Invoices",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        600
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000101",
+      "name": "Workflow Purpose",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        20,
+        260
+      ],
+      "parameters": {
+        "content": "## KSeF - Offline24 Deadline Monitor\n\n**Purpose:** Monitor offline-issued invoices for Offline24 upload deadline.\n**Schedule:** Every 2 hours\n\n**Alert Levels:**\n- CRITICAL: Deadline passed\n- WARNING: <1h remaining\n- INFO: <4h remaining\n- OK: >4h remaining\n\nAll DB queries use real Postgres nodes.",
+        "width": 420,
+        "height": 350,
+        "color": 4
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-a000-000000000105",
+      "name": "Error Handling Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        980
+      ],
+      "parameters": {
+        "content": "## Error Handling\nSends CRITICAL alert via Send Alert webhook on any workflow failure.",
+        "width": 400,
+        "height": 90,
+        "color": 1
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Every 2 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Invoices": {
+      "main": [
+        [
+          {
+            "node": "Has Pending Invoices?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Pending Invoices?": {
+      "main": [
+        [
+          {
+            "node": "Process Each Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Pending Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Each Invoice": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Calculate Time Remaining",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Time Remaining": {
+      "main": [
+        [
+          {
+            "node": "Check KSeF Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check KSeF Match": {
+      "main": [
+        [
+          {
+            "node": "Merge KSeF Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge KSeF Result": {
+      "main": [
+        [
+          {
+            "node": "Route by Urgency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Urgency": {
+      "main": [
+        [
+          {
+            "node": "Mark Uploaded in DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Critical - Overdue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Warning - 1h Left",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Info - 4h Left",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Action Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Uploaded in DB": {
+      "main": [
+        [
+          {
+            "node": "Flag JPK Correction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag JPK Correction": {
+      "main": [
+        [
+          {
+            "node": "Process Each Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Critical - Overdue": {
+      "main": [
+        [
+          {
+            "node": "Update Alert Flags - Overdue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Alert Flags - Overdue": {
+      "main": [
+        [
+          {
+            "node": "Process Each Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Warning - 1h Left": {
+      "main": [
+        [
+          {
+            "node": "Update Alert Flags - 1h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Alert Flags - 1h": {
+      "main": [
+        [
+          {
+            "node": "Process Each Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Info - 4h Left": {
+      "main": [
+        [
+          {
+            "node": "Update Alert Flags - 4h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Alert Flags - 4h": {
+      "main": [
+        [
+          {
+            "node": "Process Each Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Action Needed": {
+      "main": [
+        [
+          {
+            "node": "Process Each Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Alert on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule Every 2 Hours": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "29ca5dc5-1f78-4671-8e5b-c7cb7eaee35e",
+  "activeVersionId": "29ca5dc5-1f78-4671-8e5b-c7cb7eaee35e",
+  "versionCounter": 18,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-02T06:27:22.328Z",
+      "createdAt": "2026-03-02T06:27:22.328Z",
+      "role": "workflow:owner",
+      "workflowId": "wx6Oa7KjTDGxn77j",
+      "projectId": "82yo94M2HLVa6k3U",
+      "project": {
+        "updatedAt": "2026-02-18T00:46:14.338Z",
+        "createdAt": "2026-02-18T00:42:53.216Z",
+        "id": "82yo94M2HLVa6k3U",
+        "name": "Antoni Potrykowski <antekpotrykowski@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-03T08:34:23.534Z",
+    "createdAt": "2026-03-03T08:34:23.534Z",
+    "versionId": "29ca5dc5-1f78-4671-8e5b-c7cb7eaee35e",
+    "workflowId": "wx6Oa7KjTDGxn77j",
+    "nodes": [
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000001",
+        "name": "Schedule Every 2 Hours",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          260,
+          460
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 */2 * * *"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000002",
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          260,
+          660
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000003",
+        "name": "Get Pending Invoices",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          520,
+          460
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT id, invoice_number, client_nip, offline_mode, issue_timestamp, upload_deadline, uploaded_to_ksef, ksef_number, alert_sent_overdue, alert_sent_1h, alert_sent_4h FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000004",
+        "name": "Has Pending Invoices?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          760,
+          460
+        ],
+        "parameters": {
+          "options": {},
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-has-data",
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                },
+                "leftValue": "={{ $json.id }}",
+                "rightValue": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000005",
+        "name": "Process Each Invoice",
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          1000,
+          360
+        ],
+        "parameters": {
+          "batchSize": 1,
+          "options": {}
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000006",
+        "name": "Calculate Time Remaining",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1260,
+          360
+        ],
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "language": "javaScript",
+          "jsCode": "const now = new Date();\nconst deadline = new Date($json.upload_deadline);\nconst diffMs = deadline.getTime() - now.getTime();\nconst diffHours = diffMs / (1000 * 60 * 60);\nconst diffMinutes = Math.round(diffMs / (1000 * 60));\n\nlet urgency;\nlet urgencyLabel;\n\nif (diffMs <= 0) {\n  urgency = 'overdue';\n  urgencyLabel = `OVERDUE by ${Math.abs(diffMinutes)} minutes`;\n} else if (diffHours < 1) {\n  urgency = 'urgent_1h';\n  urgencyLabel = `${diffMinutes} minutes remaining`;\n} else if (diffHours < 4) {\n  urgency = 'urgent_4h';\n  urgencyLabel = `${Math.round(diffHours * 10) / 10} hours remaining`;\n} else {\n  urgency = 'ok';\n  urgencyLabel = `${Math.round(diffHours * 10) / 10} hours remaining - safe`;\n}\n\nreturn {\n  json: {\n    ...$json,\n    urgency,\n    urgencyLabel,\n    hoursRemaining: Math.round(diffHours * 100) / 100,\n    minutesRemaining: diffMinutes,\n    checkedAt: now.toISOString()\n  }\n};"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000007",
+        "name": "Check KSeF Match",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1520,
+          360
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000030",
+        "name": "Merge KSeF Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1650,
+          360
+        ],
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "language": "javaScript",
+          "jsCode": "// Merge KSeF lookup result with invoice data from Calculate Time Remaining\nconst calcData = $('Calculate Time Remaining').first().json;\nconst ksefResult = $json;\nconst ksefNumber = ksefResult.ksef_number || null;\n\nlet updatedUrgency = calcData.urgency;\nif (ksefNumber) updatedUrgency = 'found_in_ksef';\n\nreturn {\n  json: {\n    ...calcData,\n    urgency: updatedUrgency,\n    ksef_number: ksefNumber\n  }\n};"
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000008",
+        "name": "Route by Urgency",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          1850,
+          360
+        ],
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "rule-found",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.urgency }}",
+                      "rightValue": "found_in_ksef"
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "Found in KSeF"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "rule-overdue",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.urgency }}",
+                      "rightValue": "overdue"
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "Overdue"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "rule-1h",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.urgency }}",
+                      "rightValue": "urgent_1h"
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "Urgent 1h"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "rule-4h",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.urgency }}",
+                      "rightValue": "urgent_4h"
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "Urgent 4h"
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "OK - No Action"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000009",
+        "name": "Mark Uploaded in DB",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2160,
+          60
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = '{{ $json.ksef_number }}', updated_at = NOW() WHERE id = {{ $json.id }}",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000010",
+        "name": "Flag JPK Correction",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2420,
+          60
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}' < NOW()::text THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000011",
+        "name": "Alert Critical - Overdue",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          2160,
+          260
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "authentication": "none",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ severity: 'critical', client_nip: $json.client_nip, message: 'CRITICAL: Offline24 deadline EXCEEDED for invoice ' + $json.invoice_number + '. ' + $json.urgencyLabel + '. Immediate upload required!', workflow_name: 'Offline24 Monitor' }) }}",
+          "sendHeaders": false,
+          "sendQuery": false,
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000012",
+        "name": "Alert Warning - 1h Left",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          2160,
+          460
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "authentication": "none",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ severity: 'warning', client_nip: $json.client_nip, message: 'WARNING: Less than 1 hour until Offline24 deadline for invoice ' + $json.invoice_number + '. ' + $json.urgencyLabel, workflow_name: 'Offline24 Monitor' }) }}",
+          "sendHeaders": false,
+          "sendQuery": false,
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000013",
+        "name": "Alert Info - 4h Left",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          2160,
+          660
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "authentication": "none",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ severity: 'info', client_nip: $json.client_nip, message: 'INFO: Less than 4 hours until Offline24 deadline for invoice ' + $json.invoice_number + '. ' + $json.urgencyLabel, workflow_name: 'Offline24 Monitor' }) }}",
+          "sendHeaders": false,
+          "sendQuery": false,
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000014",
+        "name": "Update Alert Flags - Overdue",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2420,
+          260
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=UPDATE offline_invoices SET alert_sent_overdue = true, updated_at = NOW() WHERE id = {{ $json.id }}",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000015",
+        "name": "Update Alert Flags - 1h",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2420,
+          460
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=UPDATE offline_invoices SET alert_sent_1h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000016",
+        "name": "Update Alert Flags - 4h",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2420,
+          660
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "=UPDATE offline_invoices SET alert_sent_4h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "Gun9basfq8zF7tYe",
+            "name": "KSeF App DB"
+          }
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000017",
+        "name": "No Action Needed",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          2160,
+          860
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000018",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          260,
+          1100
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000019",
+        "name": "Alert on Error",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          520,
+          1100
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "http://localhost:5678/webhook/ksef-alert",
+          "authentication": "none",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ severity: 'critical', message: 'CRITICAL: Offline24 Deadline Monitor workflow failed! Check execution logs.', workflow_name: 'Offline24 Monitor' }) }}",
+          "sendHeaders": false,
+          "sendQuery": false,
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000020",
+        "name": "No Pending Invoices",
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          1000,
+          600
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000101",
+        "name": "Workflow Purpose",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          20,
+          260
+        ],
+        "parameters": {
+          "content": "## KSeF - Offline24 Deadline Monitor\n\n**Purpose:** Monitor offline-issued invoices for Offline24 upload deadline.\n**Schedule:** Every 2 hours\n\n**Alert Levels:**\n- CRITICAL: Deadline passed\n- WARNING: <1h remaining\n- INFO: <4h remaining\n- OK: >4h remaining\n\nAll DB queries use real Postgres nodes.",
+          "width": 420,
+          "height": 350,
+          "color": 4
+        }
+      },
+      {
+        "id": "a1b2c3d4-0001-4000-a000-000000000105",
+        "name": "Error Handling Note",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          220,
+          980
+        ],
+        "parameters": {
+          "content": "## Error Handling\nSends CRITICAL alert via Send Alert webhook on any workflow failure.",
+          "width": 400,
+          "height": 90,
+          "color": 1
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Every 2 Hours": {
+        "main": [
+          [
+            {
+              "node": "Get Pending Invoices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Pending Invoices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Pending Invoices": {
+        "main": [
+          [
+            {
+              "node": "Has Pending Invoices?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Pending Invoices?": {
+        "main": [
+          [
+            {
+              "node": "Process Each Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "No Pending Invoices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Process Each Invoice": {
+        "main": [
+          [],
+          [
+            {
+              "node": "Calculate Time Remaining",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculate Time Remaining": {
+        "main": [
+          [
+            {
+              "node": "Check KSeF Match",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check KSeF Match": {
+        "main": [
+          [
+            {
+              "node": "Merge KSeF Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge KSeF Result": {
+        "main": [
+          [
+            {
+              "node": "Route by Urgency",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route by Urgency": {
+        "main": [
+          [
+            {
+              "node": "Mark Uploaded in DB",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Alert Critical - Overdue",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Alert Warning - 1h Left",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Alert Info - 4h Left",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "No Action Needed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mark Uploaded in DB": {
+        "main": [
+          [
+            {
+              "node": "Flag JPK Correction",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Flag JPK Correction": {
+        "main": [
+          [
+            {
+              "node": "Process Each Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Alert Critical - Overdue": {
+        "main": [
+          [
+            {
+              "node": "Update Alert Flags - Overdue",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update Alert Flags - Overdue": {
+        "main": [
+          [
+            {
+              "node": "Process Each Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Alert Warning - 1h Left": {
+        "main": [
+          [
+            {
+              "node": "Update Alert Flags - 1h",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update Alert Flags - 1h": {
+        "main": [
+          [
+            {
+              "node": "Process Each Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Alert Info - 4h Left": {
+        "main": [
+          [
+            {
+              "node": "Update Alert Flags - 4h",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update Alert Flags - 4h": {
+        "main": [
+          [
+            {
+              "node": "Process Each Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "No Action Needed": {
+        "main": [
+          [
+            {
+              "node": "Process Each Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Alert on Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Antoni Potrykowski",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-03T08:34:23.561Z",
+        "id": 197,
+        "workflowId": "wx6Oa7KjTDGxn77j",
+        "versionId": "29ca5dc5-1f78-4671-8e5b-c7cb7eaee35e",
+        "event": "deactivated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      },
+      {
+        "createdAt": "2026-03-03T08:34:23.576Z",
+        "id": 198,
+        "workflowId": "wx6Oa7KjTDGxn77j",
+        "versionId": "29ca5dc5-1f78-4671-8e5b-c7cb7eaee35e",
+        "event": "activated",
+        "userId": "e7f35fb1-e5d5-425a-bc67-af6d8d877dce"
+      }
+    ]
+  }
+}
