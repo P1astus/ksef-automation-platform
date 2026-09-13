@@ -3,7 +3,15 @@ import Stripe from 'stripe';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
+// Constructed lazily (on first actual use), not at module load: `next build`
+// statically imports every route module to collect page data, with no
+// STRIPE_SECRET_KEY available at build time - `new Stripe(undefined)` threw
+// and broke `docker build` itself.
+let stripe: Stripe | null = null;
+function getStripe(): Stripe {
+    if (!stripe) stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
+    return stripe;
+}
 
 const PLAN_DETAILS = {
     start:  { name: 'Start',  price: 149,  maxClients: 15,  tier: 'start',  priceId: process.env.STRIPE_PRICE_START! },
@@ -66,7 +74,7 @@ export async function POST(request: Request) {
         // Get or create Stripe customer
         let customerId = firm.stripe_customer_id;
         if (!customerId) {
-            const customer = await stripe.customers.create({
+            const customer = await getStripe().customers.create({
                 email: firm.admin_email,
                 name: firm.firm_name,
                 metadata: { firmId: String(session.firmId) },
@@ -76,7 +84,7 @@ export async function POST(request: Request) {
         }
 
         // Create Stripe Checkout Session
-        const checkoutSession = await stripe.checkout.sessions.create({
+        const checkoutSession = await getStripe().checkout.sessions.create({
             customer: customerId,
             mode: 'subscription',
             payment_method_types: ['card', 'blik', 'p24'],

@@ -2,24 +2,40 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
-if (!process.env.JWT_SECRET) {
-    throw new Error(
-        'JWT_SECRET is not set. Refusing to start: a missing secret would let anyone forge a session for any firmId.'
-    );
+// Checked lazily (on first actual use) rather than at module load: `next
+// build` statically imports and evaluates every route module to collect
+// page data, with no JWT_SECRET available at build time - a module-level
+// throw here broke `docker build` itself, not just a misconfigured runtime.
+// A session can still never be signed or verified without the real secret;
+// the check just fires at first use instead of at import time.
+export class MissingJwtSecretError extends Error {
+    constructor() {
+        super('JWT_SECRET is not set. Refusing to sign or verify sessions: a missing secret would let anyone forge a session for any firmId.');
+        this.name = 'MissingJwtSecretError';
+    }
 }
-const secretKey = process.env.JWT_SECRET;
-const key = new TextEncoder().encode(secretKey);
+
+let key: Uint8Array | null = null;
+
+function getKey(): Uint8Array {
+    if (key) return key;
+    if (!process.env.JWT_SECRET) {
+        throw new MissingJwtSecretError();
+    }
+    key = new TextEncoder().encode(process.env.JWT_SECRET);
+    return key;
+}
 
 export async function encrypt(payload: any) {
     return await new SignJWT(payload)
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setExpirationTime('8h')
-        .sign(key);
+        .sign(getKey());
 }
 
 export async function decrypt(input: string): Promise<any> {
-    const { payload } = await jwtVerify(input, key, {
+    const { payload } = await jwtVerify(input, getKey(), {
         algorithms: ['HS256'],
     });
     return payload;
@@ -46,6 +62,7 @@ export async function getSession() {
     try {
         return await decrypt(session);
     } catch (error) {
+        if (error instanceof MissingJwtSecretError) throw error;
         return null;
     }
 }
@@ -77,7 +94,8 @@ export async function updateSession(request: NextRequest) {
             path: '/',
         });
         return res;
-    } catch {
+    } catch (error) {
+        if (error instanceof MissingJwtSecretError) throw error;
         // Stale or tampered cookie — clear it and continue
         const res = NextResponse.next();
         res.cookies.set({ name: 'session', value: '', expires: new Date(0), path: '/' });

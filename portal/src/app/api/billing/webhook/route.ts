@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { query } from '@/lib/db';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
+// Constructed lazily (on first actual use), not at module load - see
+// billing/route.ts for why.
+let stripe: Stripe | null = null;
+function getStripe(): Stripe {
+    if (!stripe) stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
+    return stripe;
+}
 
 const PLAN_LIMITS: Record<string, number> = {
     start: 20,
@@ -18,7 +24,7 @@ export async function POST(request: Request) {
 
     let event: Stripe.Event;
     try {
-        event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+        event = getStripe().webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
     } catch (err: any) {
         console.error('Webhook signature verification failed:', err.message);
         return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
