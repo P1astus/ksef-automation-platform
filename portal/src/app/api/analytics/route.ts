@@ -36,7 +36,12 @@ export async function GET(request: Request) {
         });
 
         const estimatedVatLiability = salesVat - purchaseVat;
-        const estimatedIncomeTax = (salesNet - purchaseNet) * 0.19; // Simplified 19% flat tax assumption
+        // D6: an income tax estimate used to be computed here as a flat 19%
+        // of (salesNet - purchaseNet), assuming every client is on liniowy.
+        // Clients can be on skala (12/32%), liniowy (19%), ryczałt (varies)
+        // or CIT - removed rather than guessed. Comes back once a per-client
+        // tax regime exists (clients.tax_regime + a rate column, default
+        // NULL, estimate only returned when the regime is set).
 
         return NextResponse.json({
             currentMonth: {
@@ -44,7 +49,6 @@ export async function GET(request: Request) {
                 purchases: { net: purchaseNet, vat: purchaseVat, gross: purchaseNet + purchaseVat },
                 estimates: {
                     vatLiability: estimatedVatLiability,
-                    incomeTax19: estimatedIncomeTax > 0 ? estimatedIncomeTax : 0
                 }
             }
         });
