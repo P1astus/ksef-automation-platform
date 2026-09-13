@@ -222,7 +222,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO jpk_preparations (firm_id, client_nip, period, status, total_invoices, nr_ksef_count, off_count, bfk_count, di_count, generated_at) VALUES ({{ $json.firm_id }}, '{{ $json.client_nip }}', '{{ $json.period }}', CASE WHEN {{ $json.stats.bfk }} > 0 THEN 'correction_needed' WHEN {{ $json.stats.di }} > 0 THEN 'in_progress' ELSE 'ready' END, {{ $json.stats.total }}, {{ $json.stats.nrksef }}, {{ $json.stats.off }}, {{ $json.stats.bfk }}, {{ $json.stats.di }}, NOW()) ON CONFLICT (client_nip, period) DO UPDATE SET status = EXCLUDED.status, total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count, off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count, di_count = EXCLUDED.di_count, generated_at = NOW()",
+        "query": "=INSERT INTO jpk_preparations (firm_id, client_nip, period, status, total_invoices, nr_ksef_count, off_count, bfk_count, di_count, generated_at) VALUES ({{ $json.firm_id }}, '{{ $json.client_nip }}', '{{ $json.period }}', CASE WHEN {{ $json.stats.bfk }} > 0 THEN 'correction_needed' WHEN {{ $json.stats.di }} > 0 THEN 'in_progress' ELSE 'ready' END, {{ $json.stats.total }}, {{ $json.stats.nrksef }}, {{ $json.stats.off }}, {{ $json.stats.bfk }}, {{ $json.stats.di }}, NOW()) ON CONFLICT (firm_id, client_nip, period) DO UPDATE SET status = EXCLUDED.status, total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count, off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count, di_count = EXCLUDED.di_count, generated_at = NOW()",
         "options": {}
       },
       "credentials": {
@@ -810,7 +810,7 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=INSERT INTO jpk_preparations (firm_id, client_nip, period, status, total_invoices, nr_ksef_count, off_count, bfk_count, di_count, generated_at) VALUES ({{ $json.firm_id }}, '{{ $json.client_nip }}', '{{ $json.period }}', CASE WHEN {{ $json.stats.bfk }} > 0 THEN 'correction_needed' WHEN {{ $json.stats.di }} > 0 THEN 'in_progress' ELSE 'ready' END, {{ $json.stats.total }}, {{ $json.stats.nrksef }}, {{ $json.stats.off }}, {{ $json.stats.bfk }}, {{ $json.stats.di }}, NOW()) ON CONFLICT (client_nip, period) DO UPDATE SET status = EXCLUDED.status, total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count, off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count, di_count = EXCLUDED.di_count, generated_at = NOW()",
+          "query": "=INSERT INTO jpk_preparations (firm_id, client_nip, period, status, total_invoices, nr_ksef_count, off_count, bfk_count, di_count, generated_at) VALUES ({{ $json.firm_id }}, '{{ $json.client_nip }}', '{{ $json.period }}', CASE WHEN {{ $json.stats.bfk }} > 0 THEN 'correction_needed' WHEN {{ $json.stats.di }} > 0 THEN 'in_progress' ELSE 'ready' END, {{ $json.stats.total }}, {{ $json.stats.nrksef }}, {{ $json.stats.off }}, {{ $json.stats.bfk }}, {{ $json.stats.di }}, NOW()) ON CONFLICT (firm_id, client_nip, period) DO UPDATE SET status = EXCLUDED.status, total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count, off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count, di_count = EXCLUDED.di_count, generated_at = NOW()",
           "options": {}
         },
         "credentials": {

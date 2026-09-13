@@ -53,7 +53,12 @@ export async function POST(request: Request) {
         invoices
     );
 
-    // Store in jpk_preparations if table exists (graceful)
+    // Save to jpk_preparations history. The XML itself was already generated
+    // above and is the primary deliverable - a failure here is a real
+    // problem (JPK generation history won't be recorded) but shouldn't block
+    // returning the XML the user actually asked for. Surfaced via
+    // historySaveError rather than swallowed, per the no-silent-failure rule.
+    let historySaveError: string | undefined;
     try {
         await query(
             `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at)
@@ -62,7 +67,11 @@ export async function POST(request: Request) {
              SET export_data = EXCLUDED.export_data, status = 'generated', created_at = NOW()`,
             [session.firmId, clientNip, period, xml]
         );
-    } catch { /* table may not exist yet */ }
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('Failed to save jpk_preparations history:', msg);
+        historySaveError = msg;
+    }
 
     await logActivity(
         session.firmId,
@@ -80,6 +89,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
         ok: true,
         xml,
+        ...(historySaveError ? { historySaveError } : {}),
         stats: {
             invoiceCount: invoices.length,
             salesCount,
@@ -99,15 +109,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const clientNip = searchParams.get('clientNip');
 
-    try {
-        const q = clientNip
-            ? `SELECT firm_id, client_nip, period, status, created_at FROM jpk_preparations WHERE firm_id = $1 AND client_nip = $2 ORDER BY created_at DESC LIMIT 20`
-            : `SELECT firm_id, client_nip, period, status, created_at FROM jpk_preparations WHERE firm_id = $1 ORDER BY created_at DESC LIMIT 20`;
+    const q = clientNip
+        ? `SELECT firm_id, client_nip, period, status, created_at FROM jpk_preparations WHERE firm_id = $1 AND client_nip = $2 ORDER BY created_at DESC LIMIT 20`
+        : `SELECT firm_id, client_nip, period, status, created_at FROM jpk_preparations WHERE firm_id = $1 ORDER BY created_at DESC LIMIT 20`;
 
-        const args = clientNip ? [session.firmId, clientNip] : [session.firmId];
-        const res = await query(q, args);
-        return NextResponse.json({ history: res.rows });
-    } catch {
-        return NextResponse.json({ history: [] });
-    }
+    const args = clientNip ? [session.firmId, clientNip] : [session.firmId];
+    const res = await query(q, args);
+    return NextResponse.json({ history: res.rows });
 }
