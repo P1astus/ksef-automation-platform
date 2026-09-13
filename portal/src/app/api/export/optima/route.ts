@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import pool from '@/lib/db';
-import { generateOptimaXml } from '@/lib/optima-mapper';
+import { generateOptimaXml, OptimaExportError } from '@/lib/optima-mapper';
 
 export async function POST(request: Request) {
     try {
@@ -36,14 +36,15 @@ export async function POST(request: Request) {
             }
 
             // Generate the Optima XML file
-            const optimaXml = generateOptimaXml(invoices);
+            const { xml, ratioDerivedCount } = generateOptimaXml(invoices);
 
             // Return the XML payload as a downloadable file
-            return new NextResponse(optimaXml, {
+            return new NextResponse(xml, {
                 status: 200,
                 headers: {
                     'Content-Type': 'application/xml',
-                    'Content-Disposition': 'attachment; filename="optima-export.xml"'
+                    'Content-Disposition': 'attachment; filename="optima-export.xml"',
+                    ...(ratioDerivedCount > 0 ? { 'X-Vat-Rate-Ratio-Derived-Count': String(ratioDerivedCount) } : {}),
                 }
             });
 
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
             client.release();
         }
     } catch (error) {
+        if (error instanceof OptimaExportError) {
+            return NextResponse.json({ error: error.message, failures: error.failures }, { status: 422 });
+        }
         console.error('Error exporting to Optima:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }

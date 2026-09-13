@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import pool from '@/lib/db';
-import { generateOptimaXml } from '@/lib/optima-mapper';
+import { generateOptimaXml, OptimaExportError } from '@/lib/optima-mapper';
 import { generateSymfoniaTxt } from '@/lib/symfonia-mapper';
 import { generateInsertEpp } from '@/lib/insert-mapper';
 import { logActivity } from '@/lib/activity';
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
                 contentType = 'text/plain; charset=utf-8';
                 filename = 'insert-export.epp';
             } else {
-                exportData = generateOptimaXml(invoices);
+                exportData = generateOptimaXml(invoices).xml;
                 contentType = 'application/xml';
                 filename = 'optima-export.xml';
             }
@@ -102,6 +102,9 @@ export async function POST(request: Request) {
             client.release();
         }
     } catch (error) {
+        if (error instanceof OptimaExportError) {
+            return NextResponse.json({ error: error.message, failures: error.failures }, { status: 422 });
+        }
         console.error('Error exporting invoices:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
