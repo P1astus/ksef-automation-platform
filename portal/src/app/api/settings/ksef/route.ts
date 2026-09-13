@@ -16,6 +16,14 @@ function maskDisplay(value: string): string {
     return value.slice(0, 4) + '••••••••' + value.slice(-4);
 }
 
+// clients.auth_method's CHECK constraint only allows 'token'/'certificate';
+// this route's own API contract (and the settings page frontend) uses
+// 'token'/'cert'. Translate DB -> API here so the two vocabularies stay in
+// exactly one place instead of drifting the way ksef_auth_method did.
+function dbAuthMethodToApi(dbValue: string | null): 'token' | 'cert' {
+    return dbValue === 'certificate' ? 'cert' : 'token';
+}
+
 export async function GET(request: Request) {
     try {
         const session = await getSession();
@@ -27,7 +35,7 @@ export async function GET(request: Request) {
         if (clientId) {
             // Single client config
             const res = await query(
-                `SELECT id, nip, client_name, ksef_auth_method, ksef_token_encrypted
+                `SELECT id, nip, client_name, auth_method, ksef_token_encrypted
                  FROM clients WHERE id = $1 AND firm_id = $2`,
                 [clientId, session.firmId]
             );
@@ -37,7 +45,7 @@ export async function GET(request: Request) {
                 id: row.id,
                 nip: row.nip,
                 client_name: row.client_name,
-                auth_method: row.ksef_auth_method || 'token',
+                auth_method: dbAuthMethodToApi(row.auth_method),
                 has_token: !!row.ksef_token_encrypted,
                 token_masked: row.ksef_token_encrypted
                     ? maskDisplay(unmask(row.ksef_token_encrypted))
@@ -47,7 +55,7 @@ export async function GET(request: Request) {
 
         // All clients for this firm
         const res = await query(
-            `SELECT id, nip, client_name, ksef_auth_method, ksef_token_encrypted
+            `SELECT id, nip, client_name, auth_method, ksef_token_encrypted
              FROM clients WHERE firm_id = $1 ORDER BY client_name`,
             [session.firmId]
         );
@@ -57,7 +65,7 @@ export async function GET(request: Request) {
                 id: row.id,
                 nip: row.nip,
                 client_name: row.client_name,
-                auth_method: row.ksef_auth_method || 'token',
+                auth_method: dbAuthMethodToApi(row.auth_method),
                 has_token: !!row.ksef_token_encrypted,
             })),
         });
@@ -104,17 +112,19 @@ export async function POST(request: Request) {
         if (auth_method === 'token') {
             if (!token?.trim()) return NextResponse.json({ error: 'Podaj token KSeF' }, { status: 400 });
             await query(
-                'UPDATE clients SET ksef_auth_method = $1, ksef_token_encrypted = $2 WHERE id = $3',
+                'UPDATE clients SET auth_method = $1, ksef_token_encrypted = $2 WHERE id = $3',
                 ['token', mask(token.trim()), client_id]
             );
         } else if (auth_method === 'cert') {
             if (!certBase64) return NextResponse.json({ error: 'Brak pliku certyfikatu' }, { status: 400 });
             if (!certPassword) return NextResponse.json({ error: 'Podaj hasło certyfikatu' }, { status: 400 });
-            // Store cert as base64 and password encrypted — the XAdES sidecar handles the actual signing
+            // Store cert as base64 and password encrypted — the XAdES sidecar handles the actual signing.
+            // DB column's CHECK constraint requires 'certificate', not this route's own 'cert' - see
+            // dbAuthMethodToApi() for the reverse translation on read.
             const certData = JSON.stringify({ cert: certBase64, password: mask(certPassword) });
             await query(
-                'UPDATE clients SET ksef_auth_method = $1, ksef_token_encrypted = $2 WHERE id = $3',
-                ['cert', mask(certData), client_id]
+                'UPDATE clients SET auth_method = $1, ksef_token_encrypted = $2 WHERE id = $3',
+                ['certificate', mask(certData), client_id]
             );
         } else {
             return NextResponse.json({ error: 'Nieznana metoda uwierzytelniania' }, { status: 400 });
