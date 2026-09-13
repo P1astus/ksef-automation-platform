@@ -17,7 +17,7 @@ export const BASE_URL = process.env.KSEF_ENVIRONMENT === 'prod'
     ? 'https://api.ksef.mf.gov.pl/v2'
     : 'https://api-test.ksef.mf.gov.pl/v2';
 
-const XADES_SIDECAR = process.env.XADES_SIDECAR_URL || 'http://xades_sidecar:8080';
+const XADES_SIDECAR = process.env.XADES_SIDECAR_URL || 'http://xades_sidecar:8090';
 
 // Cache public key certificate (valid for 1 hour)
 let cachedCert: string | null = null;

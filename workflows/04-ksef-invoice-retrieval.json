@@ -221,7 +221,7 @@
         400
       ],
       "parameters": {
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
         "options": {
           "timeout": 10000
         }
@@ -251,7 +251,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/sessions/online",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ formCode: { systemCode: 'FA (3)', schemaVersion: '1-0E', targetNamespace: 'http://crd.gov.pl/wzor/2025/06/25/13775/', value: 'FA' }, encryption: { encryptedSymmetricKey: $json.encryptedSymmetricKey, initializationVector: $json.initializationVector } }) }}",
@@ -307,7 +307,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
         "sendHeaders": true,
         "specifyHeaders": "keypair",
         "headerParameters": {
@@ -338,7 +338,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
         "sendHeaders": true,
         "specifyHeaders": "keypair",
         "headerParameters": {
@@ -538,7 +538,7 @@
       "parameters": {
         "curlImport": "",
         "method": "POST",
-        "url": "=https://api-test.ksef.mf.gov.pl/api/v2/sessions/online/{{ $('Prepare Invoice Query').first().json.sessionRef }}/close",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online/{{ $('Prepare Invoice Query').first().json.sessionRef }}/close",
         "authentication": "none",
         "provideSslCertificates": false,
         "sendQuery": false,
@@ -1288,7 +1288,7 @@
           400
         ],
         "parameters": {
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
           "options": {
             "timeout": 10000
           }
@@ -1318,7 +1318,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/sessions/online",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online",
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify({ formCode: { systemCode: 'FA (3)', schemaVersion: '1-0E', targetNamespace: 'http://crd.gov.pl/wzor/2025/06/25/13775/', value: 'FA' }, encryption: { encryptedSymmetricKey: $json.encryptedSymmetricKey, initializationVector: $json.initializationVector } }) }}",
@@ -1374,7 +1374,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
           "sendHeaders": true,
           "specifyHeaders": "keypair",
           "headerParameters": {
@@ -1405,7 +1405,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/invoices/query/metadata?sortOrder=Asc&pageSize=100",
           "sendHeaders": true,
           "specifyHeaders": "keypair",
           "headerParameters": {
@@ -1605,7 +1605,7 @@
         "parameters": {
           "curlImport": "",
           "method": "POST",
-          "url": "=https://api-test.ksef.mf.gov.pl/api/v2/sessions/online/{{ $('Prepare Invoice Query').first().json.sessionRef }}/close",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online/{{ $('Prepare Invoice Query').first().json.sessionRef }}/close",
           "authentication": "none",
           "provideSslCertificates": false,
           "sendQuery": false,

@@ -37,7 +37,7 @@
         340
       ],
       "parameters": {
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
         "options": {
           "timeout": 10000
         }
@@ -511,7 +511,7 @@
           340
         ],
         "parameters": {
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
           "options": {
             "timeout": 10000
           }

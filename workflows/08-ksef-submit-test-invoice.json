@@ -101,7 +101,7 @@
     },
     {
       "parameters": {
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
         "options": {}
       },
       "id": "b3a81b14-fc5e-4e9a-a046-1f96bfae67d7",
@@ -129,7 +129,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/sessions/online",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -184,7 +184,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api-test.ksef.mf.gov.pl/api/v2/sessions/online/{{ $json.session_reference }}/invoices",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online/{{ $json.session_reference }}/invoices",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -251,7 +251,7 @@
     },
     {
       "parameters": {
-        "url": "=https://api-test.ksef.mf.gov.pl/api/v2/sessions/{{ $('Prepare Status Check').first().json.session_reference }}/invoices/{{ $('Prepare Status Check').first().json.invoice_reference }}",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/{{ $('Prepare Status Check').first().json.session_reference }}/invoices/{{ $('Prepare Status Check').first().json.invoice_reference }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -275,7 +275,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api-test.ksef.mf.gov.pl/api/v2/sessions/online/{{ $('Prepare Status Check').first().json.session_reference }}/close",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/sessions/online/{{ $('Prepare Status Check').first().json.session_reference }}/close",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

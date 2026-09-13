@@ -8,6 +8,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://ksef_app:${KSEF_DB_PASSWORD}@ksef_db:5432/ksef_platform
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env - generate with: openssl rand -hex 32}
+      - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
+      - XADES_SIDECAR_URL=http://xades_sidecar:8090
     depends_on:
       ksef_db:
         condition: service_healthy
@@ -82,6 +84,15 @@ services:
       - GENERIC_TIMEZONE=Europe/Warsaw
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_API_KEY=${N8N_API_KEY}
+      # D7: workflows read the KSeF API base from $env.KSEF_API_BASE instead of
+      # 27 hardcoded URLs across 4 files. $vars (n8n's Variables feature) would
+      # be the safer mechanism since it isn't gated by the env-access block
+      # below, but it requires an Enterprise license - this is Community
+      # edition. N8N_BLOCK_ENV_ACCESS_IN_NODE defaults to true as of n8n v2.0
+      # specifically to stop workflows reading secrets out of process.env;
+      # false here is a deliberate, scoped exception for this one variable.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - KSEF_API_BASE=${KSEF_API_BASE:-https://api-test.ksef.mf.gov.pl}
     ports:
       - "5678:5678"
     volumes:

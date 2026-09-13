@@ -147,7 +147,7 @@
         320
       ],
       "parameters": {
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
         "options": {
           "timeout": 10000
         }
@@ -177,7 +177,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/auth/challenge",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/auth/challenge",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ contextIdentifier: { type: 'onip', identifier: $('Prepare Auth Data').first().json.client_nip } }) }}",
@@ -223,7 +223,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/auth/ksef-token",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/auth/ksef-token",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ challenge: $json.challenge, timestamp: $json.timestamp, encryptedToken: $json.encrypted_token, contextIdentifier: { type: 'nip', value: $json.client_nip } }) }}",
@@ -256,7 +256,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://api-test.ksef.mf.gov.pl/api/v2/auth/token/redeem",
+        "url": "={{ $env.KSEF_API_BASE }}/api/v2/auth/token/redeem",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -736,7 +736,7 @@
           320
         ],
         "parameters": {
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/security/public-key-certificates",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/security/public-key-certificates",
           "options": {
             "timeout": 10000
           }
@@ -766,7 +766,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/auth/challenge",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/auth/challenge",
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify({ contextIdentifier: { type: 'onip', identifier: $('Prepare Auth Data').first().json.client_nip } }) }}",
@@ -812,7 +812,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/auth/ksef-token",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/auth/ksef-token",
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify({ challenge: $json.challenge, timestamp: $json.timestamp, encryptedToken: $json.encrypted_token, contextIdentifier: { type: 'nip', value: $json.client_nip } }) }}",
@@ -845,7 +845,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://api-test.ksef.mf.gov.pl/api/v2/auth/token/redeem",
+          "url": "={{ $env.KSEF_API_BASE }}/api/v2/auth/token/redeem",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
