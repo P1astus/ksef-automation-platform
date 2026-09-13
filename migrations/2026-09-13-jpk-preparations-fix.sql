@@ -56,16 +56,24 @@ ALTER TABLE jpk_preparations
 -- no live DB available in this environment): the live status CHECK
 -- constraint, from ksef-schema.sql, only allows
 -- ('pending','in_progress','ready','exported','correction_needed'). But
--- portal/src/app/api/jpk/generate/route.ts inserts status='generated',
+-- portal/src/app/api/jpk/generate/route.ts inserted status='generated',
 -- which isn't in that list - a third, independent reason this insert could
 -- never have succeeded, on top of the missing firm_id and the JSONB/TEXT
 -- mismatch above. Meanwhile workflows/06-jpk-vat-preparation.json's own
--- UPSERT node writes 'ready'/'in_progress'/'correction_needed' - matching
--- the original enum, not the portal route's value. Two call sites use two
--- non-overlapping status vocabularies for the same column; this widens the
--- CHECK to accept both rather than picking one arbitrarily, since which
--- vocabulary is "correct" is a business-logic decision, not a data-plumbing
--- one - see FIXES-2026-09-13.md for the follow-up this needs.
+-- UPSERT node writes 'ready'/'in_progress'/'correction_needed', derived from
+-- whether any invoice in the period is marked BFK (correction needed) or DI
+-- (undetermined, manual review) - matching the original enum, not the
+-- portal route's value.
+--
+-- Resolved (product decision, 2026-09-13): unify on the workflow's
+-- vocabulary rather than widen the CHECK to accept both indefinitely.
+-- jpk/generate/route.ts now computes the same BFK/DI/otherwise rule the
+-- workflow already uses (see determineJpkStatus() in that route) instead of
+-- writing a fifth, route-specific value. The CHECK below is therefore the
+-- original five-value list, unchanged from ksef-schema.sql - kept here
+-- (rather than silently leaving the old table's constraint in place) so this
+-- migration is still the single source of truth for the constraint's
+-- definition and stays a no-op replay if run twice.
 DO $$
 DECLARE
     found_conname TEXT;
@@ -85,6 +93,6 @@ END $$;
 
 ALTER TABLE jpk_preparations
     ADD CONSTRAINT jpk_preparations_status_check
-    CHECK (status IN ('pending', 'in_progress', 'ready', 'exported', 'correction_needed', 'generated'));
+    CHECK (status IN ('pending', 'in_progress', 'ready', 'exported', 'correction_needed'));
 
 COMMIT;

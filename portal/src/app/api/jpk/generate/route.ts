@@ -4,6 +4,17 @@ import { query } from '@/lib/db';
 import { generateJpkV7M } from '@/lib/jpk-generator';
 import { logActivity } from '@/lib/activity';
 
+// Mirrors workflows/06-jpk-vat-preparation.json's "UPSERT JPK Preparation" node:
+// BFK (offline invoice uploaded late) means a correction will be needed; DI
+// (marker undetermined, manual review) means the preparation isn't finished;
+// otherwise it's ready. Same three-way rule, same column, same meaning - kept
+// in one place so the portal route and the n8n workflow don't drift again.
+export function determineJpkStatus(invoices: { jpk_marker?: string | null }[]): 'correction_needed' | 'in_progress' | 'ready' {
+    if (invoices.some(i => i.jpk_marker === 'BFK')) return 'correction_needed';
+    if (invoices.some(i => i.jpk_marker === 'DI')) return 'in_progress';
+    return 'ready';
+}
+
 export async function POST(request: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -59,13 +70,14 @@ export async function POST(request: Request) {
     // returning the XML the user actually asked for. Surfaced via
     // historySaveError rather than swallowed, per the no-silent-failure rule.
     let historySaveError: string | undefined;
+    const status = determineJpkStatus(invoices);
     try {
         await query(
             `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at)
-             VALUES ($1, $2, $3, $4, 'generated', NOW())
+             VALUES ($1, $2, $3, $4, $5, NOW())
              ON CONFLICT (firm_id, client_nip, period) DO UPDATE
-             SET export_data = EXCLUDED.export_data, status = 'generated', created_at = NOW()`,
-            [session.firmId, clientNip, period, xml]
+             SET export_data = EXCLUDED.export_data, status = EXCLUDED.status, created_at = NOW()`,
+            [session.firmId, clientNip, period, xml, status]
         );
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);

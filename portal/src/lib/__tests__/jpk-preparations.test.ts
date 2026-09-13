@@ -53,7 +53,7 @@ describe('D3 jpk_preparations fix (real Postgres engine, not mocked)', () => {
         await expect(
             db.query(
                 `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at)
-                 VALUES ($1, $2, $3, $4, 'generated', NOW())`,
+                 VALUES ($1, $2, $3, $4, 'ready', NOW())`,
                 [firmA, '1234567890', '2026-01', rawXml]
             )
         ).resolves.not.toThrow();
@@ -68,9 +68,9 @@ describe('D3 jpk_preparations fix (real Postgres engine, not mocked)', () => {
     it('the exact insert shape jpk/generate/route.ts uses (firm_id + ON CONFLICT upsert) succeeds', async () => {
         const upsert = () => db.query(
             `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at)
-             VALUES ($1, $2, $3, $4, 'generated', NOW())
+             VALUES ($1, $2, $3, $4, 'ready', NOW())
              ON CONFLICT (firm_id, client_nip, period) DO UPDATE
-             SET export_data = EXCLUDED.export_data, status = 'generated', created_at = NOW()`,
+             SET export_data = EXCLUDED.export_data, status = 'ready', created_at = NOW()`,
             [firmA, '1234567890', '2026-02', '<xml>v1</xml>']
         );
         await expect(upsert()).resolves.not.toThrow();
@@ -80,13 +80,13 @@ describe('D3 jpk_preparations fix (real Postgres engine, not mocked)', () => {
 
     it('two firms sharing a NIP can each have their own jpk_preparations row for the same period', async () => {
         await db.query(
-            `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'generated', NOW())`,
+            `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'ready', NOW())`,
             [firmA, '1234567890', '2026-03', '<xml>firm-a</xml>']
         );
         // Would have collided under the old UNIQUE(client_nip, period) - now scoped by firm_id too.
         await expect(
             db.query(
-                `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'generated', NOW())`,
+                `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'ready', NOW())`,
                 [firmB, '1234567890', '2026-03', '<xml>firm-b</xml>']
             )
         ).resolves.not.toThrow();
@@ -94,12 +94,12 @@ describe('D3 jpk_preparations fix (real Postgres engine, not mocked)', () => {
 
     it('still rejects a true duplicate within the same firm+client+period', async () => {
         await db.query(
-            `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'generated', NOW())`,
+            `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'ready', NOW())`,
             [firmA, '1234567890', '2026-04', '<xml>first</xml>']
         );
         await expect(
             db.query(
-                `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'generated', NOW())`,
+                `INSERT INTO jpk_preparations (firm_id, client_nip, period, export_data, status, created_at) VALUES ($1, $2, $3, $4, 'ready', NOW())`,
                 [firmA, '1234567890', '2026-04', '<xml>second</xml>']
             )
         ).rejects.toThrow();
