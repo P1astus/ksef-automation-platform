@@ -325,7 +325,8 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "continueOnFail": true
     },
     {
       "id": "query-purchases",
@@ -356,7 +357,8 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "continueOnFail": true
     },
     {
       "id": "combine-results",
@@ -368,7 +370,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "const queryData = $('Prepare Invoice Query').first().json;\n\nlet salesInvoices = [];\nlet purchaseInvoices = [];\n\nfunction extractNip(subject) {\n  if (!subject) return '';\n  if (typeof subject === 'string') return subject;\n  if (subject.nip) return subject.nip;\n  if (subject.identifier) {\n    if (typeof subject.identifier === 'string') return subject.identifier;\n    if (subject.identifier.value) return subject.identifier.value;\n  }\n  return '';\n}\n\nfunction mapInvoice(inv, direction) {\n  return {\n    ksefNumber: inv.ksefNumber,\n    invoiceNumber: inv.invoiceNumber,\n    invoiceType: inv.invoiceType,\n    sellerNip: extractNip(inv.seller),\n    buyerNip: extractNip(inv.buyer),\n    netAmount: inv.netAmount || 0,\n    vatAmount: inv.vatAmount || 0,\n    grossAmount: inv.grossAmount || 0,\n    currency: inv.currency || 'PLN',\n    issueDate: inv.issueDate || '',\n    invoicingDate: inv.invoicingDate || '',\n    acquisitionDate: inv.acquisitionDate || '',\n    permanentStorageDate: inv.permanentStorageDate || '',\n    direction: direction\n  };\n}\n\ntry {\n  const salesResp = $('Query Sales Invoices').first().json;\n  salesInvoices = (salesResp.invoices || []).map(inv => mapInvoice(inv, 'sales'));\n} catch(e) { /* no sales */ }\n\ntry {\n  const purchResp = $('Query Purchase Invoices').first().json;\n  purchaseInvoices = (purchResp.invoices || []).map(inv => mapInvoice(inv, 'purchase'));\n} catch(e) { /* no purchases */ }\n\nconst allInvoices = [...salesInvoices, ...purchaseInvoices];\n\nif (allInvoices.length === 0) {\n  return [{ json: { hasInvoices: false, count: 0, sessionRef: queryData.sessionRef, accessToken: queryData.accessToken, client_nip: queryData.client_nip, firm_id: queryData.firm_id } }];\n}\n\nreturn allInvoices.map(inv => ({\n  json: {\n    ...inv,\n    hasInvoices: true,\n    sessionRef: queryData.sessionRef,\n    accessToken: queryData.accessToken,\n    client_nip: queryData.client_nip,\n    firm_id: queryData.firm_id\n  }\n}));"
+        "jsCode": "const queryData = $('Prepare Invoice Query').first().json;\n\nfunction extractNip(subject) {\n  if (!subject) return '';\n  if (typeof subject === 'string') return subject;\n  if (subject.nip) return subject.nip;\n  if (subject.identifier) {\n    if (typeof subject.identifier === 'string') return subject.identifier;\n    if (subject.identifier.value) return subject.identifier.value;\n  }\n  return '';\n}\n\nfunction mapInvoice(inv, direction) {\n  return {\n    ksefNumber: inv.ksefNumber,\n    invoiceNumber: inv.invoiceNumber,\n    invoiceType: inv.invoiceType,\n    sellerNip: extractNip(inv.seller),\n    buyerNip: extractNip(inv.buyer),\n    netAmount: inv.netAmount || 0,\n    vatAmount: inv.vatAmount || 0,\n    grossAmount: inv.grossAmount || 0,\n    currency: inv.currency || 'PLN',\n    issueDate: inv.issueDate || '',\n    invoicingDate: inv.invoicingDate || '',\n    acquisitionDate: inv.acquisitionDate || '',\n    permanentStorageDate: inv.permanentStorageDate || '',\n    direction: direction\n  };\n}\n\nconst salesResult = $('Query Sales Invoices').first().json;\nconst purchResult = $('Query Purchase Invoices').first().json;\n\n// Query Sales/Purchase Invoices now run with continueOnFail: a failure surfaces\n// as $json.error (same convention as the \"Session Opened?\" check upstream), not\n// a thrown exception. A try/catch here could never fire before continueOnFail\n// was added: either node failing hard-aborted the whole execution before this\n// node ever ran, confirmed live against a synthetic workflow - see CLAUDE.md's\n// \"Combine Invoice Results\" entry.\nif (salesResult.error !== undefined || purchResult.error !== undefined) {\n  const detail = [salesResult.error, purchResult.error]\n    .filter(e => e !== undefined)\n    .map(e => e?.message || String(e))\n    .join('; ');\n  return [{\n    json: {\n      retrievalError: true,\n      errorMessage: detail || 'Unknown invoice query failure',\n      client_nip: queryData.client_nip,\n      firm_id: queryData.firm_id,\n      sessionRef: queryData.sessionRef,\n      accessToken: queryData.accessToken\n    }\n  }];\n}\n\nconst salesInvoices = (salesResult.invoices || []).map(inv => mapInvoice(inv, 'sales'));\nconst purchaseInvoices = (purchResult.invoices || []).map(inv => mapInvoice(inv, 'purchase'));\nconst allInvoices = [...salesInvoices, ...purchaseInvoices];\n\nif (allInvoices.length === 0) {\n  return [{ json: { hasInvoices: false, retrievalError: false, count: 0, sessionRef: queryData.sessionRef, accessToken: queryData.accessToken, client_nip: queryData.client_nip, firm_id: queryData.firm_id } }];\n}\n\nreturn allInvoices.map(inv => ({\n  json: {\n    ...inv,\n    hasInvoices: true,\n    retrievalError: false,\n    sessionRef: queryData.sessionRef,\n    accessToken: queryData.accessToken,\n    client_nip: queryData.client_nip,\n    firm_id: queryData.firm_id\n  }\n}));"
       }
     },
     {
@@ -672,6 +674,208 @@
         "mode": "runOnceForEachItem",
         "jsCode": "const err = $json.error?.message || 'Session open failed';\nconst nip = $('Process Each Client').item.json.nip || '?';\nreturn {json:{error:err,client_nip:nip}};"
       }
+    },
+    {
+      "id": "retrieval-failed-check",
+      "name": "Retrieval Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3080,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.retrievalError }}",
+              "rightValue": "={{ true }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "retrieval-failed"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "log-retrieval-failure",
+      "name": "Log Retrieval Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3320,
+        240
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (action, workflow_name, success, error_message) VALUES ('invoice_retrieval', 'KSeF - Invoice Retrieval v2', false, '{{ String($json.errorMessage || \"\").replace(/'/g, \"''\") }} (NIP {{ $json.client_nip }})');",
+        "options": {}
+      }
+    },
+    {
+      "id": "alert-retrieval-failure",
+      "name": "Alert - Retrieval Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3560,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'warning', message: 'KSeF invoice retrieval failed for NIP ' + $json.client_nip + ': ' + $json.errorMessage, workflow_name: 'KSeF - Invoice Retrieval v2', client_nip: $json.client_nip }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "log-auth-failure-audit",
+      "name": "Log Auth Failure to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1640,
+        680
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (action, workflow_name, success, error_message) VALUES ('invoice_retrieval', 'KSeF - Invoice Retrieval v2', false, '{{ String($json.error || \"Authentication failed\").replace(/'/g, \"''\") }} (NIP {{ $json.nip }})');",
+        "options": {}
+      }
+    },
+    {
+      "id": "alert-auth-failure",
+      "name": "Alert - Auth Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1880,
+        680
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'warning', message: 'KSeF authentication failed for NIP ' + $json.nip + ': ' + $json.error, workflow_name: 'KSeF - Invoice Retrieval v2', client_nip: $json.nip }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "log-session-failure-audit",
+      "name": "Log Session Failure to Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        780
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO audit_log (action, workflow_name, success, error_message) VALUES ('invoice_retrieval', 'KSeF - Invoice Retrieval v2', false, '{{ String($json.error || \"Session open failed\").replace(/'/g, \"''\") }} (NIP {{ $json.client_nip }})');",
+        "options": {}
+      }
+    },
+    {
+      "id": "alert-session-failure",
+      "name": "Alert - Session Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2720,
+        780
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'warning', message: 'KSeF online session failed to open for NIP ' + $json.client_nip + ': ' + $json.error, workflow_name: 'KSeF - Invoice Retrieval v2', client_nip: $json.client_nip }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "alert-retrieval-error",
+      "name": "Alert - Retrieval Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        980,
+        720
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ksef-alert",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ severity: 'critical', message: 'KSeF Invoice Retrieval workflow failed: ' + $('Handle Retrieval Error').first().json.message, workflow_name: 'KSeF - Invoice Retrieval v2' }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
     }
   ],
   "connections": {
@@ -759,7 +963,7 @@
       "main": [
         [
           {
-            "node": "Process Each Client",
+            "node": "Log Auth Failure to Audit",
             "type": "main",
             "index": 0
           }
@@ -830,7 +1034,7 @@
       "main": [
         [
           {
-            "node": "Has Invoices?",
+            "node": "Retrieval Failed?",
             "type": "main",
             "index": 0
           }
@@ -1024,7 +1228,102 @@
       "main": [
         [
           {
+            "node": "Log Session Failure to Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieval Failed?": {
+      "main": [
+        [
+          {
+            "node": "Log Retrieval Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has Invoices?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Retrieval Failure": {
+      "main": [
+        [
+          {
+            "node": "Alert - Retrieval Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert - Retrieval Failure": {
+      "main": [
+        [
+          {
             "node": "Process Each Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Auth Failure to Audit": {
+      "main": [
+        [
+          {
+            "node": "Alert - Auth Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert - Auth Failure": {
+      "main": [
+        [
+          {
+            "node": "Process Each Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Session Failure to Audit": {
+      "main": [
+        [
+          {
+            "node": "Alert - Session Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert - Session Failure": {
+      "main": [
+        [
+          {
+            "node": "Process Each Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Alert - Retrieval Error",
             "type": "main",
             "index": 0
           }

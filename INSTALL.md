@@ -264,6 +264,24 @@ For each workflow file:
 
 > **Note:** After import, you will see credential errors on Postgres and Email nodes. This is expected — credentials from the original instance don't transfer. You'll fix this in the next step.
 
+### Link Each Workflow's Error Path to Itself
+
+`04-ksef-invoice-retrieval.json` (and the other workflows with an `On Error` node) contain an Error
+Trigger node meant to catch unhandled failures and route them to an alert. n8n only invokes that
+node when the workflow's own **Settings → Error Workflow** field points at a workflow — it does
+nothing just by being present in the canvas (confirmed empirically: a disposable synthetic workflow
+with the same shape produced zero error-path executions until `errorWorkflow` was set). Because
+every import assigns fresh internal workflow IDs, this can't be baked into the tracked JSON — it
+would silently point at a stale ID after the next re-import, the same class of problem as the
+credential re-linking below. After importing each workflow that has an `On Error` node:
+
+1. Open the workflow → **⋯ menu → Settings**
+2. Set **Error Workflow** to itself (the workflow currently open)
+3. Save
+
+Do this again any time a workflow is deleted and re-imported (a full n8n wipe-and-rebuild, a manual
+re-import), not just on first setup.
+
 ---
 
 ## 7. Configure n8n Credentials
