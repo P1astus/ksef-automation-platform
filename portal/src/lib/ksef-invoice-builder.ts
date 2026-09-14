@@ -15,14 +15,31 @@ export interface InvoiceParty {
     countryCode?: string;
 }
 
+// A correction invoice (faktura korygująca, RodzajFaktury=KOR). Per the FA(3)
+// schema's own annotation on the <Fa> element: "W przypadku wystawienia
+// faktury korygującej wypełnia się wszystkie pola wg stanu po korekcie, a
+// pola dotyczące podstaw opodatkowania, podatku oraz należności ogółem
+// wypełnia się poprzez różnicę" — line items (FaWiersz) report the full
+// POST-correction state, while the VAT-group totals (P_13_x/P_14_x) and the
+// total due (P_15) report the DIFFERENCE (corrected − original). originalLines
+// is needed to compute that difference, not just to reference the original.
+export interface CorrectionInfo {
+    reason: string;              // PrzyczynaKorekty
+    originalInvoiceNumber: string;
+    originalIssueDate: string;   // YYYY-MM-DD
+    originalKsefNumber: string;
+    originalLines: InvoiceLine[];
+}
+
 export interface InvoiceInput {
     invoiceNumber: string;
     issueDate: string;   // YYYY-MM-DD
     dueDate?: string;    // YYYY-MM-DD
     seller: InvoiceParty;
     buyer: InvoiceParty;
-    lines: InvoiceLine[];
+    lines: InvoiceLine[];  // the corrected/current lines — see CorrectionInfo.originalLines
     currency?: string;
+    correction?: CorrectionInfo;
 }
 
 interface VatGroup {
@@ -80,6 +97,26 @@ function groupByVat(computed: ReturnType<typeof computeLines>): VatGroup[] {
     return Array.from(map.values()).sort((a, b) => VAT_GROUP_FIELD[a.rate as InvoiceLine['vatRate']].order - VAT_GROUP_FIELD[b.rate as InvoiceLine['vatRate']].order);
 }
 
+// Delta between two sets of VAT groups (corrected - original), for a
+// correction invoice's P_13_x/P_14_x totals. Every rate present on either
+// side gets an entry, even a net-zero one (e.g. a rate untouched by the
+// correction) — simpler and still schema-valid (TKwotowy allows 0, and
+// negative deltas: it has no minInclusive restriction, confirmed against
+// the vendored XSD, unlike the non-negative TKwotowy2/TKwotaNieujemna
+// variants used elsewhere).
+function deltaVatGroups(correctedLines: InvoiceLine[], originalLines: InvoiceLine[]): VatGroup[] {
+    const correctedGroups = new Map(groupByVat(computeLines(correctedLines)).map(g => [g.rate, g]));
+    const originalGroups = new Map(groupByVat(computeLines(originalLines)).map(g => [g.rate, g]));
+    const rates = new Set([...correctedGroups.keys(), ...originalGroups.keys()]);
+    const zero: VatGroup = { rate: '', net: 0, vat: 0, gross: 0 };
+
+    return Array.from(rates).map(rate => {
+        const c = correctedGroups.get(rate) ?? zero;
+        const o = originalGroups.get(rate) ?? zero;
+        return { rate, net: round2(c.net - o.net), vat: round2(c.vat - o.vat), gross: round2(c.gross - o.gross) };
+    }).sort((a, b) => VAT_GROUP_FIELD[a.rate as InvoiceLine['vatRate']].order - VAT_GROUP_FIELD[b.rate as InvoiceLine['vatRate']].order);
+}
+
 function esc(s: string | undefined): string {
     if (!s) return '';
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -100,10 +137,18 @@ function esc(s: string | undefined): string {
  */
 export function buildKSeFInvoiceXml(input: InvoiceInput): string {
     const computed = computeLines(input.lines);
-    const vatGroups = groupByVat(computed);
-    const totalGross = round2(computed.reduce((s, l) => s + l.gross, 0));
     const currency = input.currency || 'PLN';
     const countryCode = input.seller.countryCode || 'PL';
+
+    // For a correction, the VAT-group totals and P_15 are the DIFFERENCE
+    // (corrected − original) — see CorrectionInfo's doc comment. For a
+    // normal invoice they're just this invoice's own totals.
+    const vatGroups = input.correction
+        ? deltaVatGroups(input.lines, input.correction.originalLines)
+        : groupByVat(computed);
+    const totalGross = input.correction
+        ? round2(computed.reduce((s, l) => s + l.gross, 0) - computeLines(input.correction.originalLines).reduce((s, l) => s + l.gross, 0))
+        : round2(computed.reduce((s, l) => s + l.gross, 0));
 
     const linesXml = computed.map((l, i) => `
         <fa:FaWiersz>
@@ -129,6 +174,20 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
                 <fa:Termin>${input.dueDate}</fa:Termin>
             </fa:TerminPlatnosci>
         </fa:Platnosc>` : '';
+
+    // Schema element order: RodzajFaktury, then (for KOR/KOR_ZAL/KOR_ROZ)
+    // PrzyczynaKorekty, [TypKorekty — omitted, optional], DaneFaKorygowanej.
+    // Every invoice this platform issues goes through KSeF, so the
+    // DaneFaKorygowanej choice always takes the NrKSeF branch (marker "1" +
+    // the original's real KSeF number), never NrKSeFN ("issued outside KSeF").
+    const correctionXml = input.correction ? `
+        <fa:PrzyczynaKorekty>${esc(input.correction.reason)}</fa:PrzyczynaKorekty>
+        <fa:DaneFaKorygowanej>
+            <fa:DataWystFaKorygowanej>${input.correction.originalIssueDate}</fa:DataWystFaKorygowanej>
+            <fa:NrFaKorygowanej>${esc(input.correction.originalInvoiceNumber)}</fa:NrFaKorygowanej>
+            <fa:NrKSeF>1</fa:NrKSeF>
+            <fa:NrKSeFFaKorygowanej>${esc(input.correction.originalKsefNumber)}</fa:NrKSeFFaKorygowanej>
+        </fa:DaneFaKorygowanej>` : '';
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <fa:Faktura xmlns:fa="http://crd.gov.pl/wzor/2025/06/25/13775/"
@@ -186,7 +245,8 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
                 <fa:P_PMarzyN>1</fa:P_PMarzyN>
             </fa:PMarzy>
         </fa:Adnotacje>
-        <fa:RodzajFaktury>VAT</fa:RodzajFaktury>
+        <fa:RodzajFaktury>${input.correction ? 'KOR' : 'VAT'}</fa:RodzajFaktury>
+        ${correctionXml}
         ${linesXml}${platnoscXml}
     </fa:Fa>
     <fa:Stopka>

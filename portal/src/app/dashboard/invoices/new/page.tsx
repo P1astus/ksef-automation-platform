@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Send, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import type { InvoiceLine } from '@/lib/ksef-invoice-builder';
@@ -54,6 +54,8 @@ const OFFLINE_MODES: { label: string; value: string }[] = [
 
 export default function NewInvoicePage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const correctingId = searchParams.get('correctingId');
     const [clients, setClients] = useState<Client[]>([]);
     const [buyerNip, setBuyerNip] = useState('');
     const [buyerName, setBuyerName] = useState('');
@@ -67,12 +69,35 @@ export default function NewInvoicePage() {
     const [result, setResult] = useState<{ ksefReferenceNumber?: string; error?: string; queuedOffline?: boolean } | null>(null);
     const [isOffline, setIsOffline] = useState(false);
     const [offlineMode, setOfflineMode] = useState('offline24');
+    const [correctionReason, setCorrectionReason] = useState('');
+    const [correctingNumber, setCorrectingNumber] = useState('');
+    const [loadingOriginal, setLoadingOriginal] = useState(!!correctingId);
 
     useEffect(() => {
         fetch('/api/clients').then(r => r.json()).then(d => {
             setClients(Array.isArray(d.clients) ? d.clients : []);
         }).catch(() => {});
     }, []);
+
+    // Pre-fill from the invoice being corrected — an editable starting point,
+    // not a locked-in copy. The corrected lines the user ends up submitting
+    // (not these original ones) are what invoices/create/route.ts sends as
+    // the new invoice's FaWiersz; the original ones only feed the delta math.
+    useEffect(() => {
+        if (!correctingId) return;
+        fetch(`/api/invoices/${correctingId}/xml`).then(r => r.ok ? r.json() : null).then(data => {
+            if (!data) return;
+            setCorrectingNumber(data.invoice_number || '');
+            setBuyerNip(data.buyer_nip || '');
+            setBuyerName(data.buyer_name || '');
+            if (Array.isArray(data.invoice_lines) && data.invoice_lines.length > 0) {
+                setLines(data.invoice_lines);
+            }
+            const original = clients.find(c => c.nip === data.seller_nip);
+            if (original) setSellerClientId(String(original.id));
+        }).finally(() => setLoadingOriginal(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [correctingId, clients.length]);
 
     // Auto-fill buyer name from GUS
     useEffect(() => {
@@ -103,6 +128,7 @@ export default function NewInvoicePage() {
         if (!buyerNip || !buyerName) { alert('Wpisz NIP i nazwę nabywcy'); return; }
         if (!invoiceNumber) { alert('Wpisz numer faktury'); return; }
         if (lines.length === 0) { alert('Dodaj przynajmniej jedną pozycję'); return; }
+        if (correctingId && !correctionReason.trim()) { alert('Podaj powód korekty'); return; }
 
         setSending(true);
         setResult(null);
@@ -121,6 +147,8 @@ export default function NewInvoicePage() {
                     lines,
                     totals,
                     offlineMode: isOffline ? offlineMode : undefined,
+                    correctingInvoiceId: correctingId ? parseInt(correctingId) : undefined,
+                    correctionReason: correctingId ? correctionReason : undefined,
                 }),
             });
             if (!saveRes.ok) throw new Error('Błąd zapisu faktury');
@@ -192,8 +220,18 @@ export default function NewInvoicePage() {
                     <ChevronLeft size={16} /> Faktury
                 </Link>
                 <span style={{ color: 'var(--border)' }}>/</span>
-                <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Wystaw fakturę</h1>
+                <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>
+                    {correctingId ? 'Wystaw korektę' : 'Wystaw fakturę'}
+                </h1>
             </div>
+
+            {correctingId && (
+                <div style={{ background: 'var(--accent-dim)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: 'var(--text)' }}>
+                    {loadingOriginal
+                        ? 'Wczytywanie oryginalnej faktury…'
+                        : <>Korekta faktury <strong>{correctingNumber || `#${correctingId}`}</strong> — pozycje poniżej są edytowalną kopią oryginału; zmień je na stan po korekcie.</>}
+                </div>
+            )}
 
             {result?.error && (
                 <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: '#ef4444', fontSize: 13 }}>
@@ -264,6 +302,20 @@ export default function NewInvoicePage() {
                             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ width: '100%' }} />
                         </div>
                     </div>
+
+                    {correctingId && (
+                        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                            <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Powód korekty*</label>
+                            <textarea
+                                value={correctionReason}
+                                onChange={e => setCorrectionReason(e.target.value)}
+                                placeholder="np. korekta ilości towaru, błędna stawka VAT..."
+                                rows={2}
+                                style={{ width: '100%', resize: 'vertical' }}
+                                required
+                            />
+                        </div>
+                    )}
 
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', cursor: 'pointer' }}>

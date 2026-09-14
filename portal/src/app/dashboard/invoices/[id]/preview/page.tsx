@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle, FileDown } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle, FileDown, FileEdit } from 'lucide-react';
 
 interface InvoiceData {
     id: number;
@@ -21,6 +21,8 @@ interface InvoiceData {
     currency: string;
     issue_date: string;
     raw_xml: string | null;
+    corrects_invoice_id: number | null;
+    correction_reason: string | null;
 }
 
 // Parse simple XML key-value fields for display
@@ -133,7 +135,17 @@ export default function InvoicePreviewPage() {
                         <span style={{ fontSize: 11.5, fontWeight: 700, background: invoice.direction === 'sales' ? 'rgba(34,197,94,0.1)' : 'var(--accent-dim)', color: invoice.direction === 'sales' ? 'var(--success)' : 'var(--accent-hover)', padding: '3px 10px', borderRadius: 100 }}>
                             {invoice.direction === 'sales' ? 'Sprzedaż' : 'Zakup'}
                         </span>
+                        {invoice.corrects_invoice_id && (
+                            <span style={{ fontSize: 11.5, fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '3px 10px', borderRadius: 100 }}>
+                                Korekta
+                            </span>
+                        )}
                     </div>
+                    {invoice.corrects_invoice_id && invoice.correction_reason && (
+                        <div style={{ fontSize: 12.5, color: 'var(--text-subtle)', marginTop: 8 }}>
+                            Powód korekty: {invoice.correction_reason}
+                        </div>
+                    )}
                 </div>
                 {/* Action buttons */}
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -146,6 +158,15 @@ export default function InvoicePreviewPage() {
                         >
                             <FileDown size={14} /> {upoLoading ? 'Pobieranie...' : 'Pobierz UPO'}
                         </button>
+                    )}
+                    {invoice.ksef_number && invoice.direction === 'sales' && !invoice.corrects_invoice_id && (
+                        <Link
+                            href={`/dashboard/invoices/new?correctingId=${invoice.id}`}
+                            className="btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, textDecoration: 'none' }}
+                        >
+                            <FileEdit size={14} /> Wystaw korektę
+                        </Link>
                     )}
                     <button
                         onClick={() => setStatus('error')}

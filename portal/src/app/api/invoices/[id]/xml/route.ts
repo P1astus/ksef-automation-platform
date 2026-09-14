@@ -14,7 +14,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         `SELECT i.id, i.invoice_number, i.ksef_number, i.direction, i.processing_status,
                 i.seller_name, i.buyer_name, i.seller_nip, i.buyer_nip,
                 i.net_amount, i.vat_amount, i.gross_amount, i.currency,
-                i.issue_date, i.raw_xml
+                i.issue_date, i.raw_xml, i.invoice_lines,
+                i.corrects_invoice_id, i.correction_reason
          FROM invoices i
          WHERE i.id = $1 AND i.firm_id = $2`,
         [id, session.firmId]

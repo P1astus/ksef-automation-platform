@@ -100,6 +100,50 @@ describe('buildKSeFInvoiceXml — validates against the real vendored FA(3) XSD'
         expect(result.valid).toBe(true);
     });
 
+    it.skipIf(!xmllintAvailable)('a correction invoice (mixed-rate original corrected to a different mix) validates and reports deltas, not absolutes', () => {
+        const originalLines = [
+            { name: 'Towar A', qty: 2, unit: 'szt', netPrice: 50, vatRate: '23' as const },
+            { name: 'Usluga B', qty: 1, unit: 'godz', netPrice: 200, vatRate: '8' as const },
+        ];
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            invoiceNumber: 'FV/2/2026',
+            lines: [
+                { name: 'Towar A', qty: 1, unit: 'szt', netPrice: 50, vatRate: '23' }, // quantity reduced 2 -> 1
+                { name: 'Usluga B', qty: 1, unit: 'godz', netPrice: 200, vatRate: '8' }, // unchanged
+                { name: 'Uslugi zwolnione', qty: 1, unit: 'szt', netPrice: 30, vatRate: 'zw' }, // new line
+            ],
+            correction: {
+                reason: 'Korekta ilości towaru A oraz dodanie pozycji zwolnionej',
+                originalInvoiceNumber: 'FV/1/2026',
+                originalIssueDate: '2026-09-14',
+                originalKsefNumber: '1111111111-20260914-010080DD2B5E-26',
+                originalLines,
+            },
+        });
+
+        const result = validateAgainstFa3Schema(xml);
+        expect(result.output).toBe('');
+        expect(result.valid).toBe(true);
+
+        expect(xml).toContain('<fa:RodzajFaktury>KOR</fa:RodzajFaktury>');
+        expect(xml).toContain('<fa:NrFaKorygowanej>FV/1/2026</fa:NrFaKorygowanej>');
+        expect(xml).toContain('<fa:NrKSeFFaKorygowanej>1111111111-20260914-010080DD2B5E-26</fa:NrKSeFFaKorygowanej>');
+        // 23% line dropped from 100.00 net to 50.00 net -> delta -50.00 / -11.50 VAT
+        expect(xml).toContain('<fa:P_13_1>-50.00</fa:P_13_1>');
+        expect(xml).toContain('<fa:P_14_1>-11.50</fa:P_14_1>');
+        // 8% line unchanged -> zero delta, still reported
+        expect(xml).toContain('<fa:P_13_2>0.00</fa:P_13_2>');
+        expect(xml).toContain('<fa:P_14_2>0.00</fa:P_14_2>');
+        // new zw line, wasn't on the original at all -> full amount as the delta
+        expect(xml).toContain('<fa:P_13_7>30.00</fa:P_13_7>');
+        // total delta: -61.50 (23% line) + 0 (8% line) + 30.00 (new zw line) = -31.50
+        expect(xml).toContain('<fa:P_15>-31.50</fa:P_15>');
+        // line items report the FULL post-correction state, not a delta
+        expect(xml).toContain('<fa:P_9A>50.00</fa:P_9A>');
+        expect(xml).toContain('<fa:P_8B>1</fa:P_8B>');
+    });
+
     it('declares the FA (3) form code, not FA (2)', () => {
         const xml = buildKSeFInvoiceXml({
             ...baseInput,
