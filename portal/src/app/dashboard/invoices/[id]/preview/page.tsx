@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle, FileDown } from 'lucide-react';
 
 interface InvoiceData {
     id: number;
@@ -50,6 +50,28 @@ export default function InvoicePreviewPage() {
     const [showRaw, setShowRaw] = useState(false);
     const [updating, setUpdating] = useState(false);
     const [error, setError] = useState('');
+    const [upoLoading, setUpoLoading] = useState(false);
+
+    const downloadUpo = async () => {
+        setUpoLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`/api/invoices/${id}/upo`);
+            const d = await res.json();
+            if (!res.ok) { setError(d.error || 'Nie udało się pobrać UPO'); return; }
+            const blob = new Blob([d.upoXml], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `UPO-${invoice?.ksef_number || id}.xml`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            setError('Błąd połączenia z serwerem');
+        } finally {
+            setUpoLoading(false);
+        }
+    };
 
     useEffect(() => {
         fetch(`/api/invoices/${id}/xml`)
@@ -115,6 +137,16 @@ export default function InvoicePreviewPage() {
                 </div>
                 {/* Action buttons */}
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    {invoice.ksef_number && (
+                        <button
+                            onClick={downloadUpo}
+                            disabled={upoLoading}
+                            className="btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+                        >
+                            <FileDown size={14} /> {upoLoading ? 'Pobieranie...' : 'Pobierz UPO'}
+                        </button>
+                    )}
                     <button
                         onClick={() => setStatus('error')}
                         disabled={updating}

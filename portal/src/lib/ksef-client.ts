@@ -334,6 +334,65 @@ export async function closeOnlineSession(accessToken: string, referenceNumber: s
  * openOnlineSession + encryptInvoiceForSession above). KSeF 2.0 requires
  * the invoice body encrypted with the session's key before this call.
  */
+export interface SessionInvoiceStatus {
+    ordinalNumber: number;
+    invoiceNumber?: string;
+    ksefNumber?: string;
+    referenceNumber: string;
+    invoiceHash: string;
+    acquisitionDate?: string;
+    invoicingDate?: string;
+    permanentStorageDate?: string;
+    upoDownloadUrl?: string;
+    upoDownloadUrlExpirationDate?: string;
+    status: { code: number; description: string };
+}
+
+/**
+ * Polls the status of every invoice submitted in an online session —
+ * GET /sessions/{referenceNumber}/invoices. KSeF processes submitted
+ * invoices asynchronously: right after sendInvoice() returns, an invoice
+ * typically hasn't yet been assigned its permanent ksefNumber or a
+ * upoDownloadUrl — both only appear here once status.code reaches a
+ * terminal value (200 = success; >=400 = a real failure, e.g. 440
+ * "Duplikat faktury" — see ksef-openapi.json's example). pageSize is
+ * generous (an online session realistically holds a handful of invoices
+ * per client, not thousands) so this one call covers the whole session
+ * without needing the continuation-token pagination the endpoint also
+ * supports.
+ */
+export async function getSessionInvoiceStatus(
+    accessToken: string,
+    referenceNumber: string
+): Promise<SessionInvoiceStatus[]> {
+    const res = await fetch(`${BASE_URL}/sessions/${referenceNumber}/invoices?pageSize=100`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`KSeF sessions/{ref}/invoices failed (${res.status}): ${body}`);
+    }
+    const data = await res.json();
+    return data.invoices ?? [];
+}
+
+/**
+ * Downloads the UPO (Urzędowe Poświadczenie Odbioru — the legal
+ * proof-of-receipt KSeF issues per invoice) from the pre-signed
+ * `upoDownloadUrl` a terminal-status entry from getSessionInvoiceStatus()
+ * carries. The URL is a self-authorizing SAS link (no Bearer header) but
+ * time-limited — download promptly and persist the content, don't just
+ * store the URL.
+ */
+export async function downloadUpo(upoDownloadUrl: string): Promise<{ xml: string; hash: string | null }> {
+    const res = await fetch(upoDownloadUrl, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) {
+        throw new Error(`UPO download failed (${res.status})`);
+    }
+    return { xml: await res.text(), hash: res.headers.get('x-ms-meta-hash') };
+}
+
 export async function sendInvoice(
     accessToken: string,
     sessionReferenceNumber: string,
