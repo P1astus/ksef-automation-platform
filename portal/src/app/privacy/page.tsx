@@ -43,7 +43,7 @@ Nie sprzedajemy danych osobowych podmiotom trzecim.`,
             content: `Przysługują Ci następujące prawa:
 • Prawo dostępu do danych (art. 15 RODO)
 • Prawo do sprostowania danych (art. 16 RODO)
-• Prawo do usunięcia danych ("prawo do bycia zapomnianym", art. 17 RODO)
+• Prawo do usunięcia danych kontaktowych ("prawo do bycia zapomnianym", art. 17 RODO) — dotyczy danych osobowych (osoba kontaktowa, e-mail, telefon, notatki); faktury i dane rozliczeniowe podlegają obowiązkowi przechowywania wynikającemu z przepisów podatkowych (patrz pkt 5) i nie są usuwane na podstawie tego żądania
 • Prawo do ograniczenia przetwarzania (art. 18 RODO)
 • Prawo do przenoszenia danych (art. 20 RODO)
 • Prawo do sprzeciwu (art. 21 RODO)

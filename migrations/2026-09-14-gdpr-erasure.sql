@@ -1,0 +1,11 @@
+-- privacy/page.tsx has always promised "prawo do usuniecia danych" (GDPR
+-- Art. 17 right to erasure) with no way to actually exercise it anywhere in
+-- the product. Full deletion isn't the right implementation though: Polish
+-- tax law (Ordynacja podatkowa) requires invoice/tax records be kept for
+-- years regardless of an erasure request (GDPR Art. 17(3)(b)'s own "legal
+-- obligation" exemption), and invoices.buyer_name/seller_name etc. are a
+-- snapshot of what was actually filed with KSeF - rewriting them after the
+-- fact would falsify a government record. Erasure here is scoped to what's
+-- actually personal CRM/contact data on the clients row; invoices are never
+-- touched by it.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;

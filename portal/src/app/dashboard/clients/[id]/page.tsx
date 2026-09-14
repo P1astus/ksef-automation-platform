@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
     ArrowLeft, RefreshCw, CheckCircle, AlertCircle, FileText,
-    TrendingUp, TrendingDown, ToggleLeft, ToggleRight, Key, User, Save, Send,
+    TrendingUp, TrendingDown, ToggleLeft, ToggleRight, Key, User, Save, Send, ShieldOff,
 } from 'lucide-react';
 
 interface Client {
@@ -27,6 +27,7 @@ interface Client {
     contact_phone: string | null;
     notes: string | null;
     tags: string | null;
+    anonymized_at: string | null;
 }
 
 interface Invoice {
@@ -57,6 +58,7 @@ export default function ClientDetailPage() {
     const [crmSaved, setCrmSaved] = useState(false);
     const [requestingDocs, setRequestingDocs] = useState(false);
     const [docRequestResult, setDocRequestResult] = useState<{ ok: boolean; text: string } | null>(null);
+    const [erasing, setErasing] = useState(false);
 
     const load = async () => {
         try {
@@ -116,6 +118,29 @@ export default function ClientDetailPage() {
             setDocRequestResult({ ok: false, text: 'Błąd połączenia' });
         } finally {
             setRequestingDocs(false);
+        }
+    };
+
+    const eraseContactData = async () => {
+        if (!client) return;
+        const confirmed = window.confirm(
+            `Usunąć dane kontaktowe klienta "${client.client_name}"?\n\n` +
+            'Zostaną usunięte: osoba kontaktowa, e-mail, telefon, notatki i tagi.\n\n' +
+            'Faktury i dane rozliczeniowe NIE zostaną usunięte — przepisy podatkowe ' +
+            'wymagają ich przechowywania niezależnie od tego żądania.\n\n' +
+            'Tej operacji nie można cofnąć.'
+        );
+        if (!confirmed) return;
+        setErasing(true);
+        try {
+            const res = await fetch(`/api/clients/${id}/erase`, { method: 'POST' });
+            if (res.ok) await load();
+            else {
+                const data = await res.json().catch(() => ({}));
+                alert(data.error || 'Błąd usuwania danych');
+            }
+        } finally {
+            setErasing(false);
         }
     };
 
@@ -346,6 +371,24 @@ export default function ClientDetailPage() {
                         ))}
                     </div>
                 )}
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {client.anonymized_at ? (
+                        <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>
+                            Dane kontaktowe usunięte {new Date(client.anonymized_at).toLocaleDateString('pl-PL')}
+                        </span>
+                    ) : (
+                        <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>
+                            Prawo do usunięcia danych (RODO) — usuwa tylko dane kontaktowe, nie faktury
+                        </span>
+                    )}
+                    <button
+                        onClick={eraseContactData}
+                        disabled={erasing}
+                        style={{ background: 'none', border: 'none', color: 'var(--error)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: erasing ? 0.6 : 1 }}
+                    >
+                        <ShieldOff size={13} /> {erasing ? 'Usuwanie...' : 'Usuń dane kontaktowe'}
+                    </button>
+                </div>
             </div>
 
             {/* Recent invoices */}

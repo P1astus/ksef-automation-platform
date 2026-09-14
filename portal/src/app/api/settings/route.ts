@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getSession, requireRole, sessionRole } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { logActivity } from '@/lib/activity';
 
 export async function GET() {
     const session = await getSession();
@@ -100,6 +101,36 @@ export async function PATCH(request: Request) {
 
         const hash = await bcrypt.hash(new_password, 10);
         await query('UPDATE firms SET admin_password_hash = $1 WHERE id = $2', [hash, session.firmId]);
+        return NextResponse.json({ success: true });
+    }
+
+    // ── Deactivate account ─────────────────────────────────────────────
+    // Owner-only self-service account closure. Deliberately NOT an
+    // immediate cascading hard-delete of the firm's data: the firm is
+    // itself a data controller with its own retention obligations for the
+    // accounting work it performed, and an irreversible mass-delete
+    // triggered by one click is a bigger, riskier action than this fix
+    // should take unprompted. Sets is_active=false — the same flag
+    // auth/login/route.ts already checks and rejects on — so the account
+    // is immediately unusable; an actual data-purge policy is a separate
+    // product decision for a future round, not built here.
+    if (action === 'deactivate_account') {
+        const roleError = await requireRole(session, ['owner']);
+        if (roleError) return roleError;
+        const { current_password } = body;
+        if (!current_password) {
+            return NextResponse.json({ error: 'Podaj hasło, aby potwierdzić' }, { status: 400 });
+        }
+
+        const result = await query('SELECT admin_password_hash, firm_name FROM firms WHERE id = $1', [session.firmId]);
+        const isValid = await bcrypt.compare(current_password, result.rows[0]?.admin_password_hash || '');
+        if (!isValid) {
+            return NextResponse.json({ error: 'Nieprawidłowe hasło' }, { status: 401 });
+        }
+
+        await query('UPDATE firms SET is_active = false WHERE id = $1', [session.firmId]);
+        await logActivity(session.firmId, 'account_deactivated', `Konto biura "${result.rows[0].firm_name}" zostało dezaktywowane przez właściciela`);
+
         return NextResponse.json({ success: true });
     }
 

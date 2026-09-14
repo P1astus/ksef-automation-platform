@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 
 interface FirmData {
@@ -37,6 +38,7 @@ function StatusMsg({ msg, ok }: { msg: string; ok: boolean }) {
 }
 
 export default function SettingsPage() {
+    const router = useRouter();
     const [data, setData] = useState<FirmData | null>(null);
     const [firmName, setFirmName] = useState('');
     const [firmNip, setFirmNip] = useState('');
@@ -44,7 +46,9 @@ export default function SettingsPage() {
     const [currentPw, setCurrentPw] = useState('');
     const [newPw, setNewPw] = useState('');
     const [confirmPw, setConfirmPw] = useState('');
-    const [msgs, setMsgs] = useState<{ firm?: { text: string; ok: boolean }; email?: { text: string; ok: boolean }; pw?: { text: string; ok: boolean } }>({});
+    const [deactivatePw, setDeactivatePw] = useState('');
+    const [deactivating, setDeactivating] = useState(false);
+    const [msgs, setMsgs] = useState<{ firm?: { text: string; ok: boolean }; email?: { text: string; ok: boolean }; pw?: { text: string; ok: boolean }; deactivate?: { text: string; ok: boolean } }>({});
     const [loading, setLoading] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
@@ -64,6 +68,32 @@ export default function SettingsPage() {
             setMsgs(m => ({ ...m, [msgKey]: { text: 'Błąd serwera', ok: false } }));
         } finally {
             setLoading(l => ({ ...l, [key]: false }));
+        }
+    };
+
+    const deactivateAccount = async () => {
+        if (!deactivatePw) { setMsgs(m => ({ ...m, deactivate: { text: 'Podaj hasło, aby potwierdzić', ok: false } })); return; }
+        const confirmed = window.confirm(
+            'Dezaktywować konto biura?\n\n' +
+            'Konto zostanie natychmiast zablokowane — nikt nie będzie mógł się zalogować. ' +
+            'Dane faktur i rozliczeń NIE zostaną usunięte (przechowywane zgodnie z przepisami podatkowymi).\n\n' +
+            'Aby faktycznie usunąć dane, skontaktuj się z obsługą.'
+        );
+        if (!confirmed) return;
+        setDeactivating(true);
+        setMsgs(m => ({ ...m, deactivate: undefined }));
+        try {
+            const res = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'deactivate_account', current_password: deactivatePw }) });
+            const d = await res.json();
+            if (res.ok) {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                router.push('/login');
+                router.refresh();
+            } else {
+                setMsgs(m => ({ ...m, deactivate: { text: d.error || 'Błąd', ok: false } }));
+            }
+        } finally {
+            setDeactivating(false);
         }
     };
 
@@ -133,6 +163,28 @@ export default function SettingsPage() {
                 </button>
                 {msgs.pw && <StatusMsg msg={msgs.pw.text} ok={msgs.pw.ok} />}
             </Section>
+
+            {data.isOwner && (
+                <Section title="Dezaktywacja konta">
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 14px' }}>
+                        Zamyka dostęp do konta biura. Faktury i dane rozliczeniowe pozostają zachowane
+                        zgodnie z obowiązkiem przechowywania dokumentacji podatkowej — to nie jest
+                        trwałe usunięcie danych.
+                    </p>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Potwierdź hasłem</label>
+                    <input type="password" value={deactivatePw} onChange={e => setDeactivatePw(e.target.value)} placeholder="••••••••" style={{ maxWidth: 280 }} />
+                    <div>
+                        <button
+                            onClick={deactivateAccount}
+                            disabled={deactivating}
+                            style={{ marginTop: 16, background: 'var(--error-dim)', color: 'var(--error)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: deactivating ? 0.7 : 1 }}
+                        >
+                            {deactivating ? 'Dezaktywowanie...' : 'Dezaktywuj konto'}
+                        </button>
+                    </div>
+                    {msgs.deactivate && <StatusMsg msg={msgs.deactivate.text} ok={msgs.deactivate.ok} />}
+                </Section>
+            )}
         </div>
     );
 }
