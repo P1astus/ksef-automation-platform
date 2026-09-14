@@ -9,6 +9,8 @@ interface FirmData {
     admin_email: string;
     subscription_tier: string;
     max_clients: number;
+    role: 'owner' | 'admin' | 'member' | 'readonly';
+    isOwner: boolean;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -67,38 +69,48 @@ export default function SettingsPage() {
 
     if (!data) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Ładowanie...</div>;
 
+    // update_firm/update_email are gated server-side to owner/admin (email
+    // change is owner-only — it's the owner's own login identity). Hiding
+    // the sections a member/readonly session can't use avoids showing a
+    // form that will just 403 on submit.
+    const canManageFirm = data.role === 'owner' || data.role === 'admin';
+
     return (
         <div style={{ maxWidth: 640, padding: '28px 0' }}>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>Ustawienia konta</h1>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 32px' }}>Zarządzaj danymi biura i bezpieczeństwem konta.</p>
 
-            <Section title="Dane biura">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nazwa biura rachunkowego</label>
-                        <input type="text" value={firmName} onChange={e => setFirmName(e.target.value)} />
+            {canManageFirm && (
+                <Section title="Dane biura">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nazwa biura rachunkowego</label>
+                            <input type="text" value={firmName} onChange={e => setFirmName(e.target.value)} />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>NIP biura</label>
+                            <input type="text" value={firmNip} onChange={e => setFirmNip(e.target.value)} placeholder="10 cyfr" maxLength={10} className="mono" />
+                        </div>
                     </div>
-                    <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>NIP biura</label>
-                        <input type="text" value={firmNip} onChange={e => setFirmNip(e.target.value)} placeholder="10 cyfr" maxLength={10} className="mono" />
-                    </div>
-                </div>
-                <button onClick={() => patch('firm', { action: 'update_firm', firm_name: firmName, firm_nip: firmNip }, 'firm')} className="btn-primary" style={{ marginTop: 16, opacity: loading['firm'] ? 0.7 : 1 }}>
-                    {loading['firm'] ? 'Zapisywanie...' : 'Zapisz dane biura'}
-                </button>
-                {msgs.firm && <StatusMsg msg={msgs.firm.text} ok={msgs.firm.ok} />}
-            </Section>
+                    <button onClick={() => patch('firm', { action: 'update_firm', firm_name: firmName, firm_nip: firmNip }, 'firm')} className="btn-primary" style={{ marginTop: 16, opacity: loading['firm'] ? 0.7 : 1 }}>
+                        {loading['firm'] ? 'Zapisywanie...' : 'Zapisz dane biura'}
+                    </button>
+                    {msgs.firm && <StatusMsg msg={msgs.firm.text} ok={msgs.firm.ok} />}
+                </Section>
+            )}
 
-            <Section title="Adres e-mail">
-                <div>
-                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nowy adres e-mail</label>
-                    <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-                </div>
-                <button onClick={() => patch('email', { action: 'update_email', new_email: newEmail }, 'email')} className="btn-primary" style={{ marginTop: 16, opacity: loading['email'] ? 0.7 : 1 }}>
-                    {loading['email'] ? 'Zapisywanie...' : 'Zmień e-mail'}
-                </button>
-                {msgs.email && <StatusMsg msg={msgs.email.text} ok={msgs.email.ok} />}
-            </Section>
+            {data.isOwner && (
+                <Section title="Adres e-mail">
+                    <div>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nowy adres e-mail</label>
+                        <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+                    </div>
+                    <button onClick={() => patch('email', { action: 'update_email', new_email: newEmail }, 'email')} className="btn-primary" style={{ marginTop: 16, opacity: loading['email'] ? 0.7 : 1 }}>
+                        {loading['email'] ? 'Zapisywanie...' : 'Zmień e-mail'}
+                    </button>
+                    {msgs.email && <StatusMsg msg={msgs.email.text} ok={msgs.email.ok} />}
+                </Section>
+            )}
 
             <Section title="Zmiana hasła">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

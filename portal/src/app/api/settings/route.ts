@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getSession, requireRole } from '@/lib/auth';
+import { getSession, requireRole, sessionRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 
 export async function GET() {
@@ -12,7 +12,10 @@ export async function GET() {
         [session.firmId]
     );
 
-    return NextResponse.json(result.rows[0] || {});
+    // The frontend needs to know whether this session can manage firm-level
+    // settings at all (owner/admin) before rendering those sections — a
+    // member/readonly session would otherwise see forms that 403 on submit.
+    return NextResponse.json({ ...result.rows[0], role: sessionRole(session), isOwner: session.userId == null });
 }
 
 export async function PATCH(request: Request) {
@@ -61,17 +64,32 @@ export async function PATCH(request: Request) {
     }
 
     // ── Change password ──────────────────────────────────────────────
-    // This changes firms.admin_password_hash — the firm owner's own login
-    // credential — owner only, not a delegated admin.
+    // Always changes the calling session's OWN credential, scoped by
+    // session.userId/firmId (never user-supplied) — no role gate needed,
+    // since this can never touch anyone else's password. Branches by
+    // account kind: the owner has no firm_users row (userId is null) and
+    // authenticates via firms.admin_password_hash; an invited team member
+    // (userId set — see auth/login/route.ts) has their own firm_users row.
+    // Before this branch existed, a team member had no way to ever change
+    // the password they were invited with.
     if (action === 'update_password') {
-        const roleError = await requireRole(session, ['owner']);
-        if (roleError) return roleError;
         const { current_password, new_password } = body;
         if (!current_password || !new_password) {
             return NextResponse.json({ error: 'Podaj obecne i nowe hasło' }, { status: 400 });
         }
         if (new_password.length < 8) {
             return NextResponse.json({ error: 'Nowe hasło musi mieć co najmniej 8 znaków' }, { status: 400 });
+        }
+
+        if (session.userId) {
+            const result = await query('SELECT password_hash FROM firm_users WHERE id = $1 AND firm_id = $2', [session.userId, session.firmId]);
+            const isValid = await bcrypt.compare(current_password, result.rows[0]?.password_hash || '');
+            if (!isValid) {
+                return NextResponse.json({ error: 'Nieprawidłowe obecne hasło' }, { status: 401 });
+            }
+            const hash = await bcrypt.hash(new_password, 10);
+            await query('UPDATE firm_users SET password_hash = $1 WHERE id = $2', [hash, session.userId]);
+            return NextResponse.json({ success: true });
         }
 
         const result = await query('SELECT admin_password_hash FROM firms WHERE id = $1', [session.firmId]);
