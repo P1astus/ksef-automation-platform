@@ -149,6 +149,13 @@ export default function InvoicePreviewPage() {
                 </div>
                 {/* Action buttons */}
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <a
+                        href={`/api/invoices/${id}/pdf`}
+                        className="btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, textDecoration: 'none' }}
+                    >
+                        <FileDown size={14} /> Pobierz PDF
+                    </a>
                     {invoice.ksef_number && (
                         <button
                             onClick={downloadUpo}
