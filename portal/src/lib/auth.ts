@@ -41,9 +41,20 @@ export async function decrypt(input: string): Promise<any> {
     return payload;
 }
 
-export async function createSession(firmId: number, adminEmail: string) {
+export type SessionRole = 'owner' | 'admin' | 'member' | 'readonly';
+
+// `userId` is the firm_users.id of an invited team member, or null for the
+// firm owner (who authenticates against firms.admin_email directly and has
+// no firm_users row). `role` is 'owner' for the firm owner (always full
+// access) or the invited member's firm_users.role otherwise.
+export async function createSession(
+    firmId: number,
+    adminEmail: string,
+    role: SessionRole = 'owner',
+    userId: number | null = null
+) {
     const expires = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 hours
-    const session = await encrypt({ firmId, adminEmail, expires });
+    const session = await encrypt({ firmId, adminEmail, role, userId, expires });
 
     const cookieStore = await cookies();
     cookieStore.set('session', session, {
@@ -53,6 +64,24 @@ export async function createSession(firmId: number, adminEmail: string) {
         sameSite: 'lax',
         path: '/',
     });
+}
+
+// Sessions created before this field existed have no `role` — treat that as
+// 'owner' (the only kind of session createSession() could produce before),
+// not as unauthorized. A brand new login always gets an explicit role.
+export function sessionRole(session: { role?: SessionRole }): SessionRole {
+    return session.role ?? 'owner';
+}
+
+// Use in a route handler after getSession(): returns a 403 NextResponse if
+// the session's role isn't in `allowed`, or null if the caller may proceed.
+export async function requireRole(session: { role?: SessionRole } | null, allowed: SessionRole[]) {
+    const { NextResponse } = await import('next/server');
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!allowed.includes(sessionRole(session))) {
+        return NextResponse.json({ error: 'Brak uprawnień do tej operacji' }, { status: 403 });
+    }
+    return null;
 }
 
 export async function getSession() {

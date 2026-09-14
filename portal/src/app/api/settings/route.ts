@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 
 export async function GET() {
@@ -23,7 +23,10 @@ export async function PATCH(request: Request) {
     const { action } = body;
 
     // ── Update firm details ──────────────────────────────────────────
+    // Firm-level (name/NIP): a delegated admin can reasonably manage this.
     if (action === 'update_firm') {
+        const roleError = await requireRole(session, ['owner', 'admin']);
+        if (roleError) return roleError;
         const { firm_name, firm_nip } = body;
         if (!firm_name?.trim()) {
             return NextResponse.json({ error: 'Nazwa firmy jest wymagana' }, { status: 400 });
@@ -39,7 +42,11 @@ export async function PATCH(request: Request) {
     }
 
     // ── Change email ────────────────────────────────────────────────
+    // This is the firm owner's own login identity — owner only, not a
+    // delegated admin.
     if (action === 'update_email') {
+        const roleError = await requireRole(session, ['owner']);
+        if (roleError) return roleError;
         const { new_email } = body;
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!new_email || !emailRegex.test(new_email)) {
@@ -54,7 +61,11 @@ export async function PATCH(request: Request) {
     }
 
     // ── Change password ──────────────────────────────────────────────
+    // This changes firms.admin_password_hash — the firm owner's own login
+    // credential — owner only, not a delegated admin.
     if (action === 'update_password') {
+        const roleError = await requireRole(session, ['owner']);
+        if (roleError) return roleError;
         const { current_password, new_password } = body;
         if (!current_password || !new_password) {
             return NextResponse.json({ error: 'Podaj obecne i nowe hasło' }, { status: 400 });

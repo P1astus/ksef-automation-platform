@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 
@@ -56,6 +56,8 @@ export async function GET() {
 export async function POST(request: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const roleError = await requireRole(session, ['owner', 'admin']);
+    if (roleError) return roleError;
     await ensureTables();
 
     const body = await request.json().catch(() => ({}));
@@ -102,6 +104,8 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const roleError = await requireRole(session, ['owner', 'admin']);
+    if (roleError) return roleError;
 
     const { searchParams } = new URL(request.url);
     const memberId = searchParams.get('memberId');

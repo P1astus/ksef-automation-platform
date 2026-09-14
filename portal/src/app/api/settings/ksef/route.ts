@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { XADES_SIDECAR } from '@/lib/ksef-client';
 
@@ -78,6 +78,10 @@ export async function POST(request: Request) {
     try {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        // Saving a client's KSeF token/certificate is the most sensitive
+        // action in the system — restrict it to the firm owner/admin.
+        const roleError = await requireRole(session, ['owner', 'admin']);
+        if (roleError) return roleError;
 
         const contentType = request.headers.get('content-type') || '';
         let client_id: string, auth_method: string, token: string | undefined;

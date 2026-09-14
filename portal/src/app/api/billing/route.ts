@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 
 // Constructed lazily (on first actual use), not at module load: `next build`
@@ -59,6 +59,10 @@ export async function POST(request: Request) {
     try {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        // Changing the firm's subscription/payment is owner/admin territory,
+        // not day-to-day work.
+        const roleError = await requireRole(session, ['owner', 'admin']);
+        if (roleError) return roleError;
 
         const { targetPlan } = await request.json();
         const plan = PLAN_DETAILS[targetPlan as keyof typeof PLAN_DETAILS];
