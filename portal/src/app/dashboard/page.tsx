@@ -20,10 +20,14 @@ export default async function DashboardPage() {
     const clientsRes = await query('SELECT COUNT(*) as count FROM clients WHERE firm_id = $1', [session.firmId]);
     const clientCount = parseInt(clientsRes.rows[0].count);
 
+    // Anchored directly on invoices.firm_id, not a client_nip join — a NIP
+    // can belong to more than one firm since D1, so a join without firm_id
+    // in the ON clause could pull in another firm's invoices for a shared
+    // NIP (invoices already carries its own firm_id, no join needed at all).
     const invoiceRes = await query(`
         SELECT processing_status, COUNT(*) as count
-        FROM invoices i JOIN clients c ON i.client_nip = c.nip
-        WHERE c.firm_id = $1 GROUP BY processing_status
+        FROM invoices i
+        WHERE i.firm_id = $1 GROUP BY processing_status
     `, [session.firmId]);
     const stats = invoiceRes.rows.reduce((acc: Record<string, number>, row: { processing_status: string; count: string }) => {
         acc[row.processing_status] = parseInt(row.count); return acc;
@@ -32,8 +36,8 @@ export default async function DashboardPage() {
 
     const weekRes = await query(`
         SELECT TO_CHAR(i.created_at::date, 'DD.MM') as day, COUNT(*) as count
-        FROM invoices i JOIN clients c ON i.client_nip = c.nip
-        WHERE c.firm_id = $1 AND i.created_at >= NOW() - INTERVAL '7 days'
+        FROM invoices i
+        WHERE i.firm_id = $1 AND i.created_at >= NOW() - INTERVAL '7 days'
         GROUP BY i.created_at::date ORDER BY i.created_at::date
     `, [session.firmId]);
 
@@ -48,8 +52,8 @@ export default async function DashboardPage() {
 
     const dirRes = await query(`
         SELECT direction, COUNT(*) as count
-        FROM invoices i JOIN clients c ON i.client_nip = c.nip
-        WHERE c.firm_id = $1 GROUP BY direction
+        FROM invoices i
+        WHERE i.firm_id = $1 GROUP BY direction
     `, [session.firmId]);
     const barData = [
         { name: 'Sprzedaż', value: parseInt(dirRes.rows.find((r: { direction: string }) => r.direction === 'sales')?.count || '0') },

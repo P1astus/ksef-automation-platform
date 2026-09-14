@@ -141,6 +141,37 @@ describe('D1+D2 tenancy fix (real Postgres engine, not mocked)', () => {
         });
     });
 
+    describe('dashboard/page.tsx pattern: stats scoped directly by invoices.firm_id', () => {
+        // Found live in the codebase (not in the original D1/D2 brief):
+        // dashboard/page.tsx's three stats queries (status breakdown, weekly
+        // chart, sales/purchase split) still used the client_nip join with no
+        // firm_id in the ON clause - the exact leak shape D1/D2 fixed
+        // everywhere else, on the one page every firm sees first after login.
+        const statusBreakdown = (requestingFirm: number) =>
+            db.query(
+                `SELECT processing_status, COUNT(*) as count FROM invoices i WHERE i.firm_id = $1 GROUP BY processing_status`,
+                [requestingFirm]
+            );
+
+        it("firm A's status breakdown counts only firm A's invoice", async () => {
+            const res = await statusBreakdown(firmA);
+            expect(res.rows.reduce((s: number, r: any) => s + Number(r.count), 0)).toBe(1);
+        });
+
+        it("firm B's status breakdown counts only firm B's invoice", async () => {
+            const res = await statusBreakdown(firmB);
+            expect(res.rows.reduce((s: number, r: any) => s + Number(r.count), 0)).toBe(1);
+        });
+
+        it('the OLD join (no firm_id in the ON clause) counts both firms\' invoices for either firm', async () => {
+            const oldShape = await db.query(
+                `SELECT COUNT(*) as count FROM invoices i JOIN clients c ON i.client_nip = c.nip WHERE c.firm_id = $1`,
+                [firmA]
+            );
+            expect(Number((oldShape.rows[0] as any).count)).toBe(2);
+        });
+    });
+
     describe('jpk/generate/route.ts pattern: invoice fetch scoped by firm_id', () => {
         const fetchForJpk = (nip: string, requestingFirm: number) =>
             db.query(
