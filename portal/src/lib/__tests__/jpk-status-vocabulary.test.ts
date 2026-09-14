@@ -54,7 +54,10 @@ describe('jpk/generate POST writes the computed status, not a hardcoded value', 
             return { rows: [] };
         });
         vi.doMock('@/lib/db', () => ({ query: queryMock }));
-        vi.doMock('@/lib/auth', () => ({ getSession: vi.fn(async () => ({ firmId: 1 })) }));
+        vi.doMock('@/lib/auth', () => ({
+            getSession: vi.fn(async () => ({ firmId: 1 })),
+            requireRole: vi.fn(async () => null), // this test isn't about role gating
+        }));
         vi.doMock('@/lib/activity', () => ({ logActivity: vi.fn(async () => {}) }));
 
         const { POST } = await import('@/app/api/jpk/generate/route');

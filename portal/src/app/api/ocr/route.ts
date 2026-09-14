@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
 import { recognize } from 'tesseract.js';
 
@@ -9,6 +9,8 @@ export async function POST(request: Request) {
         if (!session || !session.firmId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
+        const roleError = await requireRole(session, ['owner', 'admin', 'member']);
+        if (roleError) return roleError;
 
         const formData = await request.formData();
         const file = formData.get('file') as File;

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { buildKSeFInvoiceXml } from '@/lib/ksef-invoice-builder';
@@ -8,6 +8,8 @@ import type { InvoiceLine } from '@/lib/ksef-invoice-builder';
 export async function POST(request: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const roleError = await requireRole(session, ['owner', 'admin', 'member']);
+    if (roleError) return roleError;
 
     const body = await request.json().catch(() => ({}));
     const { clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName, lines, totals, offlineMode } = body;

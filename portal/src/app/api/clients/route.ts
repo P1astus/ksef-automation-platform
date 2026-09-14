@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 
@@ -21,6 +21,8 @@ export async function GET() {
 export async function POST(request: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const roleError = await requireRole(session, ['owner', 'admin', 'member']);
+    if (roleError) return roleError;
 
     try {
         const { nip, client_name } = await request.json();

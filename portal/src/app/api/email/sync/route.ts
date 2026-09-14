@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
 import imaps from 'imap-simple';
 import { simpleParser } from 'mailparser';
@@ -73,6 +73,8 @@ export async function POST(request: Request) {
         if (!session || !session.firmId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
+        const roleError = await requireRole(session, ['owner', 'admin', 'member']);
+        if (roleError) return roleError;
 
         // In a real app, these would come from the Firm's DB settings, but we use hardcoded 
         // environment variables or fallback values for the MVP demo.
