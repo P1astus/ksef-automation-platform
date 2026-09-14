@@ -8,7 +8,7 @@ BEGIN;
 -- Helper: Create a temp table with client tiers to control volume per client
 -- ============================================================================
 CREATE TEMP TABLE client_tiers AS
-SELECT c.nip, c.client_name, c.monthly_invoice_volume,
+SELECT c.nip, c.firm_id, c.client_name, c.monthly_invoice_volume,
     CASE
         WHEN c.monthly_invoice_volume >= 300 THEN 'high'
         WHEN c.monthly_invoice_volume >= 80  THEN 'medium'
@@ -21,7 +21,7 @@ WHERE c.sync_enabled = true AND c.nip != '1111111111';
 -- SALES INVOICES — high-volume clients: ~100 per month x 5 months = 500 each
 -- ============================================================================
 INSERT INTO invoices (
-    client_nip, ksef_number, invoice_number, invoice_type, direction,
+    firm_id, client_nip, ksef_number, invoice_number, invoice_type, direction,
     seller_nip, seller_name, buyer_nip, buyer_name,
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
@@ -29,6 +29,7 @@ INSERT INTO invoices (
     processing_status, jpk_marker, jpk_period
 )
 SELECT
+    ct.firm_id,
     ct.nip,
     'ST' || ct.nip || 'S' || LPAD(s::text, 6, '0'),
     'FVS/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 5, '0'),
@@ -70,7 +71,7 @@ ON CONFLICT (ksef_number) DO NOTHING;
 -- PURCHASE INVOICES — high-volume clients: ~100 per month x 5 months = 500 each
 -- ============================================================================
 INSERT INTO invoices (
-    client_nip, ksef_number, invoice_number, invoice_type, direction,
+    firm_id, client_nip, ksef_number, invoice_number, invoice_type, direction,
     seller_nip, seller_name, buyer_nip, buyer_name,
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
@@ -78,6 +79,7 @@ INSERT INTO invoices (
     processing_status, jpk_marker, jpk_period
 )
 SELECT
+    ct.firm_id,
     ct.nip,
     'ST' || ct.nip || 'P' || LPAD(s::text, 6, '0'),
     'FVP/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 5, '0'),
@@ -116,7 +118,7 @@ ON CONFLICT (ksef_number) DO NOTHING;
 -- SALES INVOICES — medium-volume clients: ~40 per month x 5 months = 200 each
 -- ============================================================================
 INSERT INTO invoices (
-    client_nip, ksef_number, invoice_number, invoice_type, direction,
+    firm_id, client_nip, ksef_number, invoice_number, invoice_type, direction,
     seller_nip, seller_name, buyer_nip, buyer_name,
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
@@ -124,6 +126,7 @@ INSERT INTO invoices (
     processing_status, jpk_marker, jpk_period
 )
 SELECT
+    ct.firm_id,
     ct.nip,
     'ST' || ct.nip || 'S' || LPAD(s::text, 6, '0'),
     'FVS/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 5, '0'),
@@ -162,7 +165,7 @@ ON CONFLICT (ksef_number) DO NOTHING;
 -- PURCHASE INVOICES — medium-volume clients: ~40 per month x 5 months = 200 each
 -- ============================================================================
 INSERT INTO invoices (
-    client_nip, ksef_number, invoice_number, invoice_type, direction,
+    firm_id, client_nip, ksef_number, invoice_number, invoice_type, direction,
     seller_nip, seller_name, buyer_nip, buyer_name,
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
@@ -170,6 +173,7 @@ INSERT INTO invoices (
     processing_status, jpk_marker, jpk_period
 )
 SELECT
+    ct.firm_id,
     ct.nip,
     'ST' || ct.nip || 'P' || LPAD(s::text, 6, '0'),
     'FVP/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 5, '0'),
@@ -208,7 +212,7 @@ ON CONFLICT (ksef_number) DO NOTHING;
 -- SALES + PURCHASE — low-volume clients: ~10 per month x 5 months = 50 each direction
 -- ============================================================================
 INSERT INTO invoices (
-    client_nip, ksef_number, invoice_number, invoice_type, direction,
+    firm_id, client_nip, ksef_number, invoice_number, invoice_type, direction,
     seller_nip, seller_name, buyer_nip, buyer_name,
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
@@ -216,6 +220,7 @@ INSERT INTO invoices (
     processing_status, jpk_marker, jpk_period
 )
 SELECT
+    ct.firm_id,
     ct.nip,
     'ST' || ct.nip || dir.code || LPAD(s::text, 6, '0'),
     'FV' || dir.code || '/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 4, '0'),
@@ -247,9 +252,20 @@ ON CONFLICT (ksef_number) DO NOTHING;
 
 -- ============================================================================
 -- CERTIFICATE AUTH clients: ~30 per month x 5 months = 150 each direction
+--
+-- Round 4: found while actually running this file for the first time (never
+-- exercised before) - this block always inserted 0 rows. All 4 certificate
+-- clients have monthly_invoice_volume >= 80, so they're already classified
+-- 'medium' by client_tiers above and got 400 invoices each from the
+-- MEDIUM-VOLUME block, using the exact same ksef_number pattern
+-- ('ST' || nip || dir.code || LPAD(s, 6, '0')) for the same s range (1-150
+-- is a subset of that block's 1-200) - every row here collided with one
+-- already inserted there and ON CONFLICT (ksef_number) DO NOTHING silently
+-- ate all of them. Given a distinct prefix ('STC') so this block adds its
+-- own invoices instead of colliding with ones that already exist.
 -- ============================================================================
 INSERT INTO invoices (
-    client_nip, ksef_number, invoice_number, invoice_type, direction,
+    firm_id, client_nip, ksef_number, invoice_number, invoice_type, direction,
     seller_nip, seller_name, buyer_nip, buyer_name,
     net_amount, vat_amount, gross_amount, currency,
     issue_date, delivery_date,
@@ -257,9 +273,10 @@ INSERT INTO invoices (
     processing_status, jpk_marker, jpk_period
 )
 SELECT
+    ct.firm_id,
     ct.nip,
-    'ST' || ct.nip || dir.code || LPAD(s::text, 6, '0'),
-    'FV' || dir.code || '/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 5, '0'),
+    'STC' || ct.nip || dir.code || LPAD(s::text, 6, '0'),
+    'FVC' || dir.code || '/' || ct.nip || '/' || TO_CHAR(base_date, 'YYYY') || '/' || LPAD(s::text, 5, '0'),
     CASE WHEN s % 25 = 0 THEN 'KOR' ELSE 'VAT' END,
     dir.direction,
     CASE WHEN dir.direction = 'sales' THEN ct.nip ELSE '3654235114' END,
@@ -313,7 +330,7 @@ SELECT
     i.direction,
     COUNT(*) AS invoice_count
 FROM invoices i
-JOIN clients c ON i.client_nip = c.nip
+JOIN clients c ON i.firm_id = c.firm_id AND i.client_nip = c.nip
 WHERE i.ksef_number LIKE 'ST%'
 GROUP BY 1, 2
 ORDER BY 1, 2;

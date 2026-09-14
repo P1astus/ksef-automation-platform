@@ -19,13 +19,13 @@ BEGIN;
 
 -- Use a CTE to get the first 10 sync-enabled synthetic clients
 WITH target_clients AS (
-    SELECT nip, client_name, ROW_NUMBER() OVER (ORDER BY nip) as rn
+    SELECT nip, firm_id, client_name, ROW_NUMBER() OVER (ORDER BY nip) as rn
     FROM clients
     WHERE sync_enabled = true AND nip != '1111111111'
     LIMIT 10
 )
 INSERT INTO offline_invoices (
-    client_nip, invoice_number, offline_mode,
+    firm_id, client_nip, invoice_number, offline_mode,
     issue_timestamp, upload_deadline,
     uploaded_to_ksef, ksef_number, upload_attempts, last_attempt_error,
     alert_sent_4h, alert_sent_1h, alert_sent_overdue
@@ -33,6 +33,7 @@ INSERT INTO offline_invoices (
 SELECT * FROM (
     -- === OVERDUE invoices (deadline 1-6 hours ago, not yet alerted as overdue) ===
     SELECT
+        tc.firm_id,
         tc.nip,
         'OFF/' || tc.nip || '/OVR/' || LPAD(g::text, 3, '0'),
         'offline24',
@@ -50,6 +51,7 @@ SELECT * FROM (
 
     -- === CRITICAL invoices (deadline in 15-55 minutes) ===
     SELECT
+        tc.firm_id,
         tc.nip,
         'OFF/' || tc.nip || '/CRT/' || LPAD(g::text, 3, '0'),
         'offline24',
@@ -66,6 +68,7 @@ SELECT * FROM (
 
     -- === WARNING invoices (deadline in 1-3.5 hours) ===
     SELECT
+        tc.firm_id,
         tc.nip,
         'OFF/' || tc.nip || '/WRN/' || LPAD(g::text, 3, '0'),
         'unavailability',
@@ -82,6 +85,7 @@ SELECT * FROM (
 
     -- === SAFE invoices (deadline 8-24 hours from now) ===
     SELECT
+        tc.firm_id,
         tc.nip,
         'OFF/' || tc.nip || '/SAFE/' || LPAD(g::text, 3, '0'),
         'offline24',
@@ -98,6 +102,7 @@ SELECT * FROM (
 
     -- === ALREADY UPLOADED (should be filtered out by the workflow's WHERE uploaded_to_ksef = false) ===
     SELECT
+        tc.firm_id,
         tc.nip,
         'OFF/' || tc.nip || '/DONE/' || LPAD(g::text, 3, '0'),
         'emergency',
