@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
     ArrowLeft, RefreshCw, CheckCircle, AlertCircle, FileText,
-    TrendingUp, TrendingDown, ToggleLeft, ToggleRight, Key, User, Save,
+    TrendingUp, TrendingDown, ToggleLeft, ToggleRight, Key, User, Save, Send,
 } from 'lucide-react';
 
 interface Client {
@@ -55,6 +55,8 @@ export default function ClientDetailPage() {
     const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '' });
     const [crmSaving, setCrmSaving] = useState(false);
     const [crmSaved, setCrmSaved] = useState(false);
+    const [requestingDocs, setRequestingDocs] = useState(false);
+    const [docRequestResult, setDocRequestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
     const load = async () => {
         try {
@@ -101,6 +103,20 @@ export default function ClientDetailPage() {
         setCrmSaving(false);
         setCrmSaved(true);
         setTimeout(() => setCrmSaved(false), 2500);
+    };
+
+    const requestDocuments = async () => {
+        setRequestingDocs(true);
+        setDocRequestResult(null);
+        try {
+            const res = await fetch(`/api/clients/${id}/request-documents`, { method: 'POST' });
+            const data = await res.json();
+            setDocRequestResult({ ok: res.ok, text: res.ok ? 'Link do przesłania dokumentów wysłany na e-mail klienta' : data.error });
+        } catch {
+            setDocRequestResult({ ok: false, text: 'Błąd połączenia' });
+        } finally {
+            setRequestingDocs(false);
+        }
     };
 
     const toggleSync = async () => {
@@ -255,16 +271,37 @@ export default function ClientDetailPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                         <User size={15} /> Dane kontaktowe
                     </div>
-                    <button
-                        onClick={saveCrm}
-                        disabled={crmSaving}
-                        className={crmSaved ? 'btn-secondary' : 'btn-primary'}
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '7px 14px', opacity: crmSaving ? 0.7 : 1 }}
-                    >
-                        <Save size={13} />
-                        {crmSaving ? 'Zapisywanie...' : crmSaved ? '✓ Zapisano' : 'Zapisz'}
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                            onClick={requestDocuments}
+                            disabled={requestingDocs || !crm.contact_email}
+                            title={!crm.contact_email ? 'Ustaw e-mail kontaktowy klienta, aby wysłać prośbę' : undefined}
+                            className="btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '7px 14px', opacity: requestingDocs || !crm.contact_email ? 0.6 : 1 }}
+                        >
+                            <Send size={13} />
+                            {requestingDocs ? 'Wysyłanie...' : 'Poproś o dokumenty'}
+                        </button>
+                        <button
+                            onClick={saveCrm}
+                            disabled={crmSaving}
+                            className={crmSaved ? 'btn-secondary' : 'btn-primary'}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '7px 14px', opacity: crmSaving ? 0.7 : 1 }}
+                        >
+                            <Save size={13} />
+                            {crmSaving ? 'Zapisywanie...' : crmSaved ? '✓ Zapisano' : 'Zapisz'}
+                        </button>
+                    </div>
                 </div>
+                {docRequestResult && (
+                    <div style={{
+                        marginBottom: 14, padding: '10px 14px', borderRadius: 8, fontSize: 12.5,
+                        background: docRequestResult.ok ? 'rgba(34,197,94,0.1)' : 'var(--error-dim)',
+                        color: docRequestResult.ok ? 'var(--success)' : 'var(--error)',
+                    }}>
+                        {docRequestResult.text}
+                    </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                     {[
                         { field: 'contact_person', label: 'Osoba kontaktowa', placeholder: 'Jan Kowalski' },

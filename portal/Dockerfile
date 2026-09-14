@@ -37,6 +37,14 @@ COPY --from=builder /app/public ./public
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
+# OCR/email/tokened-upload source documents (see lib/file-storage.ts) live
+# on the ocr_uploads named volume mounted here in docker-compose.yml. Docker
+# only initializes a named volume's ownership from what's already in the
+# image at that path the first time it's created - create it owned by the
+# nextjs user (not root, which `RUN mkdir` alone would produce) now so that
+# initialization doesn't leave the app unable to write to its own volume.
+RUN mkdir -p uploads && chown nextjs:nodejs uploads
+
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

@@ -7,10 +7,13 @@ const WORKFLOWS_DIR = join(__dirname, '..', '..', '..', '..', 'workflows');
 describe('D7: no hardcoded KSeF host remains in any workflow url field', () => {
     const workflowFiles = readdirSync(WORKFLOWS_DIR).filter(f => f.endsWith('.json'));
 
-    it('found the expected 7 workflow files', () => {
+    it('found the expected 8 workflow files', () => {
         // 07-document-collection.json was deleted 2026-09-13 (unauthenticated
         // webhook, nothing called it) - see CLAUDE.md's Known issues section.
-        expect(workflowFiles.length).toBe(7);
+        // 09-client-notifications.json added later - it calls the portal and
+        // n8n's own webhook, never the KSeF API, so it doesn't affect the
+        // other checks in this file.
+        expect(workflowFiles.length).toBe(8);
     });
 
     it.each(workflowFiles)('%s has no hardcoded api(-test).ksef.mf.gov.pl in a "url" field', (file) => {

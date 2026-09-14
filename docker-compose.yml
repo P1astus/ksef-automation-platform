@@ -15,6 +15,12 @@ services:
       # in this file and Compose always registers it as a DNS alias too.
       - XADES_SIDECAR_URL=http://xades-sidecar:8090
       - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
+      - "NOTIFY_SECRET=${NOTIFY_SECRET:-}"
+    volumes:
+      # OCR/email/tokened-upload source documents (ocr_queue.file_path) -
+      # a named volume so they survive a portal rebuild, unlike the
+      # container's writable layer.
+      - ocr_uploads:/app/uploads
     depends_on:
       ksef_db:
         condition: service_healthy
@@ -102,6 +108,10 @@ services:
       # service's XADES_SIDECAR_URL comment above for why.
       - XADES_SIDECAR_URL=${XADES_SIDECAR_URL:-http://xades-sidecar:8090}
       - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
+      # Read by workflows/09-client-notifications.json's HTTP Request nodes
+      # via $env.NOTIFY_SECRET (readable since N8N_BLOCK_ENV_ACCESS_IN_NODE
+      # is already false above) to call the portal's notify/* routes.
+      - "NOTIFY_SECRET=${NOTIFY_SECRET:-}"
     ports:
       - "5678:5678"
     volumes:
@@ -134,3 +144,4 @@ volumes:
   ksef_db_data:
   n8n_data:
   n8n_files:
+  ocr_uploads:
