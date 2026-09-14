@@ -79,4 +79,13 @@ describe('sidecar hostname must never contain an underscore (Tomcat 400s on it)'
             expect(line).not.toMatch(/xades_sidecar/);
         }
     });
+
+    it('portal/.env.example', () => {
+        const src = readFileSync(join(__dirname, '..', '..', '..', '.env.example'), 'utf8');
+        const sidecarUrlLines = src.match(/XADES_SIDECAR_URL=[^\s]+/g) || [];
+        expect(sidecarUrlLines.length).toBeGreaterThan(0);
+        for (const line of sidecarUrlLines) {
+            expect(line).not.toMatch(/xades_sidecar/);
+        }
+    });
 });
