@@ -14,6 +14,7 @@ services:
       # underscore (see ksef-client.ts). "xades-sidecar" is the service name
       # in this file and Compose always registers it as a DNS alias too.
       - XADES_SIDECAR_URL=http://xades-sidecar:8090
+      - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
     depends_on:
       ksef_db:
         condition: service_healthy
@@ -100,6 +101,7 @@ services:
       # Hyphenated, not the underscored container_name - see the portal
       # service's XADES_SIDECAR_URL comment above for why.
       - XADES_SIDECAR_URL=${XADES_SIDECAR_URL:-http://xades-sidecar:8090}
+      - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
     ports:
       - "5678:5678"
     volumes:
@@ -117,6 +119,11 @@ services:
     restart: unless-stopped
     environment:
       - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
+      # Round 4: this sidecar's crypto endpoints had no authentication at all
+      # and are published on 0.0.0.0:8090 - now required on every request
+      # except /actuator/** (see SidecarApiKeyFilter). Refuses to start
+      # without it, same as the portal's JWT_SECRET requirement above.
+      - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
     ports:
       - "8090:8090"
     volumes:

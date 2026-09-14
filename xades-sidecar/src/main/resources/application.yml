@@ -16,3 +16,6 @@ management:
 
 ksef:
   environment: ${KSEF_ENVIRONMENT:test}
+
+sidecar:
+  api-key: ${SIDECAR_API_KEY:}

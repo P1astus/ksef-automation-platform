@@ -28,6 +28,19 @@ export const BASE_URL = process.env.KSEF_ENVIRONMENT === 'prod'
 // "localhost", never the underscored container hostname.
 export const XADES_SIDECAR = process.env.XADES_SIDECAR_URL || 'http://xades-sidecar:8090';
 
+// Round 4: the sidecar's crypto endpoints had no authentication at all and
+// are published on 0.0.0.0:8090 - every request except /actuator/** now
+// requires this header (see xades-sidecar's SidecarApiKeyFilter). Checked
+// lazily, not at module load, for the same reason auth.ts's JWT_SECRET check
+// is lazy - see that file's comment.
+export function sidecarHeaders(): Record<string, string> {
+    const apiKey = process.env.SIDECAR_API_KEY;
+    if (!apiKey) {
+        throw new Error('SIDECAR_API_KEY is not set. Refusing to call the XAdES sidecar: it requires this header on every request except /actuator/**.');
+    }
+    return { 'Content-Type': 'application/json', 'X-Sidecar-Api-Key': apiKey };
+}
+
 // GET /security/public-key-certificates returns certificates for two
 // distinct purposes (confirmed against the real test API): KsefTokenEncryption
 // for the auth flow's token encryption, SymmetricKeyEncryption for wrapping
@@ -87,7 +100,7 @@ export async function initInteractiveSession(
     // XAdES sidecar encrypts `token|timestampMs` with RSA-OAEP SHA-256
     const encRes = await fetch(`${XADES_SIDECAR}/encrypt-for-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sidecarHeaders(),
         body: JSON.stringify({
             token: tokenPlaintext,
             timestamp: String(timestampMs),   // pass as ms string — sidecar concatenates token|timestamp
@@ -228,7 +241,7 @@ export async function openOnlineSession(
 
     const keyRes = await fetch(`${XADES_SIDECAR}/generate-session-key`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sidecarHeaders(),
         body: JSON.stringify({ ksefPublicKeyPem: symmetricKeyCert }),
         signal: AbortSignal.timeout(10_000),
     });
@@ -287,7 +300,7 @@ export async function encryptInvoiceForSession(
 }> {
     const res = await fetch(`${XADES_SIDECAR}/encrypt-invoice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sidecarHeaders(),
         body: JSON.stringify({ invoiceXml, keyBase64, ivBase64 }),
         signal: AbortSignal.timeout(15_000),
     });

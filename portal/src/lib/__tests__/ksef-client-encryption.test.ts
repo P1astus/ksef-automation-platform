@@ -27,6 +27,10 @@ function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 500) {
 describe('ksef-client.ts online session encryption flow (D8)', () => {
     beforeEach(() => {
         vi.resetModules();
+        // Round 4: every sidecar call now requires this header - unrelated to
+        // what these tests are checking, so stub it rather than have it fail
+        // every mocked fetch with "SIDECAR_API_KEY is not set".
+        vi.stubEnv('SIDECAR_API_KEY', 'test-sidecar-key');
     });
 
     afterEach(() => {

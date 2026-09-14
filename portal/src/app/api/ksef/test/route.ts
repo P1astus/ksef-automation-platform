@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { BASE_URL, getPublicKeyCertificate, getChallenge } from '@/lib/ksef-client';
+import { BASE_URL, getPublicKeyCertificate, getChallenge, sidecarHeaders } from '@/lib/ksef-client';
 
 // Dev-only diagnostic endpoint — blocked in production
 export async function GET(request: Request) {
@@ -70,7 +70,7 @@ export async function GET(request: Request) {
                 // Ask XAdES sidecar to encrypt token|timestampMs
                 const encRes = await fetch(`${XADES}/encrypt-for-session`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: sidecarHeaders(),
                     body: JSON.stringify({
                         token: tokenPlaintext,
                         timestamp: String(ch.timestampMs),
