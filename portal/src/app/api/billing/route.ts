@@ -13,7 +13,10 @@ function getStripe(): Stripe {
     return stripe;
 }
 
-const PLAN_DETAILS = {
+// Exported so it can be checked against src/lib/plans.ts's PLANS (the UI
+// literal) in a test — this is the price Stripe checkout actually charges,
+// so a drift between the two is a real bug, not a cosmetic one.
+export const PLAN_DETAILS = {
     start:  { name: 'Start',  price: 149,  maxClients: 15,  tier: 'start',  priceId: process.env.STRIPE_PRICE_START! },
     biznes: { name: 'Biznes', price: 399,  maxClients: 50,  tier: 'biznes', priceId: process.env.STRIPE_PRICE_BIZNES! },
     pro:    { name: 'Pro',    price: 799,  maxClients: 999, tier: 'pro',    priceId: process.env.STRIPE_PRICE_PRO! },

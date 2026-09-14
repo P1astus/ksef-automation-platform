@@ -2,28 +2,7 @@
 
 import { useState } from 'react';
 import { Zap, CheckCircle, Lock } from 'lucide-react';
-
-const PLANS = [
-    {
-        id: 'start',
-        name: 'Start',
-        price: 299,
-        features: ['Do 20 klientów (NIP)', 'Pobieranie faktur co godzinę', 'Raporty JPK_V7', 'Alerty e-mail'],
-    },
-    {
-        id: 'biznes',
-        name: 'Biznes',
-        price: 599,
-        highlight: true,
-        features: ['Do 60 klientów (NIP)', 'Faktury w czasie rzeczywistym', 'JPK_V7 i JPK_FA', 'Wsparcie telefoniczne', 'Eksport CSV / Excel'],
-    },
-    {
-        id: 'pro',
-        name: 'Pro',
-        price: 1299,
-        features: ['Nieograniczona liczba klientów', 'API integracji z FK', 'Wszystkie typy JPK', 'Dedykowany opiekun', 'SLA 99.9%'],
-    },
-];
+import { PLANS } from '@/lib/plans';
 
 export default function PaywallOverlay({ reason }: { reason: 'expired' | 'canceled' }) {
     const [upgrading, setUpgrading] = useState('');

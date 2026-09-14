@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle, Zap, AlertCircle } from 'lucide-react';
+import { PLANS } from '@/lib/plans';
 
 interface BillingData {
     tier: string;
@@ -13,31 +14,6 @@ interface BillingData {
     trialExpiresAt: string | null;
     hasActiveSubscription: boolean;
 }
-
-const PLANS = [
-    {
-        id: 'start',
-        name: 'Start',
-        price: 149,
-        maxClients: 15,
-        features: ['Do 15 klientów (NIP)', 'Pobieranie faktur z KSeF', 'Generowanie JPK_V7M', 'Alerty e-mail', 'Wsparcie e-mail'],
-    },
-    {
-        id: 'biznes',
-        name: 'Biznes',
-        price: 399,
-        maxClients: 50,
-        highlight: true,
-        features: ['Do 50 klientów (NIP)', 'Pobieranie faktur w czasie rzeczywistym', 'JPK_V7M + JPK_FA', 'Alerty SMS + e-mail', 'Wysyłka faktur do KSeF', 'Eksport CSV / Optima / Symfonia', 'Klasyfikacja AI kosztów', 'Zarządzanie zespołem'],
-    },
-    {
-        id: 'pro',
-        name: 'Pro',
-        price: 799,
-        maxClients: 999,
-        features: ['Nieograniczona liczba klientów', 'Wszystkie funkcje Biznes', 'API do integracji z systemami FK', 'Dedykowany opiekun klienta', 'SLA 99.9% z gwarancją', 'White-label (własna domena)'],
-    },
-];
 
 export default function BillingPage() {
     const [data, setData] = useState<BillingData | null>(null);
