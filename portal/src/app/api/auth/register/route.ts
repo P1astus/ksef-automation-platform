@@ -79,7 +79,7 @@ export async function POST(request: Request) {
                     `INSERT INTO firms
                         (firm_name, firm_nip, slug, admin_email, admin_password_hash,
                          subscription_tier, max_clients, trial_expires_at, is_active)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW() + INTERVAL '30 days', true)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW() + INTERVAL '14 days', true)
                      RETURNING id`,
                     [
                         firm_name.trim(),
