@@ -7,7 +7,11 @@ export interface JpkFirmData {
 export interface JpkInvoiceRow {
     id: number;
     invoice_number: string;
-    issue_date: string;
+    // `pg` returns a DATE column as a JS Date, not a string - despite the
+    // query results always having come from the live DB in practice, this
+    // was typed (and called with .slice()) as if it were always a string,
+    // which throws for any row that didn't go through pglite/a mock.
+    issue_date: string | Date | null;
     seller_name: string;
     seller_nip?: string;
     buyer_name: string;
@@ -39,6 +43,17 @@ function sumField(rows: JpkInvoiceRow[], field: keyof JpkInvoiceRow): string {
     return rows.reduce((s, r) => s + parseFloat(String(r[field] || 0)), 0).toFixed(2);
 }
 
+// pg's DATE parser builds a local-time Date (new Date(y, m-1, d), no
+// timezone) - using .toISOString() here would convert to UTC and could
+// shift the calendar day, so this reads the local getters back instead.
+function fmtDate(v: string | Date | null | undefined): string {
+    if (!v) return '';
+    if (v instanceof Date) {
+        return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+    }
+    return String(v).slice(0, 10);
+}
+
 /**
  * Generates JPK_V7M XML (Polish SAF-T for monthly VAT reporting).
  * Spec: https://www.gov.pl/web/kas/struktury-jpk
@@ -67,7 +82,7 @@ export function generateJpkV7M(
             <tns:NrKontrahenta>${esc(inv.buyer_nip)}</tns:NrKontrahenta>
             <tns:NazwaKontrahenta>${esc(inv.buyer_name)}</tns:NazwaKontrahenta>
             <tns:DowodSprzedazy>${esc(prefix + inv.invoice_number)}</tns:DowodSprzedazy>
-            <tns:DataWystawienia>${inv.issue_date ? inv.issue_date.slice(0, 10) : periodStart}</tns:DataWystawienia>
+            <tns:DataWystawienia>${fmtDate(inv.issue_date) || periodStart}</tns:DataWystawienia>
             ${ksefRef ? `<tns:KodKSeF>${esc(ksefRef)}</tns:KodKSeF>` : ''}
             <tns:K_19>${r2(inv.net_amount)}</tns:K_19>
             <tns:K_20>${r2(inv.vat_amount)}</tns:K_20>
@@ -84,8 +99,8 @@ export function generateJpkV7M(
             <tns:NrDostawcy>${esc(inv.seller_nip)}</tns:NrDostawcy>
             <tns:NazwaDostawcy>${esc(inv.seller_name)}</tns:NazwaDostawcy>
             <tns:DowodZakupu>${esc(inv.invoice_number)}</tns:DowodZakupu>
-            <tns:DataZakupu>${inv.issue_date ? inv.issue_date.slice(0, 10) : periodStart}</tns:DataZakupu>
-            <tns:DataWplywu>${inv.issue_date ? inv.issue_date.slice(0, 10) : periodStart}</tns:DataWplywu>
+            <tns:DataZakupu>${fmtDate(inv.issue_date) || periodStart}</tns:DataZakupu>
+            <tns:DataWplywu>${fmtDate(inv.issue_date) || periodStart}</tns:DataWplywu>
             <tns:K_40>${r2(inv.net_amount)}</tns:K_40>
             <tns:K_41>${r2(inv.vat_amount)}</tns:K_41>
         </tns:ZakupWiersz>`).join('');

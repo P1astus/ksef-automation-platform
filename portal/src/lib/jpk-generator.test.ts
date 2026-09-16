@@ -87,4 +87,18 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         expect(xml).toContain('<tns:LiczbaWierszySprzedazy>0</tns:LiczbaWierszySprzedazy>');
         expect(xml).toContain('<tns:LiczbaWierszyZakupow>0</tns:LiczbaWierszyZakupow>');
     });
+
+    // `pg` returns a DATE column as a JS Date object, not a string - every
+    // test above used a string, which is what pglite/mocks hand back but
+    // never what jpk/generate/route.ts actually gets from the live query.
+    // The old `inv.issue_date.slice(0, 10)` threw a TypeError on a real Date
+    // - this is the shape that would have caught it.
+    it('accepts a real Date object for issue_date, not just a string', () => {
+        const dateInvoices: JpkInvoiceRow[] = [
+            { id: 1, invoice_number: 'S-1', issue_date: new Date(2026, 0, 5), seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales' },
+        ];
+        expect(() => generateJpkV7M(firm, '2026-01', dateInvoices)).not.toThrow();
+        const xml = generateJpkV7M(firm, '2026-01', dateInvoices);
+        expect(xml).toContain('<tns:DataWystawienia>2026-01-05</tns:DataWystawienia>');
+    });
 });
