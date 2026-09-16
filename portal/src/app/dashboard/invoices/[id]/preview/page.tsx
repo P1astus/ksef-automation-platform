@@ -24,6 +24,7 @@ interface InvoiceData {
     raw_xml: string | null;
     corrects_invoice_id: number | null;
     correction_reason: string | null;
+    ksef_rejection_reason: string | null;
 }
 
 // Parse simple XML key-value fields for display
@@ -112,7 +113,9 @@ export default function InvoicePreviewPage() {
     const statusColors: Record<string, { bg: string; color: string; label: string }> = {
         new: { bg: 'rgba(99,102,241,0.1)', color: 'var(--accent-hover)', label: 'Nowa' },
         classified: { bg: 'rgba(34,197,94,0.1)', color: 'var(--success)', label: 'Zaklasyfikowana' },
-        exported_jpk: { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', label: 'Wyeksportowana JPK' },
+        sent: { bg: 'rgba(99,102,241,0.1)', color: '#6366f1', label: 'Wysłana do KSeF' },
+        rejected: { bg: 'var(--error-dim)', color: 'var(--error)', label: 'Odrzucona przez KSeF' },
+        exported_jpk: { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', label: 'Uwzględniona w JPK' },
         error: { bg: 'var(--error-dim)', color: 'var(--error)', label: 'Błąd' },
     };
     const statusStyle = statusColors[invoice.processing_status] || statusColors.new;
@@ -148,6 +151,11 @@ export default function InvoicePreviewPage() {
                     {invoice.corrects_invoice_id && invoice.correction_reason && (
                         <div style={{ fontSize: 12.5, color: 'var(--text-subtle)', marginTop: 8 }}>
                             Powód korekty: {invoice.correction_reason}
+                        </div>
+                    )}
+                    {invoice.processing_status === 'rejected' && invoice.ksef_rejection_reason && (
+                        <div style={{ fontSize: 12.5, color: 'var(--error)', marginTop: 8 }}>
+                            Powód odrzucenia przez KSeF: {invoice.ksef_rejection_reason}
                         </div>
                     )}
                 </div>
