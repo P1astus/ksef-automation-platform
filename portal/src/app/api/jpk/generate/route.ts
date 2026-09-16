@@ -87,6 +87,19 @@ export async function POST(request: Request) {
         historySaveError = msg;
     }
 
+    // Mark the invoices actually included in this report as exported - the
+    // literal meaning of 'exported_jpk', not a stand-in for "sent to KSeF"
+    // (that's ksef/send/route.ts's 'sent'). Never overwrite a 'rejected' or
+    // 'error' invoice: KSeF genuinely refusing an invoice is a real problem
+    // that including it in a filed VAT report shouldn't silently paper over.
+    if (invoices.length > 0) {
+        await query(
+            `UPDATE invoices SET processing_status = 'exported_jpk'
+             WHERE id = ANY($1) AND firm_id = $2 AND processing_status NOT IN ('rejected', 'error')`,
+            [invoices.map(i => i.id), session.firmId]
+        );
+    }
+
     await logActivity(
         session.firmId,
         'jpk_generated',
