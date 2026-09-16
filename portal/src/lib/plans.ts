@@ -38,3 +38,15 @@ export const PLANS: Plan[] = [
         features: ['Nieograniczona liczba klientów', 'Wszystkie funkcje Biznes', 'API do integracji z systemami FK', 'Dedykowany opiekun klienta', 'SLA 99.9% z gwarancją', 'White-label (własna domena)'],
     },
 ];
+
+// Plain id -> maxClients lookup for the two enforcement points that only
+// need the client cap, not the full Plan shape: auth/register/route.ts (sets
+// a new firm's initial cap) and billing/webhook/route.ts (sets it again on a
+// real Stripe subscription). Both used to hardcode their own copy of these
+// numbers (20/60/999) that had drifted from what's actually marketed and
+// charged (15/50/999) - found round 8. Deriving from PLANS instead of a
+// second literal is what makes that drift impossible now, not just less
+// likely.
+export const PLAN_MAX_CLIENTS: Record<string, number> = Object.fromEntries(
+    PLANS.map(p => [p.id, p.maxClients])
+);

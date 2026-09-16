@@ -3,12 +3,7 @@ import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
 import { createSession } from '@/lib/auth';
 import { sendWelcome } from '@/lib/email';
-
-const PLAN_LIMITS: Record<string, number> = {
-    start: 20,
-    biznes: 60,
-    pro: 999,
-};
+import { PLAN_MAX_CLIENTS } from '@/lib/plans';
 
 function generateSlug(firmName: string): string {
     const map: Record<string, string> = {
@@ -71,8 +66,8 @@ export async function POST(request: Request) {
             );
         }
 
-        const subscriptionTier = PLAN_LIMITS[plan] ? plan : 'start';
-        const maxClients = PLAN_LIMITS[subscriptionTier];
+        const subscriptionTier = PLAN_MAX_CLIENTS[plan] ? plan : 'start';
+        const maxClients = PLAN_MAX_CLIENTS[subscriptionTier];
         const passwordHash = await bcrypt.hash(password, 10);
 
         // Try inserting with a unique slug (retry once on collision)

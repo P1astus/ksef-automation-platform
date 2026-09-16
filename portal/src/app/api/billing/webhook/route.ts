@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { query } from '@/lib/db';
+import { PLAN_MAX_CLIENTS } from '@/lib/plans';
 
 // Constructed lazily (on first actual use), not at module load - see
 // billing/route.ts for why.
@@ -9,12 +10,6 @@ function getStripe(): Stripe {
     if (!stripe) stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
     return stripe;
 }
-
-const PLAN_LIMITS: Record<string, number> = {
-    start: 20,
-    biznes: 60,
-    pro: 999,
-};
 
 export async function POST(request: Request) {
     const body = await request.text();
@@ -40,7 +35,7 @@ export async function POST(request: Request) {
 
                 if (!firmId || !targetPlan) break;
 
-                const maxClients = PLAN_LIMITS[targetPlan] ?? 20;
+                const maxClients = PLAN_MAX_CLIENTS[targetPlan] ?? 20;
 
                 await query(
                     `UPDATE firms SET
