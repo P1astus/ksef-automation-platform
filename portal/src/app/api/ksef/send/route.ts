@@ -36,7 +36,19 @@ export async function pollAndStoreUpo(
         for (const status of statuses) {
             const invoiceId = byRef.get(status.referenceNumber);
             if (invoiceId === undefined || !pending.has(invoiceId)) continue;
-            if (status.status.code < 200 || status.status.code >= 300) continue; // not a terminal success (still processing, or a real failure) - leave pending for this pass
+
+            if (status.status.code >= 400) {
+                // A terminal, real failure (e.g. 440 "Duplikat faktury") -
+                // not "still processing". Record it so it stops looking like
+                // a silently-stuck send.
+                pending.delete(invoiceId);
+                await query(
+                    `UPDATE invoices SET processing_status = 'rejected', ksef_rejection_reason = $1 WHERE id = $2`,
+                    [status.status.description, invoiceId]
+                );
+                continue;
+            }
+            if (status.status.code < 200 || status.status.code >= 300) continue; // still processing - leave pending for this pass
 
             pending.delete(invoiceId);
 
@@ -180,7 +192,7 @@ export async function POST(request: Request) {
                 // downloadUpoByKsefNumber() in ksef-client.ts.
                 await query(
                     `UPDATE invoices
-                     SET processing_status = 'exported_jpk',
+                     SET processing_status = 'sent',
                          ksef_submission_date = NOW(),
                          ksef_session_reference_number = $2
                      WHERE id = $1`,

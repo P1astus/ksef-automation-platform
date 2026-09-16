@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ksef/send/route.ts's pollAndStoreUpo(): KSeF processes a submitted
 // invoice asynchronously, so sendInvoice() returning isn't enough to have a
-// real ksefNumber or a UPO yet. This proves the three shapes that matter:
+// real ksefNumber or a UPO yet. This proves the four shapes that matter:
 // an invoice that reaches a terminal success status gets its ksefNumber and
 // UPO stored (and offline_invoices updated with the *real* number, not
 // sendInvoice()'s session-scoped referenceNumber); a real failure status
-// (>=400) is left alone rather than treated as done; and an invoice that
-// never reaches a terminal status within the poll budget is reported as
-// still pending rather than silently indistinguishable from "never tried".
+// (>=400) is recorded as 'rejected' with KSeF's own description (round 7 -
+// this used to be silently indistinguishable from "still processing"
+// forever); and an invoice that never reaches a terminal status within the
+// poll budget is reported as still pending rather than silently
+// indistinguishable from "never tried".
 
 const queryMock = vi.fn(async (..._args: any[]) => ({ rows: [] as any[] }));
 vi.mock('@/lib/db', () => ({ query: (...args: any[]) => queryMock(...args) }));
@@ -71,24 +73,24 @@ describe('pollAndStoreUpo', () => {
         expect(offlineUpdate?.[1]).toEqual(['1111111111-20260914-ABCDEF-01', 42]);
     });
 
-    it('leaves a real failure status (code >= 400) pending rather than treating it as done', async () => {
+    it('records a real failure status (code >= 400) as rejected, with reason, and stops polling it', async () => {
         getSessionInvoiceStatusMock.mockResolvedValue([
             { referenceNumber: 'INV-REF-2', status: { code: 440, description: 'Duplikat faktury' } },
         ]);
 
         const { pollAndStoreUpo } = await import('../../app/api/ksef/send/route');
         const promise = pollAndStoreUpo('token', 'SESSION-1', [{ id: 43, ksefReferenceNumber: 'INV-REF-2' }]);
-        await vi.advanceTimersByTimeAsync(800 * 10);
+        await vi.advanceTimersByTimeAsync(800);
         const pending = await promise;
 
-        // A >=400 status is real KSeF-side information, not "still
-        // processing" - it should stop being polled, but this test only
-        // asserts the current best-effort contract: it isn't written to the
-        // DB as a success, and isn't silently lost either (the invoice's
-        // own row already has processing_status='exported_jpk' from the
-        // send itself - this is specifically about the UPO/ksefNumber gap).
-        expect(pending.has(43)).toBe(true);
-        expect(queryMock.mock.calls.find(c => String(c[0]).includes('UPDATE invoices'))).toBeUndefined();
+        // A >=400 status is real, terminal KSeF-side information, not
+        // "still processing" - it stops being polled immediately (not the
+        // full 10-attempt budget) and gets its own status + reason recorded.
+        expect(pending.has(43)).toBe(false);
+        expect(getSessionInvoiceStatusMock.mock.calls.length).toBe(1);
+        const invoiceUpdate = queryMock.mock.calls.find(c => String(c[0]).includes('UPDATE invoices'));
+        expect(String(invoiceUpdate?.[0])).toContain(`processing_status = 'rejected'`);
+        expect(invoiceUpdate?.[1]).toEqual(['Duplikat faktury', 43]);
     });
 
     it('gives up after the poll budget and reports the invoice as still pending (best-effort, not a failure)', async () => {
