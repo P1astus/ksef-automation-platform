@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle, FileDown, FileEdit } from 'lucide-react';
+import { parseFa3Lines } from '@/lib/parse-fa3-lines';
 
 interface InvoiceData {
     id: number;
@@ -31,17 +32,20 @@ function extractXmlField(xml: string, tag: string): string {
     return m ? m[1].trim() : '';
 }
 
-function parseXmlLines(xml: string): Array<{ name: string; qty: string; net: string; vat: string; gross: string }> {
-    const lines: Array<{ name: string; qty: string; net: string; vat: string; gross: string }> = [];
-    // Match WierszFaktury or P_ line item blocks
-    const lineRegex = /<WierszFaktury[^>]*>([\s\S]*?)<\/WierszFaktury>/gi;
-    let match;
-    while ((match = lineRegex.exec(xml)) !== null) {
-        const block = match[1];
-        const get = (tag: string) => { const m = block.match(new RegExp(`<${tag}[^>]*>([^<]+)<\/${tag}>`)); return m ? m[1] : '—'; };
-        lines.push({ name: get('P_7'), qty: get('P_8A') || get('P_8B'), net: get('P_9A') || get('P_9B'), vat: get('P_11A') || get('P_11'), gross: get('P_12') });
-    }
-    return lines;
+// This used to match "WierszFaktury", a tag the builder has never actually
+// emitted in FA(3) or the FA(2)-era code before it (real names: FaWiersz
+// now, FakturaWiersz before), so this table always rendered empty. Fixed by
+// switching to the shared parseFa3Lines() - see lib/parse-fa3-lines.ts for
+// what it extracts and why there's no "vat"/"gross" column to recover.
+function parseXmlLines(xml: string) {
+    return parseFa3Lines(xml).map(l => ({
+        name: l.name || '—',
+        qty: l.qty || '—',
+        unit: l.unit || '—',
+        netPrice: l.netPrice || '—',
+        net: l.net || '—',
+        vatRate: l.vatRate || '—',
+    }));
 }
 
 export default function InvoicePreviewPage() {
@@ -244,9 +248,10 @@ export default function InvoicePreviewPage() {
                             <tr>
                                 <th>Nazwa towaru/usługi</th>
                                 <th style={{ textAlign: 'right' }}>Ilość</th>
-                                <th style={{ textAlign: 'right' }}>Netto</th>
-                                <th style={{ textAlign: 'right' }}>VAT</th>
-                                <th style={{ textAlign: 'right' }}>Brutto</th>
+                                <th>J.m.</th>
+                                <th style={{ textAlign: 'right' }}>Cena netto</th>
+                                <th style={{ textAlign: 'center' }}>Stawka VAT</th>
+                                <th style={{ textAlign: 'right' }}>Wartość netto</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -254,9 +259,10 @@ export default function InvoicePreviewPage() {
                                 <tr key={i}>
                                     <td style={{ fontWeight: 500, color: 'var(--text)' }}>{line.name}</td>
                                     <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{line.qty}</td>
-                                    <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{line.net}</td>
-                                    <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{line.vat}</td>
-                                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{line.gross}</td>
+                                    <td style={{ color: 'var(--text-muted)' }}>{line.unit}</td>
+                                    <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{line.netPrice}</td>
+                                    <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{line.vatRate}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{line.net}</td>
                                 </tr>
                             ))}
                         </tbody>

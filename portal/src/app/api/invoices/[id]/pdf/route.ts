@@ -2,37 +2,24 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { buildInvoicePdf, type InvoicePdfLine } from '@/lib/invoice-pdf';
+import { isZeroVatRate, type VatRateCode } from '@/lib/ksef-invoice-builder';
+import { parseFa3Lines } from '@/lib/parse-fa3-lines';
 
 // Fallback for invoices with no stored invoice_lines (e.g. pulled in from
 // KSeF by 04-ksef-invoice-retrieval.json, which receives someone else's
-// already-built FA(3) document rather than building one itself). Uses the
-// real FA(3) element/field names (FaWiersz/P_7/P_8A/P_8B/P_9A/P_11/P_12) -
-// see ksef-invoice-builder.ts. NOT the same regex as
-// invoices/[id]/preview/page.tsx's parseXmlLines(), which looks for
-// "WierszFaktury" — a tag name the builder has never actually emitted, in
-// FA(3) or the FA(2)-era code before it (real tag names: FaWiersz now,
-// FakturaWiersz before) — flagged as a separate, pre-existing bug, not
-// fixed here since this route doesn't depend on that function.
+// already-built FA(3) document rather than building one itself). See
+// lib/parse-fa3-lines.ts for what it extracts and why there's no per-line
+// "vat"/"gross" to recover — FA(3) only reports the rate code (P_12) and
+// the invoice-level P_14_x total, never a per-line VAT amount.
 function parseLinesFromXml(xml: string): InvoicePdfLine[] {
-    const lines: InvoicePdfLine[] = [];
-    const blockRegex = /<fa:FaWiersz>([\s\S]*?)<\/fa:FaWiersz>/g;
-    let match: RegExpExecArray | null;
-    while ((match = blockRegex.exec(xml)) !== null) {
-        const block = match[1];
-        const get = (tag: string) => {
-            const m = block.match(new RegExp(`<fa:${tag}>([^<]*)</fa:${tag}>`));
-            return m ? m[1] : '';
-        };
-        lines.push({
-            name: get('P_7') || '—',
-            qty: get('P_8B') || '1',
-            unit: get('P_8A'),
-            net: get('P_11') || '0',
-            vat: '', // per-line VAT amount isn't separately reported in FA(3) - only the rate (P_12) and the invoice-level P_14_x total
-            gross: '',
-        });
-    }
-    return lines;
+    return parseFa3Lines(xml).map(l => ({
+        name: l.name || '—',
+        qty: l.qty || '1',
+        unit: l.unit,
+        net: l.net || '0',
+        vat: '',
+        gross: '',
+    }));
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -54,10 +41,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     let lines: InvoicePdfLine[];
     if (Array.isArray(invoice.invoice_lines) && invoice.invoice_lines.length > 0) {
-        lines = invoice.invoice_lines.map((l: { name: string; qty: number; unit: string; netPrice: number; vatRate: string }) => {
+        lines = invoice.invoice_lines.map((l: { name: string; qty: number; unit: string; netPrice: number; vatRate: VatRateCode }) => {
             const net = l.qty * l.netPrice;
-            const vatRate = l.vatRate === 'zw' ? 0 : parseFloat(l.vatRate) / 100;
-            const vat = l.vatRate === 'zw' ? 0 : net * vatRate;
+            const vatRate = isZeroVatRate(l.vatRate) ? 0 : parseFloat(l.vatRate) / 100;
+            const vat = isZeroVatRate(l.vatRate) ? 0 : net * vatRate;
             return { name: l.name, qty: l.qty, unit: l.unit, net, vat, gross: net + vat };
         });
     } else if (invoice.raw_xml) {
