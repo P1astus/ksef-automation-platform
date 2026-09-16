@@ -393,6 +393,32 @@ export async function downloadUpo(upoDownloadUrl: string): Promise<{ xml: string
     return { xml: await res.text(), hash: res.headers.get('x-ms-meta-hash') };
 }
 
+/**
+ * Authenticated fallback for when the pre-signed upoDownloadUrl from
+ * getSessionInvoiceStatus() has already expired (a few days in the vendored
+ * spec's own example) before it was ever fetched — GET
+ * /sessions/{referenceNumber}/invoices/ksef/{ksefNumber}/upo re-serves the
+ * same UPO XML given the *online session's* reference number (not the
+ * invoice's permanent ksefNumber alone) and a valid Bearer token. Requires a
+ * fresh accessToken — session-scoped tokens don't outlive the session that
+ * likely closed right after the original send.
+ */
+export async function downloadUpoByKsefNumber(
+    accessToken: string,
+    sessionReferenceNumber: string,
+    ksefNumber: string
+): Promise<{ xml: string; hash: string | null }> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionReferenceNumber}/invoices/ksef/${ksefNumber}/upo`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`UPO retry download failed (${res.status}): ${body}`);
+    }
+    return { xml: await res.text(), hash: res.headers.get('x-ms-meta-hash') };
+}
+
 export async function sendInvoice(
     accessToken: string,
     sessionReferenceNumber: string,

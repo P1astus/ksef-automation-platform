@@ -92,4 +92,36 @@ describe('getSessionInvoiceStatus / downloadUpo', () => {
         global.fetch = vi.fn(async () => ({ ok: false, status: 403 })) as unknown as typeof fetch;
         await expect(downloadUpo('https://example.test/expired.xml')).rejects.toThrow(/403/);
     });
+
+    // Round 6: the fallback for when the pre-signed upoDownloadUrl has
+    // already expired before pollAndStoreUpo() got to it - the authenticated
+    // retry endpoint from ksef-openapi.json, needing the online session's
+    // reference number (not the invoice's permanent ksefNumber alone) plus
+    // a Bearer token, since a SAS-style URL like downloadUpo()'s isn't
+    // involved here at all.
+    it('downloadUpoByKsefNumber hits the authenticated retry endpoint with a Bearer token and returns the XML + hash', async () => {
+        const { downloadUpoByKsefNumber } = await import('../ksef-client');
+        const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+            expect(String(url)).toContain('/sessions/SESSION-REF-1/invoices/ksef/1111111111-20260914-ABCDEF-01/upo');
+            return {
+                ok: true,
+                text: async () => '<UPO>retry</UPO>',
+                headers: new Headers({ 'x-ms-meta-hash': 'retryhash==' }),
+            };
+        }) as unknown as typeof fetch;
+        global.fetch = fetchMock;
+
+        const result = await downloadUpoByKsefNumber('access-token', 'SESSION-REF-1', '1111111111-20260914-ABCDEF-01');
+        expect(result.xml).toBe('<UPO>retry</UPO>');
+        expect(result.hash).toBe('retryhash==');
+
+        const callArgs = (fetchMock as any).mock.calls[0];
+        expect(callArgs[1]?.headers?.Authorization).toBe('Bearer access-token');
+    });
+
+    it('downloadUpoByKsefNumber throws with the response body on a non-OK response', async () => {
+        const { downloadUpoByKsefNumber } = await import('../ksef-client');
+        global.fetch = vi.fn(async () => ({ ok: false, status: 400, text: async () => 'UPO not found' })) as unknown as typeof fetch;
+        await expect(downloadUpoByKsefNumber('t', 'ref', 'ksef-1')).rejects.toThrow(/400/);
+    });
 });

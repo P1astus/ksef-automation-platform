@@ -172,12 +172,19 @@ export async function POST(request: Request) {
                 // there, not here, so it's never given this session-scoped
                 // value under that name.
                 const ksefRef = await sendInvoice(accessToken, onlineSession.referenceNumber, encryptedPayload);
+                // ksef_session_reference_number is the online session's own
+                // reference (not ksefRef, which is invoice-scoped within it) -
+                // stored so a later UPO fetch can use the authenticated retry
+                // endpoint if the pre-signed upoDownloadUrl already expired by
+                // the time pollAndStoreUpo() below gets to it. See
+                // downloadUpoByKsefNumber() in ksef-client.ts.
                 await query(
                     `UPDATE invoices
                      SET processing_status = 'exported_jpk',
-                         ksef_submission_date = NOW()
+                         ksef_submission_date = NOW(),
+                         ksef_session_reference_number = $2
                      WHERE id = $1`,
-                    [inv.id]
+                    [inv.id, onlineSession.referenceNumber]
                 );
                 results.push({ id: inv.id, ksefReferenceNumber: ksefRef });
                 sentThisClient.push({ id: inv.id, ksefReferenceNumber: ksefRef });
