@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateJpkV7M, type JpkInvoiceRow } from './jpk-generator';
+import type { InvoiceLine } from './ksef-invoice-builder';
 
 const firm = { nip: '1234567890', name: 'Test Firm' };
 
@@ -8,11 +9,16 @@ function extractAll(xml: string, tag: string): string[] {
     return [...xml.matchAll(re)].map(m => m[1]);
 }
 
+function extractOne(xml: string, tag: string): number | undefined {
+    const vals = extractAll(xml, tag);
+    return vals.length ? Number(vals[0]) : undefined;
+}
+
 describe('generateJpkV7M invoice/total reconciliation', () => {
     const invoices: JpkInvoiceRow[] = [
         { id: 1, invoice_number: 'S-1', issue_date: '2026-01-05', seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales' },
         { id: 2, invoice_number: 'S-2', issue_date: '2026-01-12', seller_name: 'Firm', buyer_name: 'Buyer B', buyer_nip: '2222222222', net_amount: 200, vat_amount: 16, gross_amount: 216, direction: 'sales' },
-        { id: 3, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 50, vat_amount: 11.5, gross_amount: 61.5, direction: 'purchase' },
+        { id: 3, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 50, vat_amount: 11.5, gross_amount: 61.5, direction: 'purchase', cost_category: 'usługi_IT' },
     ];
 
     it('every invoice in the period appears in the output', () => {
@@ -24,7 +30,7 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         expect((xml.match(/<tns:ZakupWiersz>/g) || []).length).toBe(1);
     });
 
-    it('sales control totals (K_19/K_20 sums) reconcile with SprzedazCtrl and the declaration', () => {
+    it('sales without line-level rate data fall back to the standard-rate (K_19/K_20) bucket', () => {
         const xml = generateJpkV7M(firm, '2026-01', invoices);
         const k19s = extractAll(xml, 'K_19').map(Number);
         const k20s = extractAll(xml, 'K_20').map(Number);
@@ -34,51 +40,107 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         expect(salesNetSum).toBeCloseTo(300); // 100 + 200
         expect(salesVatSum).toBeCloseTo(39); // 23 + 16
 
-        const [liczbaWierszySprzedazy] = extractAll(xml, 'LiczbaWierszySprzedazy');
-        const [podatekNalezny] = extractAll(xml, 'PodatekNalezny');
-        expect(Number(liczbaWierszySprzedazy)).toBe(2);
-        expect(Number(podatekNalezny)).toBeCloseTo(salesVatSum);
+        expect(extractOne(xml, 'LiczbaWierszySprzedazy')).toBe(2);
+        expect(extractOne(xml, 'PodatekNalezny')).toBeCloseTo(salesVatSum);
 
-        const [p10] = extractAll(xml, 'P_10');
-        const [p20] = extractAll(xml, 'P_20');
-        const [p38] = extractAll(xml, 'P_38');
-        expect(Number(p10)).toBeCloseTo(salesNetSum);
-        expect(Number(p20)).toBeCloseTo(salesVatSum);
-        expect(Number(p38)).toBeCloseTo(salesVatSum);
+        // No zw/0%/WDT/export/oo sales in this fixture, so those K/P fields
+        // must not appear at all (they're optional and "pozostają puste").
+        expect(xml).not.toContain('<tns:K_10>');
+        expect(xml).not.toContain('<tns:P_10>');
+
+        expect(extractOne(xml, 'P_19')).toBeCloseTo(salesNetSum);
+        expect(extractOne(xml, 'P_20')).toBeCloseTo(salesVatSum);
+        expect(extractOne(xml, 'P_38')).toBeCloseTo(salesVatSum); // mandatory total, always present
     });
 
-    it('purchase control totals (K_40/K_41 sums) reconcile with ZakupCtrl and the declaration', () => {
+    it('routes an ordinary purchase to K_42/K_43, never the fixed-asset K_40/K_41 fields', () => {
+        // Regression guard for the bug where every purchase was reported to
+        // the tax office as a środki trwałe (fixed-asset) acquisition.
         const xml = generateJpkV7M(firm, '2026-01', invoices);
-        const k40s = extractAll(xml, 'K_40').map(Number);
-        const k41s = extractAll(xml, 'K_41').map(Number);
-        const purchNetSum = k40s.reduce((a, b) => a + b, 0);
-        const purchVatSum = k41s.reduce((a, b) => a + b, 0);
+        expect(xml).not.toContain('<tns:K_40>');
+        expect(xml).not.toContain('<tns:K_41>');
+        expect(xml).not.toContain('<tns:P_40>');
+        expect(xml).not.toContain('<tns:P_41>');
+        // P_47 is a specific art. 89b ust. 4 correction field, not a "total
+        // purchase VAT" field - must never hold the raw purchase VAT total.
+        expect(xml).not.toContain('<tns:P_47>');
 
-        expect(purchNetSum).toBeCloseTo(50);
-        expect(purchVatSum).toBeCloseTo(11.5);
+        const k42s = extractAll(xml, 'K_42').map(Number);
+        const k43s = extractAll(xml, 'K_43').map(Number);
+        expect(k42s.reduce((a, b) => a + b, 0)).toBeCloseTo(50);
+        expect(k43s.reduce((a, b) => a + b, 0)).toBeCloseTo(11.5);
 
-        const [liczbaWierszyZakupow] = extractAll(xml, 'LiczbaWierszyZakupow');
-        const [podatekNaliczony] = extractAll(xml, 'PodatekNaliczony');
-        expect(Number(liczbaWierszyZakupow)).toBe(1);
-        expect(Number(podatekNaliczony)).toBeCloseTo(purchVatSum);
-
-        const [p40] = extractAll(xml, 'P_40');
-        const [p41] = extractAll(xml, 'P_41');
-        const [p47] = extractAll(xml, 'P_47');
-        expect(Number(p40)).toBeCloseTo(purchNetSum);
-        expect(Number(p41)).toBeCloseTo(purchVatSum);
-        expect(Number(p47)).toBeCloseTo(purchVatSum);
+        expect(extractOne(xml, 'LiczbaWierszyZakupow')).toBe(1);
+        expect(extractOne(xml, 'PodatekNaliczony')).toBeCloseTo(11.5);
+        expect(extractOne(xml, 'P_42')).toBeCloseTo(50);
+        expect(extractOne(xml, 'P_43')).toBeCloseTo(11.5);
+        expect(extractOne(xml, 'P_48')).toBeCloseTo(11.5); // sum(P_39,P_41,P_43,...) = P_43 here
     });
 
-    it('VAT payable/refund reconcile with sales VAT minus purchase VAT', () => {
+    it('VAT payable reconciles as total output VAT minus total input VAT', () => {
         const xml = generateJpkV7M(firm, '2026-01', invoices);
-        // salesVat (39) > purchVat (11.5) -> payable = 27.5, refund = 0
-        const [p51] = extractAll(xml, 'P_51');
-        const [p58] = extractAll(xml, 'P_58');
-        const [p60] = extractAll(xml, 'P_60');
-        expect(Number(p51)).toBeCloseTo(27.5);
-        expect(Number(p58)).toBeCloseTo(27.5);
-        expect(Number(p60)).toBeCloseTo(0);
+        // salesVat (39) - purchVat (11.5) = 27.5 payable, no surplus
+        expect(extractOne(xml, 'P_51')).toBeCloseTo(27.5);
+        expect(xml).not.toContain('<tns:P_53>');
+        expect(xml).not.toContain('<tns:P_62>');
+    });
+
+    it('never writes a money amount into the boolean/flag fields P_58 or P_60', () => {
+        // P_58 ("zwrot w terminie... 180 dni") and P_60 ("zwrot do
+        // zaliczenia na poczet przyszłych zobowiązań") are refund-election
+        // flags this platform never sets - a numeric VAT amount there was
+        // the old bug, and this asserts the fields are omitted, not zeroed.
+        const xml = generateJpkV7M(firm, '2026-01', invoices);
+        expect(xml).not.toContain('<tns:P_58>');
+        expect(xml).not.toContain('<tns:P_60>');
+    });
+
+    it('an input-VAT surplus carries forward via P_53/P_62, not a bank-refund field', () => {
+        const surplusInvoices: JpkInvoiceRow[] = [
+            { id: 1, invoice_number: 'S-1', issue_date: '2026-01-05', seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 10, gross_amount: 110, direction: 'sales' },
+            { id: 2, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 500, vat_amount: 100, gross_amount: 600, direction: 'purchase', cost_category: 'sprzęt_IT' },
+        ];
+        const xml = generateJpkV7M(firm, '2026-01', surplusInvoices);
+        expect(extractOne(xml, 'P_51')).toBeCloseTo(0); // nothing payable
+        expect(extractOne(xml, 'P_53')).toBeCloseTo(90); // 100 input - 10 output
+        expect(extractOne(xml, 'P_62')).toBeCloseTo(90);
+        expect(xml).not.toContain('<tns:P_60>');
+    });
+
+    it('splits a multi-rate sales invoice across the correct K/P fields using its line-level VAT rates', () => {
+        const lines: InvoiceLine[] = [
+            { name: 'Standard service', qty: 1, unit: 'szt', netPrice: 100, vatRate: '23' },
+            { name: 'Reduced-rate good', qty: 1, unit: 'szt', netPrice: 50, vatRate: '8' },
+            { name: 'Exempt service', qty: 1, unit: 'szt', netPrice: 30, vatRate: 'zw' },
+            { name: 'Intra-EU supply', qty: 1, unit: 'szt', netPrice: 200, vatRate: '0-wdt' },
+            { name: 'Export of goods', qty: 1, unit: 'szt', netPrice: 300, vatRate: '0-export' },
+        ];
+        const mixedInvoice: JpkInvoiceRow[] = [{
+            id: 1, invoice_number: 'S-MIX', issue_date: '2026-01-05', seller_name: 'Firm',
+            buyer_name: 'Buyer A', buyer_nip: '1111111111',
+            net_amount: 680, vat_amount: 27, gross_amount: 707, direction: 'sales',
+            invoice_lines: lines,
+        }];
+        const xml = generateJpkV7M(firm, '2026-01', mixedInvoice);
+
+        expect(extractOne(xml, 'K_19')).toBeCloseTo(100); // 23%
+        expect(extractOne(xml, 'K_20')).toBeCloseTo(23);
+        expect(extractOne(xml, 'K_17')).toBeCloseTo(50); // 8%
+        expect(extractOne(xml, 'K_18')).toBeCloseTo(4);
+        expect(extractOne(xml, 'K_10')).toBeCloseTo(30); // zw
+        expect(extractOne(xml, 'K_21')).toBeCloseTo(200); // WDT
+        expect(extractOne(xml, 'K_22')).toBeCloseTo(300); // export
+
+        expect(extractOne(xml, 'P_19')).toBeCloseTo(100);
+        expect(extractOne(xml, 'P_20')).toBeCloseTo(23);
+        expect(extractOne(xml, 'P_17')).toBeCloseTo(50);
+        expect(extractOne(xml, 'P_18')).toBeCloseTo(4);
+        expect(extractOne(xml, 'P_10')).toBeCloseTo(30);
+        expect(extractOne(xml, 'P_21')).toBeCloseTo(200);
+        expect(extractOne(xml, 'P_22')).toBeCloseTo(300);
+        // Total output VAT = 23 + 4 (5%/zw/WDT/export carry no VAT)
+        expect(extractOne(xml, 'P_38')).toBeCloseTo(27);
+        expect(extractOne(xml, 'PodatekNalezny')).toBeCloseTo(27);
     });
 
     it('an empty invoice list produces a valid, zeroed-out declaration rather than throwing', () => {
@@ -86,6 +148,8 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         expect(() => xml).not.toThrow();
         expect(xml).toContain('<tns:LiczbaWierszySprzedazy>0</tns:LiczbaWierszySprzedazy>');
         expect(xml).toContain('<tns:LiczbaWierszyZakupow>0</tns:LiczbaWierszyZakupow>');
+        expect(extractOne(xml, 'P_38')).toBe(0); // mandatory, always present
+        expect(extractOne(xml, 'P_51')).toBe(0); // mandatory, always present
     });
 
     // `pg` returns a DATE column as a JS Date object, not a string - every

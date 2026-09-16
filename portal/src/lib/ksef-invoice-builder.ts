@@ -111,6 +111,19 @@ function computeLines(lines: InvoiceLine[]) {
     });
 }
 
+// Net/VAT per VatRateCode for one invoice's lines — shared with jpk-generator.ts
+// so JPK_V7 K_xx/P_xx bucketing uses the same per-rate math as the FA(3) XML
+// itself, instead of a third reimplementation.
+export function sumLinesByRate(lines: InvoiceLine[]): Partial<Record<VatRateCode, { net: number; vat: number }>> {
+    const result: Partial<Record<VatRateCode, { net: number; vat: number }>> = {};
+    for (const l of computeLines(lines)) {
+        const bucket = result[l.vatRate] || (result[l.vatRate] = { net: 0, vat: 0 });
+        bucket.net = round2(bucket.net + l.net);
+        bucket.vat = round2(bucket.vat + l.vatAmt);
+    }
+    return result;
+}
+
 function groupByVat(computed: ReturnType<typeof computeLines>): VatGroup[] {
     const map = new Map<string, VatGroup>();
     for (const l of computed) {
