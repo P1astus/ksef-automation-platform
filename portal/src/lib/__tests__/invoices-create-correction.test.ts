@@ -40,9 +40,14 @@ const baseBody = {
     issueDate: '2026-09-20',
     buyerNip: '2222222222',
     buyerName: 'Nabywca',
+    buyerStreet: 'ul. Nabywcza 1',
+    buyerCity: 'Krakow',
+    buyerPostalCode: '30-001',
     lines: [{ name: 'X', qty: 1, unit: 'szt', netPrice: 100, vatRate: '23' }],
     totals: { totalNet: 100, totalVat: 23, totalGross: 123 },
 };
+
+const SELLER_CLIENT_ROW = { id: 1, nip: '1111111111', client_name: 'Sprzedawca', street: 'ul. Sprzedawcza 1', city: 'Warszawa', postal_code: '00-001' };
 
 describe('invoices/create/route.ts — correction invoice path', () => {
     beforeEach(() => {
@@ -50,7 +55,7 @@ describe('invoices/create/route.ts — correction invoice path', () => {
         buildXmlMock.mockClear();
         queryMock.mockReset();
         queryMock.mockImplementation(async (sql: string) => {
-            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1111111111', client_name: 'Sprzedawca' }] };
+            if (sql.includes('FROM clients')) return { rows: [SELLER_CLIENT_ROW] };
             if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
             if (sql.includes('INSERT INTO invoices')) return { rows: [{ id: 99 }] };
             return { rows: [] };
@@ -67,7 +72,7 @@ describe('invoices/create/route.ts — correction invoice path', () => {
 
     it('rejects correcting an invoice with no ksef_number (never actually sent)', async () => {
         queryMock.mockImplementation(async (sql: string) => {
-            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1111111111', client_name: 'Sprzedawca' }] };
+            if (sql.includes('FROM clients')) return { rows: [SELLER_CLIENT_ROW] };
             if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
             if (sql.includes('FROM invoices WHERE id')) return { rows: [{ invoice_number: 'FV/1/2026', issue_date: '2026-09-14', ksef_number: null, invoice_lines: [] }] };
             return { rows: [] };
@@ -81,7 +86,7 @@ describe('invoices/create/route.ts — correction invoice path', () => {
 
     it('rejects correcting an invoice with no saved invoice_lines', async () => {
         queryMock.mockImplementation(async (sql: string) => {
-            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1111111111', client_name: 'Sprzedawca' }] };
+            if (sql.includes('FROM clients')) return { rows: [SELLER_CLIENT_ROW] };
             if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
             if (sql.includes('FROM invoices WHERE id')) return { rows: [{ invoice_number: 'FV/1/2026', issue_date: '2026-09-14', ksef_number: 'KSEF-1', invoice_lines: null }] };
             return { rows: [] };
@@ -101,7 +106,7 @@ describe('invoices/create/route.ts — correction invoice path', () => {
         // "Mon Sep 14" instead of an ISO date; a string-literal mock would
         // never have exercised that path.
         queryMock.mockImplementation(async (sql: string) => {
-            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1111111111', client_name: 'Sprzedawca' }] };
+            if (sql.includes('FROM clients')) return { rows: [SELLER_CLIENT_ROW] };
             if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
             if (sql.includes('FROM invoices WHERE id')) return { rows: [{ invoice_number: 'FV/1/2026', issue_date: new Date('2026-09-14T00:00:00.000Z'), ksef_number: 'KSEF-1', invoice_lines: originalLines }] };
             if (sql.includes('INSERT INTO invoices')) return { rows: [{ id: 99 }] };
@@ -123,5 +128,60 @@ describe('invoices/create/route.ts — correction invoice path', () => {
 
         const insertCall = queryMock.mock.calls.find((c: any[]) => String(c[0]).includes('INSERT INTO invoices'));
         expect(insertCall![1]).toEqual(expect.arrayContaining([5, 'Poprawka ilości']));
+    });
+});
+
+// Round 6: neither the seller (this client) nor the buyer (typed into the
+// form) ever had an address anywhere, and FA(3) rejects an empty
+// AdresL1/AdresL2 - see invoice-address-validation.test.ts for
+// buildKSeFInvoiceXml's own guard. These prove the route rejects before
+// ever calling the builder, with a message pointing at what to fix.
+describe('invoices/create/route.ts — address validation', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        buildXmlMock.mockClear();
+        queryMock.mockReset();
+        queryMock.mockImplementation(async (sql: string) => {
+            if (sql.includes('FROM clients')) return { rows: [SELLER_CLIENT_ROW] };
+            if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
+            if (sql.includes('INSERT INTO invoices')) return { rows: [{ id: 99 }] };
+            return { rows: [] };
+        });
+    });
+
+    it('rejects when the request has no buyer address at all', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const { buyerStreet, buyerCity, buyerPostalCode, ...withoutAddress } = baseBody;
+        const res = await POST(req(withoutAddress));
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error).toMatch(/adres nabywcy/i);
+        expect(buildXmlMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the selected client (seller) has no address on file', async () => {
+        queryMock.mockImplementation(async (sql: string) => {
+            if (sql.includes('FROM clients')) return { rows: [{ ...SELLER_CLIENT_ROW, street: null, city: null, postal_code: null }] };
+            return { rows: [] };
+        });
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req(baseBody));
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error).toMatch(/brak adresu klienta/i);
+        expect(buildXmlMock).not.toHaveBeenCalled();
+    });
+
+    it('on success: passes both addresses through to the builder and stores the buyer address on the invoice row', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req(baseBody));
+        expect(res.status).toBe(200);
+
+        const [builderArg] = buildXmlMock.mock.calls[0];
+        expect(builderArg.seller).toEqual(expect.objectContaining({ street: 'ul. Sprzedawcza 1', city: 'Warszawa', postCode: '00-001' }));
+        expect(builderArg.buyer).toEqual(expect.objectContaining({ street: 'ul. Nabywcza 1', city: 'Krakow', postCode: '30-001' }));
+
+        const insertCall = queryMock.mock.calls.find((c: any[]) => String(c[0]).includes('INSERT INTO invoices'));
+        expect(insertCall![1]).toEqual(expect.arrayContaining(['ul. Nabywcza 1', 'Krakow', '30-001']));
     });
 });

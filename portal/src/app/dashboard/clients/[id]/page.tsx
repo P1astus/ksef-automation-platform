@@ -28,6 +28,9 @@ interface Client {
     notes: string | null;
     tags: string | null;
     anonymized_at: string | null;
+    street: string | null;
+    city: string | null;
+    postal_code: string | null;
 }
 
 interface Invoice {
@@ -53,7 +56,7 @@ export default function ClientDetailPage() {
     const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string } | null>(null);
     const [togglingSync, setTogglingSync] = useState(false);
-    const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '' });
+    const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '', street: '', city: '', postal_code: '' });
     const [crmSaving, setCrmSaving] = useState(false);
     const [crmSaved, setCrmSaved] = useState(false);
     const [requestingDocs, setRequestingDocs] = useState(false);
@@ -73,6 +76,9 @@ export default function ClientDetailPage() {
                 contact_phone: data.client.contact_phone || '',
                 notes: data.client.notes || '',
                 tags: data.client.tags || '',
+                street: data.client.street || '',
+                city: data.client.city || '',
+                postal_code: data.client.postal_code || '',
             });
         } finally {
             setLoading(false);
@@ -286,6 +292,48 @@ export default function ClientDetailPage() {
                         <Link href="/dashboard/settings/ksef" className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
                             <Key size={14} /> Zarządzaj tokenem
                         </Link>
+                    </div>
+                </div>
+            </div>
+
+            {/* Address - required for invoicing, since this client is the seller on every invoice issued through them and FA(3) rejects an empty AdresL1/AdresL2 */}
+            {(!client.street || !client.city || !client.postal_code) && (
+                <div style={{
+                    marginBottom: 20, padding: '12px 16px', borderRadius: 10,
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+                    display: 'flex', gap: 10, alignItems: 'center',
+                }}>
+                    <AlertCircle size={15} color="#f59e0b" />
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#f59e0b' }}>
+                        Brak adresu tego klienta — wystawianie faktur zostanie zablokowane, dopóki adres nie zostanie uzupełniony poniżej.
+                    </span>
+                </div>
+            )}
+            <div style={{ background: 'var(--bg-surface)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 24px', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Adres (sprzedawca na fakturach)</div>
+                    <button
+                        onClick={saveCrm}
+                        disabled={crmSaving}
+                        className={crmSaved ? 'btn-secondary' : 'btn-primary'}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '7px 14px', opacity: crmSaving ? 0.7 : 1 }}
+                    >
+                        <Save size={13} />
+                        {crmSaving ? 'Zapisywanie...' : crmSaved ? '✓ Zapisano' : 'Zapisz'}
+                    </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+                    <div>
+                        <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ulica i numer</label>
+                        <input value={crm.street} onChange={e => setCrm(prev => ({ ...prev, street: e.target.value }))} placeholder="ul. Przykładowa 12/3" style={{ width: '100%', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kod pocztowy</label>
+                        <input value={crm.postal_code} onChange={e => setCrm(prev => ({ ...prev, postal_code: e.target.value }))} placeholder="00-001" style={{ width: '100%', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Miasto</label>
+                        <input value={crm.city} onChange={e => setCrm(prev => ({ ...prev, city: e.target.value }))} placeholder="Warszawa" style={{ width: '100%', boxSizing: 'border-box' }} />
                     </div>
                 </div>
             </div>

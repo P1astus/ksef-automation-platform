@@ -54,8 +54,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         await query('UPDATE clients SET sync_enabled = $1 WHERE id = $2', [body.sync_enabled, id]);
     }
 
-    // CRM fields update
-    const crmFields = ['contact_person', 'contact_email', 'contact_phone', 'notes', 'tags'] as const;
+    // CRM + address fields update
+    const crmFields = ['contact_person', 'contact_email', 'contact_phone', 'notes', 'tags', 'street', 'city', 'postal_code'] as const;
     const crmUpdates = crmFields.filter(f => f in body);
     if (crmUpdates.length > 0) {
         const sets = crmUpdates.map((f, i) => `${f} = $${i + 1}`).join(', ');

@@ -12,10 +12,17 @@ export async function POST(request: Request) {
     if (roleError) return roleError;
 
     const body = await request.json().catch(() => ({}));
-    const { clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName, lines, totals, offlineMode, correctingInvoiceId, correctionReason } = body;
+    const {
+        clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName,
+        buyerStreet, buyerCity, buyerPostalCode,
+        lines, totals, offlineMode, correctingInvoiceId, correctionReason,
+    } = body;
 
     if (!clientId || !invoiceNumber || !issueDate || !buyerNip || !buyerName || !lines?.length) {
         return NextResponse.json({ error: 'Brakujące dane faktury' }, { status: 400 });
+    }
+    if (!buyerStreet?.trim() || !buyerCity?.trim() || !buyerPostalCode?.trim()) {
+        return NextResponse.json({ error: 'Adres nabywcy (ulica, kod pocztowy, miasto) jest wymagany przez schemat FA(3)' }, { status: 400 });
     }
     if (correctingInvoiceId && !correctionReason?.trim()) {
         return NextResponse.json({ error: 'Podaj powód korekty' }, { status: 400 });
@@ -26,13 +33,22 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Nieprawidłowy tryb offline: ${offlineMode}` }, { status: 400 });
     }
 
-    // Verify client belongs to firm + get seller NIP
+    // Verify client belongs to firm + get seller NIP + address
     const clientRes = await query(
-        'SELECT id, nip, client_name FROM clients WHERE id = $1 AND firm_id = $2',
+        'SELECT id, nip, client_name, street, city, postal_code FROM clients WHERE id = $1 AND firm_id = $2',
         [clientId, session.firmId]
     );
     if (!clientRes.rows[0]) return NextResponse.json({ error: 'Klient nie znaleziony' }, { status: 404 });
     const client = clientRes.rows[0];
+    // Seller is this client (the taxpayer whose invoices get issued through
+    // this platform) - FA(3) rejects an empty AdresL1/AdresL2 just as much
+    // for the seller as for the buyer, so this has to be checked here rather
+    // than left to buildKSeFInvoiceXml's own guard to surface as a generic 500.
+    if (!client.street?.trim() || !client.city?.trim() || !client.postal_code?.trim()) {
+        return NextResponse.json({
+            error: `Brak adresu klienta "${client.client_name}" - uzupełnij go w karcie klienta przed wystawieniem faktury`,
+        }, { status: 400 });
+    }
 
     // Also get firm data for seller info
     const firmRes = await query('SELECT firm_name FROM firms WHERE id = $1', [session.firmId]);
@@ -78,8 +94,8 @@ export async function POST(request: Request) {
         invoiceNumber,
         issueDate,
         dueDate: dueDate || undefined,
-        seller: { nip: client.nip, name: client.client_name || firmName },
-        buyer: { nip: buyerNip, name: buyerName },
+        seller: { nip: client.nip, name: client.client_name || firmName, street: client.street, city: client.city, postCode: client.postal_code },
+        buyer: { nip: buyerNip, name: buyerName, street: buyerStreet, city: buyerCity, postCode: buyerPostalCode },
         lines: lines as InvoiceLine[],
         correction,
     });
@@ -88,10 +104,11 @@ export async function POST(request: Request) {
     const insertRes = await query(
         `INSERT INTO invoices
          (firm_id, client_nip, invoice_number, seller_name, buyer_name, buyer_nip,
+          buyer_street, buyer_city, buyer_postal_code,
           net_amount, vat_amount, gross_amount, issue_date, due_date,
           direction, processing_status, invoice_lines, raw_xml,
           corrects_invoice_id, correction_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'sales','new',$12,$13,$14,$15)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'sales','new',$15,$16,$17,$18)
          RETURNING id`,
         [
             session.firmId,
@@ -100,6 +117,9 @@ export async function POST(request: Request) {
             client.client_name || firmName,
             buyerName,
             buyerNip,
+            buyerStreet.trim(),
+            buyerCity.trim(),
+            buyerPostalCode.trim(),
             totals.totalNet,
             totals.totalVat,
             totals.totalGross,

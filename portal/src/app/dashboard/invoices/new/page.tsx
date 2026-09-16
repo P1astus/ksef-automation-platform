@@ -18,6 +18,9 @@ interface Client {
     id: number;
     nip: string;
     client_name: string;
+    street?: string | null;
+    city?: string | null;
+    postal_code?: string | null;
 }
 
 interface Totals {
@@ -59,6 +62,9 @@ export default function NewInvoicePage() {
     const [clients, setClients] = useState<Client[]>([]);
     const [buyerNip, setBuyerNip] = useState('');
     const [buyerName, setBuyerName] = useState('');
+    const [buyerStreet, setBuyerStreet] = useState('');
+    const [buyerCity, setBuyerCity] = useState('');
+    const [buyerPostalCode, setBuyerPostalCode] = useState('');
     const [nipStatus, setNipStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
     const [sellerClientId, setSellerClientId] = useState('');
     const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -90,6 +96,9 @@ export default function NewInvoicePage() {
             setCorrectingNumber(data.invoice_number || '');
             setBuyerNip(data.buyer_nip || '');
             setBuyerName(data.buyer_name || '');
+            setBuyerStreet(data.buyer_street || '');
+            setBuyerCity(data.buyer_city || '');
+            setBuyerPostalCode(data.buyer_postal_code || '');
             if (Array.isArray(data.invoice_lines) && data.invoice_lines.length > 0) {
                 setLines(data.invoice_lines);
             }
@@ -126,6 +135,12 @@ export default function NewInvoicePage() {
         e.preventDefault();
         if (!sellerClientId) { alert('Wybierz klienta sprzedającego (token KSeF)'); return; }
         if (!buyerNip || !buyerName) { alert('Wpisz NIP i nazwę nabywcy'); return; }
+        if (!buyerStreet.trim() || !buyerCity.trim() || !buyerPostalCode.trim()) { alert('Wpisz adres nabywcy (ulica, kod pocztowy, miasto) — wymagany przez schemat FA(3)'); return; }
+        const sellerClient = clients.find(c => c.id === parseInt(sellerClientId));
+        if (sellerClient && (!sellerClient.street || !sellerClient.city || !sellerClient.postal_code)) {
+            alert(`Klient "${sellerClient.client_name}" nie ma uzupełnionego adresu — uzupełnij go w karcie klienta przed wystawieniem faktury`);
+            return;
+        }
         if (!invoiceNumber) { alert('Wpisz numer faktury'); return; }
         if (lines.length === 0) { alert('Dodaj przynajmniej jedną pozycję'); return; }
         if (correctingId && !correctionReason.trim()) { alert('Podaj powód korekty'); return; }
@@ -144,6 +159,9 @@ export default function NewInvoicePage() {
                     dueDate,
                     buyerNip,
                     buyerName,
+                    buyerStreet,
+                    buyerCity,
+                    buyerPostalCode,
                     lines,
                     totals,
                     offlineMode: isOffline ? offlineMode : undefined,
@@ -201,7 +219,7 @@ export default function NewInvoicePage() {
                         </>
                     )}
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setInvoiceNumber(''); setIsOffline(false); }}>
+                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setBuyerStreet(''); setBuyerCity(''); setBuyerPostalCode(''); setInvoiceNumber(''); setIsOffline(false); }}>
                             Wystaw kolejną
                         </button>
                         <Link href={result.queuedOffline ? '/dashboard/invoices/offline' : '/dashboard/invoices'} className="btn-primary" style={{ textDecoration: 'none', padding: '9px 20px', borderRadius: 7 }}>
@@ -256,6 +274,22 @@ export default function NewInvoicePage() {
                                 <option key={c.id} value={c.id}>{c.client_name} ({c.nip})</option>
                             ))}
                         </select>
+                        {(() => {
+                            const selected = clients.find(c => c.id === parseInt(sellerClientId));
+                            if (!selected) return null;
+                            if (!selected.street || !selected.city || !selected.postal_code) {
+                                return (
+                                    <div style={{ fontSize: 11.5, color: '#f59e0b' }}>
+                                        Brak adresu — <Link href={`/dashboard/clients/${selected.id}`} style={{ color: '#f59e0b', textDecoration: 'underline' }}>uzupełnij w karcie klienta</Link> przed wysyłką
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>
+                                    {selected.street}, {selected.postal_code} {selected.city}
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* Buyer */}
@@ -279,9 +313,39 @@ export default function NewInvoicePage() {
                             value={buyerName}
                             onChange={e => setBuyerName(e.target.value)}
                             placeholder="Nazwa firmy"
-                            style={{ width: '100%' }}
+                            style={{ width: '100%', marginBottom: 12 }}
                             required
                         />
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Ulica i numer*</label>
+                        <input
+                            value={buyerStreet}
+                            onChange={e => setBuyerStreet(e.target.value)}
+                            placeholder="ul. Przykładowa 12/3"
+                            style={{ width: '100%', marginBottom: 12 }}
+                            required
+                        />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Kod pocztowy*</label>
+                                <input
+                                    value={buyerPostalCode}
+                                    onChange={e => setBuyerPostalCode(e.target.value)}
+                                    placeholder="00-001"
+                                    style={{ width: '100%' }}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Miasto*</label>
+                                <input
+                                    value={buyerCity}
+                                    onChange={e => setBuyerCity(e.target.value)}
+                                    placeholder="Warszawa"
+                                    style={{ width: '100%' }}
+                                    required
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 

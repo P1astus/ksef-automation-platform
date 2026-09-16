@@ -135,7 +135,19 @@ function esc(s: string | undefined): string {
  * meaning — P_7 is now the item name (it was the unit of measure in FA(2)),
  * P_8A is now the unit of measure, P_8B is the quantity.
  */
+// FA(3)'s AdresL1/AdresL2 are minLength=1 - an invoice built with either
+// missing would pass every other check here and still get rejected by KSeF
+// on submission. Enforced here, not just at the API boundary, so no caller
+// can ever emit one silently.
+function assertHasAddress(party: InvoiceParty, label: string): void {
+    if (!party.street?.trim() || !party.city?.trim() || !party.postCode?.trim()) {
+        throw new Error(`Brak adresu ${label} (ulica/miasto/kod pocztowy) - wymagany przez schemat FA(3)`);
+    }
+}
+
 export function buildKSeFInvoiceXml(input: InvoiceInput): string {
+    assertHasAddress(input.seller, 'sprzedawcy');
+    assertHasAddress(input.buyer, 'nabywcy');
     const computed = computeLines(input.lines);
     const currency = input.currency || 'PLN';
     const countryCode = input.seller.countryCode || 'PL';
