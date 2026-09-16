@@ -1,9 +1,32 @@
+// '0' is domestic 0% (TStawkaPodatku "0 KR"); '0-wdt'/'0-export' are the
+// two other 0%-rate treatments FA(3) tracks separately (intra-EU supply and
+// export each roll up into their own P_13_6_x total, not P_13_6_1 alongside
+// ordinary domestic 0% sales); 'oo' is odwrotne obciążenie (domestic reverse
+// charge, art. 17 ust. 1 pkt 7/8 - the buyer accounts for the VAT, not the
+// seller) and rolls up into P_13_10, plus flips the invoice-level P_18
+// annotation. None of the four carry a VAT amount, same as 'zw' - see
+// isZeroVatRate().
+export type VatRateCode = '23' | '8' | '5' | '0' | '0-wdt' | '0-export' | 'zw' | 'oo';
+
 export interface InvoiceLine {
     name: string;
     qty: number;
     unit: string;
     netPrice: number;
-    vatRate: '23' | '8' | '5' | '0' | 'zw';
+    vatRate: VatRateCode;
+}
+
+export function isZeroVatRate(rate: VatRateCode): boolean {
+    return rate === '0' || rate === '0-wdt' || rate === '0-export' || rate === 'zw' || rate === 'oo';
+}
+
+// FA(3)'s Zwolnienie annotation is an all-or-nothing xsd:choice: either
+// P_19=1 plus exactly one legal-basis citation (P_19A ustawa, P_19B EU
+// directive, P_19C other), or P_19N=1 ("no exemption applies"). Required
+// whenever any line is 'zw' - see assertExemptionBasis().
+export interface ExemptionBasis {
+    type: 'ustawa' | 'dyrektywa' | 'inna';
+    text: string;
 }
 
 export interface InvoiceParty {
@@ -40,6 +63,7 @@ export interface InvoiceInput {
     lines: InvoiceLine[];  // the corrected/current lines — see CorrectionInfo.originalLines
     currency?: string;
     correction?: CorrectionInfo;
+    exemptionBasis?: ExemptionBasis;  // required if any line is 'zw' — see assertExemptionBasis()
 }
 
 interface VatGroup {
@@ -53,29 +77,35 @@ interface VatGroup {
 // literal rate string the way the old FA(2)-era code assumed — it uses a
 // fixed legal enumeration of field names (TStawkaPodatku for the per-line
 // P_12 code; separate P_13_x/P_14_x elements, in this exact schema order,
-// for the invoice-level totals). 0% and "zw" (exempt) have no P_14_x
-// counterpart at all - there's no VAT amount to report for either.
-const VAT_GROUP_FIELD: Record<InvoiceLine['vatRate'], { net: string; vat: string | null; p12: string; order: number }> = {
+// for the invoice-level totals). None of the zero-VAT treatments have a
+// P_14_x counterpart - there's no VAT amount to report for any of them.
+// `order` only needs to preserve relative order among the fields we actually
+// emit (P_13_8/P_13_9/P_13_11 etc. are legitimately skipped - niche
+// procedures, not handled here), not literal schema field numbers.
+const VAT_GROUP_FIELD: Record<VatRateCode, { net: string; vat: string | null; p12: string; order: number }> = {
     '23': { net: 'P_13_1', vat: 'P_14_1', p12: '23', order: 1 },
     '8': { net: 'P_13_2', vat: 'P_14_2', p12: '8', order: 2 },
     '5': { net: 'P_13_3', vat: 'P_14_3', p12: '5', order: 3 },
     '0': { net: 'P_13_6_1', vat: null, p12: '0 KR', order: 4 },
-    'zw': { net: 'P_13_7', vat: null, p12: 'zw', order: 5 },
+    '0-wdt': { net: 'P_13_6_2', vat: null, p12: '0 WDT', order: 5 },
+    '0-export': { net: 'P_13_6_3', vat: null, p12: '0 EX', order: 6 },
+    'zw': { net: 'P_13_7', vat: null, p12: 'zw', order: 7 },
+    'oo': { net: 'P_13_10', vat: null, p12: 'oo', order: 8 },
 };
 
 function round2(n: number): number {
     return Math.round(n * 100) / 100;
 }
 
-function vatRateValue(rate: InvoiceLine['vatRate']): number {
-    if (rate === 'zw') return 0;
+function vatRateValue(rate: VatRateCode): number {
+    if (isZeroVatRate(rate)) return 0;
     return parseFloat(rate) / 100;
 }
 
 function computeLines(lines: InvoiceLine[]) {
     return lines.map(l => {
         const net = round2(l.netPrice * l.qty);
-        const vatAmt = l.vatRate === 'zw' ? 0 : round2(net * vatRateValue(l.vatRate));
+        const vatAmt = isZeroVatRate(l.vatRate) ? 0 : round2(net * vatRateValue(l.vatRate));
         const gross = round2(net + vatAmt);
         return { ...l, net, vatAmt, gross };
     });
@@ -145,10 +175,35 @@ function assertHasAddress(party: InvoiceParty, label: string): void {
     }
 }
 
+// Zwolnienie is an xsd:choice (see ExemptionBasis) - an invoice with a 'zw'
+// line has to pick the P_19 branch and cite a basis, not fall through to
+// P_19N ("no exemption applies") by default. Checked here, not just at the
+// API boundary, for the same reason as assertHasAddress.
+function assertExemptionBasis(lines: InvoiceLine[], exemptionBasis: ExemptionBasis | undefined): void {
+    if (lines.some(l => l.vatRate === 'zw') && !exemptionBasis?.text?.trim()) {
+        throw new Error('Faktura zawiera pozycję zwolnioną z VAT (zw.) - wymagana podstawa prawna zwolnienia');
+    }
+}
+
+function zwolnienieXml(exemptionBasis: ExemptionBasis | undefined): string {
+    if (!exemptionBasis?.text?.trim()) {
+        return `<fa:Zwolnienie>
+                <fa:P_19N>1</fa:P_19N>
+            </fa:Zwolnienie>`;
+    }
+    const tag = exemptionBasis.type === 'ustawa' ? 'P_19A' : exemptionBasis.type === 'dyrektywa' ? 'P_19B' : 'P_19C';
+    return `<fa:Zwolnienie>
+                <fa:P_19>1</fa:P_19>
+                <fa:${tag}>${esc(exemptionBasis.text.trim())}</fa:${tag}>
+            </fa:Zwolnienie>`;
+}
+
 export function buildKSeFInvoiceXml(input: InvoiceInput): string {
     assertHasAddress(input.seller, 'sprzedawcy');
     assertHasAddress(input.buyer, 'nabywcy');
+    assertExemptionBasis(input.lines, input.exemptionBasis);
     const computed = computeLines(input.lines);
+    const hasReverseCharge = computed.some(l => l.vatRate === 'oo');
     const currency = input.currency || 'PLN';
     const countryCode = input.seller.countryCode || 'PL';
 
@@ -244,11 +299,9 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
         <fa:Adnotacje>
             <fa:P_16>2</fa:P_16>
             <fa:P_17>2</fa:P_17>
-            <fa:P_18>2</fa:P_18>
+            <fa:P_18>${hasReverseCharge ? '1' : '2'}</fa:P_18>
             <fa:P_18A>2</fa:P_18A>
-            <fa:Zwolnienie>
-                <fa:P_19N>1</fa:P_19N>
-            </fa:Zwolnienie>
+            ${zwolnienieXml(input.exemptionBasis)}
             <fa:NoweSrodkiTransportu>
                 <fa:P_22N>1</fa:P_22N>
             </fa:NoweSrodkiTransportu>

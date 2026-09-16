@@ -3,7 +3,7 @@ import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { buildKSeFInvoiceXml } from '@/lib/ksef-invoice-builder';
-import type { InvoiceLine } from '@/lib/ksef-invoice-builder';
+import type { InvoiceLine, ExemptionBasis } from '@/lib/ksef-invoice-builder';
 
 export async function POST(request: Request) {
     const session = await getSession();
@@ -14,8 +14,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const {
         clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName,
-        buyerStreet, buyerCity, buyerPostalCode,
-        lines, totals, offlineMode, correctingInvoiceId, correctionReason,
+        buyerStreet, buyerCity, buyerPostalCode, buyerCountryCode,
+        lines, totals, offlineMode, correctingInvoiceId, correctionReason, exemptionBasis,
     } = body;
 
     if (!clientId || !invoiceNumber || !issueDate || !buyerNip || !buyerName || !lines?.length) {
@@ -26,6 +26,14 @@ export async function POST(request: Request) {
     }
     if (correctingInvoiceId && !correctionReason?.trim()) {
         return NextResponse.json({ error: 'Podaj powód korekty' }, { status: 400 });
+    }
+    // FA(3)'s Zwolnienie annotation requires a cited legal basis whenever any
+    // line is 'zw' - checked here (not just left to buildKSeFInvoiceXml's own
+    // guard) so the error names what to fix instead of surfacing as a
+    // generic 500 further down.
+    const hasExemptLine = (lines as InvoiceLine[]).some(l => l.vatRate === 'zw');
+    if (hasExemptLine && !exemptionBasis?.text?.trim()) {
+        return NextResponse.json({ error: 'Faktura zawiera pozycję zwolnioną z VAT (zw.) - podaj podstawę prawną zwolnienia' }, { status: 400 });
     }
 
     const OFFLINE_MODES = ['offline24', 'unavailability', 'emergency', 'total_outage'];
@@ -95,9 +103,10 @@ export async function POST(request: Request) {
         issueDate,
         dueDate: dueDate || undefined,
         seller: { nip: client.nip, name: client.client_name || firmName, street: client.street, city: client.city, postCode: client.postal_code },
-        buyer: { nip: buyerNip, name: buyerName, street: buyerStreet, city: buyerCity, postCode: buyerPostalCode },
+        buyer: { nip: buyerNip, name: buyerName, street: buyerStreet, city: buyerCity, postCode: buyerPostalCode, countryCode: buyerCountryCode || 'PL' },
         lines: lines as InvoiceLine[],
         correction,
+        exemptionBasis: exemptionBasis as ExemptionBasis | undefined,
     });
 
     // Insert invoice record

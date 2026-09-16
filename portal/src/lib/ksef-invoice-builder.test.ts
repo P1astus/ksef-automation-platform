@@ -84,10 +84,13 @@ describe('buildKSeFInvoiceXml — validates against the real vendored FA(3) XSD'
                 { name: 'Usluga B', qty: 1, unit: 'godz', netPrice: 200, vatRate: '8' },
                 { name: 'Uslugi zwolnione', qty: 1, unit: 'szt', netPrice: 30, vatRate: 'zw' },
             ],
+            exemptionBasis: { type: 'ustawa', text: 'art. 43 ust. 1 pkt 1 ustawy o VAT' },
         });
         const result = validateAgainstFa3Schema(xml);
         expect(result.output).toBe('');
         expect(result.valid).toBe(true);
+        expect(xml).toContain('<fa:P_19>1</fa:P_19>');
+        expect(xml).toContain('<fa:P_19A>art. 43 ust. 1 pkt 1 ustawy o VAT</fa:P_19A>');
     });
 
     it.skipIf(!xmllintAvailable)('a 0%-rate invoice validates', () => {
@@ -120,6 +123,7 @@ describe('buildKSeFInvoiceXml — validates against the real vendored FA(3) XSD'
                 originalKsefNumber: '1111111111-20260914-010080DD2B5E-26',
                 originalLines,
             },
+            exemptionBasis: { type: 'ustawa', text: 'art. 43 ust. 1 pkt 1 ustawy o VAT' },
         });
 
         const result = validateAgainstFa3Schema(xml);
@@ -153,5 +157,80 @@ describe('buildKSeFInvoiceXml — validates against the real vendored FA(3) XSD'
         expect(xml).toContain('<fa:WariantFormularza>3</fa:WariantFormularza>');
         expect(xml).toContain('http://crd.gov.pl/wzor/2025/06/25/13775/');
         expect(xml).not.toContain('FA (2)');
+    });
+
+    it.skipIf(!xmllintAvailable)('a WDT invoice (0% intra-EU supply) validates and rolls up into P_13_6_2, not P_13_6_1', () => {
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            buyer: { ...baseInput.buyer, countryCode: 'DE' },
+            lines: [{ name: 'Towar na eksport wewnatrzunijny', qty: 1, unit: 'szt', netPrice: 1000, vatRate: '0-wdt' }],
+        });
+        const result = validateAgainstFa3Schema(xml);
+        expect(result.output).toBe('');
+        expect(result.valid).toBe(true);
+        expect(xml).toContain('<fa:P_12>0 WDT</fa:P_12>');
+        expect(xml).toContain('<fa:P_13_6_2>1000.00</fa:P_13_6_2>');
+        expect(xml).not.toContain('<fa:P_13_6_1>');
+    });
+
+    it.skipIf(!xmllintAvailable)('an export invoice (0% export) validates and rolls up into P_13_6_3', () => {
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            buyer: { ...baseInput.buyer, countryCode: 'US' },
+            lines: [{ name: 'Towar eksportowany', qty: 1, unit: 'szt', netPrice: 500, vatRate: '0-export' }],
+        });
+        const result = validateAgainstFa3Schema(xml);
+        expect(result.output).toBe('');
+        expect(result.valid).toBe(true);
+        expect(xml).toContain('<fa:P_12>0 EX</fa:P_12>');
+        expect(xml).toContain('<fa:P_13_6_3>500.00</fa:P_13_6_3>');
+    });
+
+    it.skipIf(!xmllintAvailable)('a reverse-charge (oo) invoice validates, rolls up into P_13_10, and flips P_18 to "1"', () => {
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            lines: [{ name: 'Uslugi budowlane - odwrotne obciazenie', qty: 1, unit: 'szt', netPrice: 5000, vatRate: 'oo' }],
+        });
+        const result = validateAgainstFa3Schema(xml);
+        expect(result.output).toBe('');
+        expect(result.valid).toBe(true);
+        expect(xml).toContain('<fa:P_12>oo</fa:P_12>');
+        expect(xml).toContain('<fa:P_13_10>5000.00</fa:P_13_10>');
+        expect(xml).toContain('<fa:P_18>1</fa:P_18>');
+    });
+
+    it('does not flip P_18 when no line uses reverse charge', () => {
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            lines: [{ name: 'X', qty: 1, unit: 'szt', netPrice: 10, vatRate: '23' }],
+        });
+        expect(xml).toContain('<fa:P_18>2</fa:P_18>');
+    });
+
+    it('throws when a zw line has no exemption legal basis', () => {
+        expect(() => buildKSeFInvoiceXml({
+            ...baseInput,
+            lines: [{ name: 'Uslugi zwolnione', qty: 1, unit: 'szt', netPrice: 10, vatRate: 'zw' }],
+        })).toThrow(/podstawa prawna zwolnienia/i);
+    });
+
+    it('throws when the exemption basis text is blank whitespace', () => {
+        expect(() => buildKSeFInvoiceXml({
+            ...baseInput,
+            lines: [{ name: 'Uslugi zwolnione', qty: 1, unit: 'szt', netPrice: 10, vatRate: 'zw' }],
+            exemptionBasis: { type: 'ustawa', text: '   ' },
+        })).toThrow(/podstawa prawna zwolnienia/i);
+    });
+
+    it.skipIf(!xmllintAvailable)('an EU-directive exemption basis (P_19B) validates', () => {
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            lines: [{ name: 'Uslugi zwolnione', qty: 1, unit: 'szt', netPrice: 10, vatRate: 'zw' }],
+            exemptionBasis: { type: 'dyrektywa', text: 'art. 132 dyrektywy 2006/112/WE' },
+        });
+        const result = validateAgainstFa3Schema(xml);
+        expect(result.output).toBe('');
+        expect(result.valid).toBe(true);
+        expect(xml).toContain('<fa:P_19B>art. 132 dyrektywy 2006/112/WE</fa:P_19B>');
     });
 });

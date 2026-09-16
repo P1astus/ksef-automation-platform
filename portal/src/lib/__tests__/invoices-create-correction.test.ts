@@ -185,3 +185,54 @@ describe('invoices/create/route.ts — address validation', () => {
         expect(insertCall![1]).toEqual(expect.arrayContaining(['ul. Nabywcza 1', 'Krakow', '30-001']));
     });
 });
+
+// Round 6: FA(3)'s Zwolnienie annotation requires a cited legal basis
+// whenever any line is 'zw' - see invoice-address-validation.test.ts's
+// sibling file ksef-invoice-builder.test.ts for the builder-level guard.
+// These prove the route rejects before ever calling the builder.
+describe('invoices/create/route.ts — exemption (zw) legal basis validation', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        buildXmlMock.mockClear();
+        queryMock.mockReset();
+        queryMock.mockImplementation(async (sql: string) => {
+            if (sql.includes('FROM clients')) return { rows: [SELLER_CLIENT_ROW] };
+            if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
+            if (sql.includes('INSERT INTO invoices')) return { rows: [{ id: 99 }] };
+            return { rows: [] };
+        });
+    });
+
+    const zwLine = { name: 'Uslugi zwolnione', qty: 1, unit: 'szt', netPrice: 100, vatRate: 'zw' };
+
+    it('rejects a zw-rate line with no exemption basis', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req({ ...baseBody, lines: [zwLine] }));
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error).toMatch(/podstawę prawną zwolnienia/i);
+        expect(buildXmlMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a zw-rate line with a blank exemption basis text', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req({ ...baseBody, lines: [zwLine], exemptionBasis: { type: 'ustawa', text: '   ' } }));
+        expect(res.status).toBe(400);
+        expect(buildXmlMock).not.toHaveBeenCalled();
+    });
+
+    it('accepts a zw-rate line once an exemption basis is provided, and passes it to the builder', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const exemptionBasis = { type: 'ustawa', text: 'art. 113 ust. 1 ustawy o VAT' };
+        const res = await POST(req({ ...baseBody, lines: [zwLine], exemptionBasis }));
+        expect(res.status).toBe(200);
+        const [builderArg] = buildXmlMock.mock.calls[0];
+        expect(builderArg.exemptionBasis).toEqual(exemptionBasis);
+    });
+
+    it('does not require an exemption basis when no line is zw', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req(baseBody));
+        expect(res.status).toBe(200);
+    });
+});

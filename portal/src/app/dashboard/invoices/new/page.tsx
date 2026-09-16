@@ -4,14 +4,23 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Send, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import type { InvoiceLine } from '@/lib/ksef-invoice-builder';
+import { isZeroVatRate, type InvoiceLine, type ExemptionBasis } from '@/lib/ksef-invoice-builder';
 
 const VAT_RATES: { label: string; value: InvoiceLine['vatRate'] }[] = [
     { label: '23%', value: '23' },
     { label: '8%', value: '8' },
     { label: '5%', value: '5' },
-    { label: '0%', value: '0' },
+    { label: '0% (krajowe)', value: '0' },
+    { label: '0% WDT', value: '0-wdt' },
+    { label: '0% eksport', value: '0-export' },
     { label: 'zw.', value: 'zw' },
+    { label: 'oo. (odwr. obciążenie)', value: 'oo' },
+];
+
+const EXEMPTION_TYPES: { label: string; value: ExemptionBasis['type'] }[] = [
+    { label: 'Przepis ustawy o VAT', value: 'ustawa' },
+    { label: 'Dyrektywa 2006/112/WE', value: 'dyrektywa' },
+    { label: 'Inna podstawa prawna', value: 'inna' },
 ];
 
 interface Client {
@@ -35,7 +44,7 @@ function computeTotals(lines: InvoiceLine[]): Totals {
     let net = 0, vat = 0;
     for (const l of lines) {
         const lineNet = round2(l.netPrice * l.qty);
-        const vatAmt = l.vatRate === 'zw' ? 0 : round2(lineNet * (parseFloat(l.vatRate) / 100));
+        const vatAmt = isZeroVatRate(l.vatRate) ? 0 : round2(lineNet * (parseFloat(l.vatRate) / 100));
         net += lineNet;
         vat += vatAmt;
     }
@@ -65,6 +74,9 @@ export default function NewInvoicePage() {
     const [buyerStreet, setBuyerStreet] = useState('');
     const [buyerCity, setBuyerCity] = useState('');
     const [buyerPostalCode, setBuyerPostalCode] = useState('');
+    const [buyerCountryCode, setBuyerCountryCode] = useState('PL');
+    const [exemptionType, setExemptionType] = useState<ExemptionBasis['type']>('ustawa');
+    const [exemptionText, setExemptionText] = useState('');
     const [nipStatus, setNipStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
     const [sellerClientId, setSellerClientId] = useState('');
     const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -144,6 +156,8 @@ export default function NewInvoicePage() {
         if (!invoiceNumber) { alert('Wpisz numer faktury'); return; }
         if (lines.length === 0) { alert('Dodaj przynajmniej jedną pozycję'); return; }
         if (correctingId && !correctionReason.trim()) { alert('Podaj powód korekty'); return; }
+        const hasExemptLine = lines.some(l => l.vatRate === 'zw');
+        if (hasExemptLine && !exemptionText.trim()) { alert('Wpisz podstawę prawną zwolnienia dla pozycji zwolnionej z VAT (zw.)'); return; }
 
         setSending(true);
         setResult(null);
@@ -162,14 +176,19 @@ export default function NewInvoicePage() {
                     buyerStreet,
                     buyerCity,
                     buyerPostalCode,
+                    buyerCountryCode,
                     lines,
                     totals,
                     offlineMode: isOffline ? offlineMode : undefined,
                     correctingInvoiceId: correctingId ? parseInt(correctingId) : undefined,
                     correctionReason: correctingId ? correctionReason : undefined,
+                    exemptionBasis: hasExemptLine ? { type: exemptionType, text: exemptionText.trim() } : undefined,
                 }),
             });
-            if (!saveRes.ok) throw new Error('Błąd zapisu faktury');
+            if (!saveRes.ok) {
+                const errData = await saveRes.json().catch(() => ({}));
+                throw new Error(errData.error || 'Błąd zapisu faktury');
+            }
             const saved = await saveRes.json();
 
             // Offline: KSeF isn't reachable right now, so there's nothing to
@@ -219,7 +238,7 @@ export default function NewInvoicePage() {
                         </>
                     )}
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setBuyerStreet(''); setBuyerCity(''); setBuyerPostalCode(''); setInvoiceNumber(''); setIsOffline(false); }}>
+                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setBuyerStreet(''); setBuyerCity(''); setBuyerPostalCode(''); setBuyerCountryCode('PL'); setExemptionText(''); setInvoiceNumber(''); setIsOffline(false); }}>
                             Wystaw kolejną
                         </button>
                         <Link href={result.queuedOffline ? '/dashboard/invoices/offline' : '/dashboard/invoices'} className="btn-primary" style={{ textDecoration: 'none', padding: '9px 20px', borderRadius: 7 }}>
@@ -346,6 +365,20 @@ export default function NewInvoicePage() {
                                 />
                             </div>
                         </div>
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', margin: '12px 0 4px' }}>Kraj (kod ISO)*</label>
+                        <input
+                            value={buyerCountryCode}
+                            onChange={e => setBuyerCountryCode(e.target.value.toUpperCase().slice(0, 2))}
+                            placeholder="PL"
+                            maxLength={2}
+                            style={{ width: 70 }}
+                            required
+                        />
+                        {buyerCountryCode !== 'PL' && (
+                            <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 6 }}>
+                                Nabywca spoza Polski — jeśli sprzedaż kwalifikuje się jako WDT lub eksport, wybierz odpowiednią stawkę 0% w pozycjach poniżej.
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -460,6 +493,32 @@ export default function NewInvoicePage() {
                             </tbody>
                         </table>
                     </div>
+
+                    {lines.some(l => l.vatRate === 'zw') && (
+                        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-subtle)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Podstawa zwolnienia z VAT (zw.)*
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Rodzaj podstawy</label>
+                                    <select value={exemptionType} onChange={e => setExemptionType(e.target.value as ExemptionBasis['type'])} style={{ width: '100%' }}>
+                                        {EXEMPTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Treść podstawy prawnej*</label>
+                                    <input
+                                        value={exemptionText}
+                                        onChange={e => setExemptionText(e.target.value)}
+                                        placeholder="np. art. 113 ust. 1 ustawy o VAT"
+                                        style={{ width: '100%' }}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Totals */}
                     <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
