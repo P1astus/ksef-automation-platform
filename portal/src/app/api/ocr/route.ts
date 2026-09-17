@@ -47,8 +47,14 @@ export async function POST(request: Request) {
                 // Settings -> KSeF; there's no real auth method to infer
                 // for a client that only exists because a document
                 // mentioned their NIP.
+                // ON CONFLICT DO NOTHING (round 11 fix): two ingestion paths
+                // (this upload, a concurrent email-sync scan, or an OCR
+                // review-queue approval) racing for the same brand-new NIP
+                // used to throw an unhandled unique-violation on
+                // clients(firm_id, nip) — nothing here guarded against it.
                 await client.query(
-                    'INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)',
+                    `INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (firm_id, nip) DO NOTHING`,
                     [session.firmId, fields.nip, fields.nipMatched ? `Manual OCR Client - ${fields.nip}` : 'Nieznany klient (OCR)', 'token']
                 );
             }

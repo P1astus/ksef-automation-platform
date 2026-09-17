@@ -18,19 +18,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const body = await request.json().catch(() => ({}));
     const { action } = body;
 
-    const check = await query('SELECT id, ocr_status FROM ocr_queue WHERE id = $1 AND firm_id = $2', [id, session.firmId]);
-    const item = check.rows[0];
-    if (!item) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
-    if (item.ocr_status === 'completed' || item.ocr_status === 'failed') {
-        return NextResponse.json({ error: 'Ten wpis został już przetworzony' }, { status: 409 });
-    }
-
-    if (action === 'reject') {
-        await query(`UPDATE ocr_queue SET ocr_status = 'failed', error_message = 'Odrzucone ręcznie', processed_at = NOW() WHERE id = $1`, [id]);
-        await logActivity(session.firmId, 'ocr_rejected', `Odrzucono zeskanowany dokument #${id}`);
-        return NextResponse.json({ ok: true });
-    }
-
     if (action === 'approve') {
         const { nip, invoiceNumber, netAmount, vatAmount, grossAmount, direction } = body;
         if (!nip || !/^\d{10}$/.test(nip)) {
@@ -41,34 +28,86 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         }
         const dir = direction === 'sales' ? 'sales' : 'purchase';
 
-        const clientRes = await query('SELECT nip FROM clients WHERE firm_id = $1 AND nip = $2', [session.firmId, nip]);
-        if (clientRes.rows.length === 0) {
-            // auth_method is NOT NULL with no default — see ocr/route.ts's
-            // identical comment on this same pattern.
-            await query('INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)', [session.firmId, nip, `Klient z weryfikacji OCR - ${nip}`, 'token']);
+        // Atomic claim (round 11 fix): the old code SELECTed ocr_status, checked
+        // it wasn't already terminal, then only much later — after a client
+        // lookup, a firm lookup, and an invoice INSERT — wrote the terminal
+        // status back. Two concurrent PATCH approve requests for the same id
+        // (double-click, or a client retry after a slow response) both pass
+        // the early check before either write lands, so both proceed to
+        // INSERT their own invoice — same document booked twice, corrupting
+        // revenue/JPK totals. This UPDATE...WHERE...RETURNING claims the row
+        // in one round trip; only the request that actually flips the status
+        // proceeds to create an invoice.
+        const claim = await query(
+            `UPDATE ocr_queue SET ocr_status = 'processing'
+             WHERE id = $1 AND firm_id = $2 AND ocr_status NOT IN ('completed', 'failed', 'processing')
+             RETURNING id`,
+            [id, session.firmId]
+        );
+        if (claim.rows.length === 0) {
+            const exists = await query('SELECT id FROM ocr_queue WHERE id = $1 AND firm_id = $2', [id, session.firmId]);
+            if (!exists.rows[0]) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
+            return NextResponse.json({ error: 'Ten wpis został już przetworzony' }, { status: 409 });
         }
 
-        const firmRes = await query('SELECT firm_nip, firm_name FROM firms WHERE id = $1', [session.firmId]);
-        const firm = firmRes.rows[0];
-        const ksefNumber = `REVIEWED-${Math.random().toString(36).substr(2, 10).toUpperCase()}`;
+        try {
+            // ON CONFLICT DO NOTHING (round 11 fix): two ingestion paths racing
+            // for the same brand-new NIP (e.g. this approval and a concurrent
+            // OCR/email-sync scan) used to throw an unhandled unique-violation
+            // on clients(firm_id, nip) — no ON CONFLICT guard existed anywhere
+            // this pattern is used.
+            await query(
+                `INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (firm_id, nip) DO NOTHING`,
+                [session.firmId, nip, `Klient z weryfikacji OCR - ${nip}`, 'token']
+            );
 
-        await query(
-            `INSERT INTO invoices (
-                firm_id, invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
-                issue_date, net_amount, vat_amount, gross_amount, currency, direction
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, 'PLN', $12)`,
-            [
-                session.firmId, invoiceNumber.trim(), ksefNumber, nip, nip, 'Zweryfikowany dokument',
-                firm?.firm_nip || null, firm?.firm_name || 'My Firm',
-                Number(netAmount) || 0, Number(vatAmount) || 0, Number(grossAmount) || 0, dir,
-            ]
-        );
+            const firmRes = await query('SELECT firm_nip, firm_name FROM firms WHERE id = $1', [session.firmId]);
+            const firm = firmRes.rows[0];
+            const ksefNumber = `REVIEWED-${Math.random().toString(36).substr(2, 10).toUpperCase()}`;
 
-        await query(`UPDATE ocr_queue SET ocr_status = 'completed', matched_ksef_number = $1, processed_at = NOW() WHERE id = $2`, [ksefNumber, id]);
-        await logActivity(session.firmId, 'ocr_approved', `Zatwierdzono zeskanowany dokument #${id} jako fakturę ${invoiceNumber}`);
+            await query(
+                `INSERT INTO invoices (
+                    firm_id, invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
+                    issue_date, net_amount, vat_amount, gross_amount, currency, direction
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, 'PLN', $12)`,
+                [
+                    session.firmId, invoiceNumber.trim(), ksefNumber, nip, nip, 'Zweryfikowany dokument',
+                    firm?.firm_nip || null, firm?.firm_name || 'My Firm',
+                    Number(netAmount) || 0, Number(vatAmount) || 0, Number(grossAmount) || 0, dir,
+                ]
+            );
 
-        return NextResponse.json({ ok: true });
+            await query(`UPDATE ocr_queue SET ocr_status = 'completed', matched_ksef_number = $1, processed_at = NOW() WHERE id = $2`, [ksefNumber, id]);
+            await logActivity(session.firmId, 'ocr_approved', `Zatwierdzono zeskanowany dokument #${id} jako fakturę ${invoiceNumber}`);
+
+            return NextResponse.json({ ok: true });
+        } catch (e) {
+            // Release the claim so the item isn't stuck in 'processing'
+            // forever if the invoice insert (or anything after the claim)
+            // fails — it goes back to needing review, not silently lost.
+            await query(`UPDATE ocr_queue SET ocr_status = 'manual_review' WHERE id = $1`, [id]).catch(() => {});
+            throw e;
+        }
     }
 
-    return NextResponse.json({ error: 'Nieprawidłowa akcja' }, { status: 400 });
+    if (action !== 'reject') {
+        return NextResponse.json({ error: 'Nieprawidłowa akcja' }, { status: 400 });
+    }
+
+    // Same atomic claim as approve, single-step since there's no further
+    // work after it.
+    const claim = await query(
+        `UPDATE ocr_queue SET ocr_status = 'failed', error_message = 'Odrzucone ręcznie', processed_at = NOW()
+         WHERE id = $1 AND firm_id = $2 AND ocr_status NOT IN ('completed', 'failed', 'processing')
+         RETURNING id`,
+        [id, session.firmId]
+    );
+    if (claim.rows.length > 0) {
+        await logActivity(session.firmId, 'ocr_rejected', `Odrzucono zeskanowany dokument #${id}`);
+        return NextResponse.json({ ok: true });
+    }
+    const exists = await query('SELECT id FROM ocr_queue WHERE id = $1 AND firm_id = $2', [id, session.firmId]);
+    if (!exists.rows[0]) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
+    return NextResponse.json({ error: 'Ten wpis został już przetworzony' }, { status: 409 });
 }

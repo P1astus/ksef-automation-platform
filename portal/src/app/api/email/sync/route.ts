@@ -29,8 +29,12 @@ async function extractAndQueueInvoice(buffer: Buffer, mimeType: string, firmId: 
         if (clientRes.rows.length === 0) {
             // auth_method is NOT NULL with no default — see ocr/route.ts's
             // identical comment on this same pattern.
+            // ON CONFLICT DO NOTHING (round 11 fix): see ocr/route.ts's
+            // identical comment — two ingestion paths racing for the same
+            // brand-new NIP used to throw an unhandled unique-violation here.
             await client.query(
-                'INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)',
+                `INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (firm_id, nip) DO NOTHING`,
                 [firmId, fields.nip, fields.nipMatched ? `Email Client - ${fields.nip}` : 'Nieznany klient (OCR)', 'token']
             );
         }
