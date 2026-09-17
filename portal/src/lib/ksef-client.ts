@@ -133,7 +133,13 @@ export async function initInteractiveSession(
     const operationToken: string = authenticationToken?.token;
     if (!operationToken) throw new Error('KSeF: no authenticationToken in response');
 
-    // Poll until auth completes (status.code === 200)
+    // Poll until auth completes (status.code === 200). Round 11 fix: this
+    // used to fall through unconditionally once the loop exhausted its 10
+    // attempts still "processing" (100-199) — the redeem call below would
+    // then fail with a confusing "auth/token/redeem failed" instead of a
+    // clear timeout, since nothing tracked whether a terminal status was
+    // ever actually reached.
+    let authenticated = false;
     for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 800));
         const statusRes = await fetch(`${BASE_URL}/auth/${referenceNumber}`, {
@@ -142,8 +148,11 @@ export async function initInteractiveSession(
         });
         if (!statusRes.ok) continue;
         const { status } = await statusRes.json();
-        if (status?.code === 200) break;
+        if (status?.code === 200) { authenticated = true; break; }
         if (status?.code >= 400) throw new Error(`KSeF auth failed: ${status.description}`);
+    }
+    if (!authenticated) {
+        throw new Error(`KSeF auth timed out: reference ${referenceNumber} never reached a terminal status after 10 polling attempts`);
     }
 
     // Redeem access token (can only be done once)
