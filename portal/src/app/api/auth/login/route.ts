@@ -46,8 +46,15 @@ export async function POST(request: Request) {
         // only unique per-firm (UNIQUE(firm_id, email)), so this can match
         // more than one row across different firms; bcrypt.compare against
         // each is the only way to know which one (if any) is this login.
+        // Joins firms.is_active too — a deactivated firm previously only
+        // locked out the owner login path above; an invited member's own
+        // is_active flag says nothing about the firm's, so they could log in
+        // (and stay logged in, since nothing re-checks per request) after a
+        // billing lapse or ops deactivation indefinitely.
         const memberResult = await query(
-            'SELECT id, firm_id, password_hash, role, is_active FROM firm_users WHERE email = $1',
+            `SELECT fu.id, fu.firm_id, fu.password_hash, fu.role, fu.is_active
+             FROM firm_users fu JOIN firms f ON f.id = fu.firm_id
+             WHERE fu.email = $1 AND f.is_active = true`,
             [email]
         );
 

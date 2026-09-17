@@ -14,6 +14,12 @@ import { encrypt, decrypt, sessionRole, requireRole } from '../auth';
 // convention settings/ksef/route.test.ts and tenancy.test.ts already use
 // rather than invoking the Next.js handler directly (which needs next/
 // headers' cookies() and this file's own pg pool, both awkward to mock).
+//
+// Round 11: the firm_users lookup never joined back to firms.is_active — a
+// deactivated firm correctly locked out the owner login path, but an
+// invited member's own is_active flag says nothing about the firm's, so
+// they could keep logging in indefinitely after a billing lapse or ops
+// deactivation. Fixed with a JOIN, replicated here the same way.
 
 const ROOT = join(__dirname, '..', '..', '..', '..');
 
@@ -29,7 +35,9 @@ async function findFirmUserSession(db: PGlite, email: string, password: string) 
     }
 
     const memberRes = await db.query<{ id: number; firm_id: number; password_hash: string; role: string; is_active: boolean }>(
-        `SELECT id, firm_id, password_hash, role, is_active FROM firm_users WHERE email = $1`, [email]
+        `SELECT fu.id, fu.firm_id, fu.password_hash, fu.role, fu.is_active
+         FROM firm_users fu JOIN firms f ON f.id = fu.firm_id
+         WHERE fu.email = $1 AND f.is_active = true`, [email]
     );
     for (const member of memberRes.rows) {
         if (!member.is_active) continue;
@@ -68,6 +76,17 @@ describe('firm_users login (the gap: invited members could never log in)', () =>
             `INSERT INTO firm_users (firm_id, email, password_hash, full_name, role, is_active) VALUES ($1, $2, $3, 'Deactivated', 'admin', false)`,
             [firmId, 'inactive@example.com', inactiveHash]
         );
+
+        const deactivatedFirmHash = await bcrypt.hash('owner-password-2', 10);
+        const deactivatedFirmRes = await db.query<{ id: number }>(
+            `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash, is_active) VALUES ('Firm B (deactivated)', 'firm-b', 'owner2@example.com', $1, false) RETURNING id`,
+            [deactivatedFirmHash]
+        );
+        const deactivatedFirmMemberHash = await bcrypt.hash('member-password-2', 10);
+        await db.query(
+            `INSERT INTO firm_users (firm_id, email, password_hash, full_name, role, is_active) VALUES ($1, $2, $3, 'Member Of Deactivated Firm', 'member', true)`,
+            [deactivatedFirmRes.rows[0].id, 'member-of-deactivated@example.com', deactivatedFirmMemberHash]
+        );
     });
 
     afterAll(async () => {
@@ -88,6 +107,11 @@ describe('firm_users login (the gap: invited members could never log in)', () =>
 
     it('a deactivated team member cannot log in even with the correct password', async () => {
         const session = await findFirmUserSession(db, 'inactive@example.com', 'inactive-password');
+        expect(session).toBeNull();
+    });
+
+    it('an active team member of a deactivated firm cannot log in — the round 11 fix', async () => {
+        const session = await findFirmUserSession(db, 'member-of-deactivated@example.com', 'member-password-2');
         expect(session).toBeNull();
     });
 
