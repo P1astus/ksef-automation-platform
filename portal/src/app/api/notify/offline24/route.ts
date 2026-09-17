@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { sendOffline24Warning } from '@/lib/email';
+import { safeEqual } from '@/lib/auth';
 
 // Called by workflows/09-client-notifications.json every 2 hours. Protected
 // by a shared secret exactly like digest/route.ts: Authorization: Bearer
@@ -16,7 +17,7 @@ import { sendOffline24Warning } from '@/lib/email';
 export async function POST(request: Request) {
     const auth = request.headers.get('Authorization');
     const secret = process.env.NOTIFY_SECRET;
-    if (secret && auth !== `Bearer ${secret}`) {
+    if (secret && !safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

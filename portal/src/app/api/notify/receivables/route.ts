@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { sendReceivablesDigest } from '@/lib/email';
+import { safeEqual } from '@/lib/auth';
 
 // Called weekly by workflows/09-client-notifications.json. Same shared-
 // secret pattern as digest/route.ts and notify/offline24/route.ts.
@@ -13,7 +14,7 @@ import { sendReceivablesDigest } from '@/lib/email';
 export async function POST(request: Request) {
     const auth = request.headers.get('Authorization');
     const secret = process.env.NOTIFY_SECRET;
-    if (secret && auth !== `Bearer ${secret}`) {
+    if (secret && !safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

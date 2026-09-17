@@ -1,6 +1,24 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
+
+// Round 11 fix: digest/route.ts, notify/offline24/route.ts and
+// notify/receivables/route.ts each compared their shared-secret
+// (DIGEST_SECRET/NOTIFY_SECRET) Authorization header with a plain `!==`,
+// the same non-constant-time comparison class the sidecar's
+// SidecarApiKeyFilter (round 4) was built specifically to avoid — a plain
+// string compare short-circuits on the first mismatched byte, leaking
+// timing information an attacker could use to guess the secret
+// byte-by-byte. Buffer lengths must match before calling timingSafeEqual
+// (it throws otherwise), which is itself safe to branch on since it only
+// leaks the secret's length, not any of its bytes.
+export function safeEqual(a: string, b: string): boolean {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return timingSafeEqual(bufA, bufB);
+}
 
 // Checked lazily (on first actual use) rather than at module load: `next
 // build` statically imports and evaluates every route module to collect

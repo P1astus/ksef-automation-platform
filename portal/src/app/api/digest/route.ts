@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { sendDailyDigest } from '@/lib/email';
+import { safeEqual } from '@/lib/auth';
 
 // Called by n8n cron at 7:00 AM daily
 // Or manually: POST /api/digest
@@ -8,7 +9,7 @@ import { sendDailyDigest } from '@/lib/email';
 export async function POST(request: Request) {
     const auth = request.headers.get('Authorization');
     const secret = process.env.DIGEST_SECRET;
-    if (secret && auth !== `Bearer ${secret}`) {
+    if (secret && !safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
