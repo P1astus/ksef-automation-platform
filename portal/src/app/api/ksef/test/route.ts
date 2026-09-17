@@ -53,14 +53,21 @@ export async function GET(request: Request) {
     let accessToken: string | null = null;
     if (clientId) {
         try {
+            // Round 11 fix: this queried a column that has never existed
+            // (ksef_auth_method) — the real column is auth_method, and its
+            // stored value for certificate auth is 'certificate', not 'cert'
+            // (see settings/ksef/route.ts's dbAuthMethodToApi() — this route
+            // missed the same round-3 fix). Passing ?clientId= always threw
+            // inside the surrounding try/catch, so this diagnostic could
+            // never actually confirm a working session for any client.
             const cr = await query(
-                'SELECT nip, ksef_token_encrypted, ksef_auth_method FROM clients WHERE id = $1 AND firm_id = $2',
+                'SELECT nip, ksef_token_encrypted, auth_method FROM clients WHERE id = $1 AND firm_id = $2',
                 [clientId, session.firmId]
             );
             const client = cr.rows[0];
             if (!client?.ksef_token_encrypted) {
                 result.sessionInit = { ok: false, error: 'No token stored for this client' };
-            } else if (client.ksef_auth_method === 'cert') {
+            } else if (client.auth_method === 'certificate') {
                 result.sessionInit = { ok: false, error: 'Cert auth — session init test not supported here' };
             } else {
                 const tokenPlaintext = Buffer.from(client.ksef_token_encrypted, 'base64').toString('utf8');
