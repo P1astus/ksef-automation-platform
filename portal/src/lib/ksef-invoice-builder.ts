@@ -1,12 +1,26 @@
 // '0' is domestic 0% (TStawkaPodatku "0 KR"); '0-wdt'/'0-export' are the
 // two other 0%-rate treatments FA(3) tracks separately (intra-EU supply and
 // export each roll up into their own P_13_6_x total, not P_13_6_1 alongside
-// ordinary domestic 0% sales); 'oo' is odwrotne obciążenie (domestic reverse
-// charge, art. 17 ust. 1 pkt 7/8 - the buyer accounts for the VAT, not the
-// seller) and rolls up into P_13_10, plus flips the invoice-level P_18
-// annotation. None of the four carry a VAT amount, same as 'zw' - see
-// isZeroVatRate().
-export type VatRateCode = '23' | '8' | '5' | '0' | '0-wdt' | '0-export' | 'zw' | 'oo';
+// ordinary domestic 0% sales). None of the three carry a VAT amount, same
+// as 'zw' - see isZeroVatRate().
+//
+// There is deliberately no 'oo' (odwrotne obciążenie / domestic reverse
+// charge) rate. It existed here through round 9 modeling art. 17 ust. 1
+// pkt 7/8, but round 10 confirmed against the current text of the VAT act
+// that both points were repealed 2019-11-01 - domestic B2B reverse charge
+// for załącznik-11/14 goods and construction services was replaced by
+// mandatory split payment (MPP), which charges full VAT plus a payment
+// annotation, not a zero-VAT line. There is no current domestic scenario
+// where a seller issuing a sales invoice can legally zero out VAT on the
+// basis of "buyer self-assesses" - keeping 'oo' selectable risked a real
+// accounting firm filing a non-compliant invoice. (The nearest still-valid
+// "buyer is the taxpayer" fields, K_31/K_32 for art. 17 ust. 1 pkt 5, model
+// a domestic BUYER self-assessing a PURCHASE from a foreign supplier with
+// no Polish establishment - not something a seller ever marks on their own
+// outgoing sales-invoice line, so repurposing 'oo' for that citation
+// wouldn't have fit this platform's data flow either. Removed entirely
+// rather than fixed in place, per explicit user decision.)
+export type VatRateCode = '23' | '8' | '5' | '0' | '0-wdt' | '0-export' | 'zw';
 
 export interface InvoiceLine {
     name: string;
@@ -17,7 +31,7 @@ export interface InvoiceLine {
 }
 
 export function isZeroVatRate(rate: VatRateCode): boolean {
-    return rate === '0' || rate === '0-wdt' || rate === '0-export' || rate === 'zw' || rate === 'oo';
+    return rate === '0' || rate === '0-wdt' || rate === '0-export' || rate === 'zw';
 }
 
 // FA(3)'s Zwolnienie annotation is an all-or-nothing xsd:choice: either
@@ -90,7 +104,6 @@ const VAT_GROUP_FIELD: Record<VatRateCode, { net: string; vat: string | null; p1
     '0-wdt': { net: 'P_13_6_2', vat: null, p12: '0 WDT', order: 5 },
     '0-export': { net: 'P_13_6_3', vat: null, p12: '0 EX', order: 6 },
     'zw': { net: 'P_13_7', vat: null, p12: 'zw', order: 7 },
-    'oo': { net: 'P_13_10', vat: null, p12: 'oo', order: 8 },
 };
 
 function round2(n: number): number {
@@ -188,6 +201,22 @@ function assertHasAddress(party: InvoiceParty, label: string): void {
     }
 }
 
+// TypeScript's VatRateCode union only guards a compile-time caller - a rate
+// read back from the DB (e.g. a pre-round-10 row that still has the removed
+// 'oo') or sent through an untyped request body reaches here as a plain
+// string. VAT_GROUP_FIELD[rate] would otherwise be undefined and crash with
+// an opaque "Cannot read properties of undefined" deep in the line/group
+// mapping, instead of a clear error naming the actual bad value. Checked
+// here, not just at the API boundary, for the same reason as
+// assertHasAddress.
+function assertKnownVatRates(lines: InvoiceLine[]): void {
+    for (const l of lines) {
+        if (!(l.vatRate in VAT_GROUP_FIELD)) {
+            throw new Error(`Nieznana stawka VAT: "${l.vatRate}"`);
+        }
+    }
+}
+
 // Zwolnienie is an xsd:choice (see ExemptionBasis) - an invoice with a 'zw'
 // line has to pick the P_19 branch and cite a basis, not fall through to
 // P_19N ("no exemption applies") by default. Checked here, not just at the
@@ -214,9 +243,9 @@ function zwolnienieXml(exemptionBasis: ExemptionBasis | undefined): string {
 export function buildKSeFInvoiceXml(input: InvoiceInput): string {
     assertHasAddress(input.seller, 'sprzedawcy');
     assertHasAddress(input.buyer, 'nabywcy');
+    assertKnownVatRates(input.lines);
     assertExemptionBasis(input.lines, input.exemptionBasis);
     const computed = computeLines(input.lines);
-    const hasReverseCharge = computed.some(l => l.vatRate === 'oo');
     const currency = input.currency || 'PLN';
     const countryCode = input.seller.countryCode || 'PL';
 
@@ -312,7 +341,9 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
         <fa:Adnotacje>
             <fa:P_16>2</fa:P_16>
             <fa:P_17>2</fa:P_17>
-            <fa:P_18>${hasReverseCharge ? '1' : '2'}</fa:P_18>
+            <!-- P_18 (domestic reverse-charge annotation) is always "2" (nie) -
+                 no VatRateCode models it; see the type's doc comment above. -->
+            <fa:P_18>2</fa:P_18>
             <fa:P_18A>2</fa:P_18A>
             ${zwolnienieXml(input.exemptionBasis)}
             <fa:NoweSrodkiTransportu>

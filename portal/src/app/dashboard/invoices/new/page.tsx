@@ -14,7 +14,6 @@ const VAT_RATES: { label: string; value: InvoiceLine['vatRate'] }[] = [
     { label: '0% WDT', value: '0-wdt' },
     { label: '0% eksport', value: '0-export' },
     { label: 'zw.', value: 'zw' },
-    { label: 'oo. (odwr. obciążenie)', value: 'oo' },
 ];
 
 const EXEMPTION_TYPES: { label: string; value: ExemptionBasis['type'] }[] = [

@@ -24,6 +24,15 @@ export async function POST(request: Request) {
     if (!buyerStreet?.trim() || !buyerCity?.trim() || !buyerPostalCode?.trim()) {
         return NextResponse.json({ error: 'Adres nabywcy (ulica, kod pocztowy, miasto) jest wymagany przez schemat FA(3)' }, { status: 400 });
     }
+    // Checked here, not just left to buildKSeFInvoiceXml's VAT_GROUP_FIELD
+    // lookup, so an unrecognized rate (e.g. a stale client sending the
+    // removed 'oo' domestic-reverse-charge rate - see VatRateCode's doc
+    // comment) returns a clean 400 instead of an uncaught TypeError/500.
+    const VALID_VAT_RATES = ['23', '8', '5', '0', '0-wdt', '0-export', 'zw'];
+    const invalidRate = (lines as InvoiceLine[]).find(l => !VALID_VAT_RATES.includes(l.vatRate));
+    if (invalidRate) {
+        return NextResponse.json({ error: `Nieprawidłowa stawka VAT: ${invalidRate.vatRate}` }, { status: 400 });
+    }
     if (correctingInvoiceId && !correctionReason?.trim()) {
         return NextResponse.json({ error: 'Podaj powód korekty' }, { status: 400 });
     }

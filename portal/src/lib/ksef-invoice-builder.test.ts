@@ -186,20 +186,11 @@ describe('buildKSeFInvoiceXml — validates against the real vendored FA(3) XSD'
         expect(xml).toContain('<fa:P_13_6_3>500.00</fa:P_13_6_3>');
     });
 
-    it.skipIf(!xmllintAvailable)('a reverse-charge (oo) invoice validates, rolls up into P_13_10, and flips P_18 to "1"', () => {
-        const xml = buildKSeFInvoiceXml({
-            ...baseInput,
-            lines: [{ name: 'Uslugi budowlane - odwrotne obciazenie', qty: 1, unit: 'szt', netPrice: 5000, vatRate: 'oo' }],
-        });
-        const result = validateAgainstFa3Schema(xml);
-        expect(result.output).toBe('');
-        expect(result.valid).toBe(true);
-        expect(xml).toContain('<fa:P_12>oo</fa:P_12>');
-        expect(xml).toContain('<fa:P_13_10>5000.00</fa:P_13_10>');
-        expect(xml).toContain('<fa:P_18>1</fa:P_18>');
-    });
-
-    it('does not flip P_18 when no line uses reverse charge', () => {
+    // Round 10 removed the 'oo' (domestic reverse charge) rate entirely -
+    // art. 17 ust. 1 pkt 7/8, the legal basis it modeled, was repealed
+    // 2019-11-01 and replaced by mandatory split payment (full VAT, not a
+    // zero-VAT line). See VatRateCode's doc comment in ksef-invoice-builder.ts.
+    it('always sets P_18 to "2" (nie) - no VatRateCode models domestic reverse charge', () => {
         const xml = buildKSeFInvoiceXml({
             ...baseInput,
             lines: [{ name: 'X', qty: 1, unit: 'szt', netPrice: 10, vatRate: '23' }],

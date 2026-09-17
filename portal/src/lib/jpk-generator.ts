@@ -72,15 +72,14 @@ function fmtDate(v: string | Date | null | undefined): string {
 
 // Ewidencja sprzedaży (K_10-K_36) field pair per VAT rate, confirmed
 // against the official MF broszura ("Opis struktury ewidencji w zakresie
-// podatku należnego"). Rates with no VAT amount (zw/0%/WDT/export/oo)
-// only ever populate the net field.
+// podatku należnego"). Rates with no VAT amount (zw/0%/WDT/export) only
+// ever populate the net field.
 //
-// 'oo' -> K_31/K_32 is the closest documented "buyer is the taxpayer"
-// domestic-reverse-charge field, but K_31/K_32's own citation (art. 17
-// ust. 1 pkt 5) is narrower than the general domestic reverse charge this
-// platform's 'oo' rate models (art. 17 ust. 1 pkt 7/8, largely replaced by
-// mandatory split payment since Nov 2019 - see ksef-invoice-builder.ts).
-// Flagged for a dedicated legal review rather than asserted as certain.
+// Round 10 dropped the 'oo' (domestic reverse charge) rate this used to
+// route to K_31 - confirmed against the current text of the VAT act that
+// art. 17 ust. 1 pkt 7/8 (what 'oo' modeled) were repealed 2019-11-01,
+// replaced by mandatory split payment. See ksef-invoice-builder.ts's
+// VatRateCode doc comment for the full finding.
 const SALES_RATE_FIELD: Record<VatRateCode, { net: string; vat: string | null }> = {
     'zw': { net: 'K_10', vat: null },
     '0': { net: 'K_13', vat: null },
@@ -89,12 +88,11 @@ const SALES_RATE_FIELD: Record<VatRateCode, { net: string; vat: string | null }>
     '5': { net: 'K_15', vat: 'K_16' },
     '8': { net: 'K_17', vat: 'K_18' },
     '23': { net: 'K_19', vat: 'K_20' },
-    'oo': { net: 'K_31', vat: null },
 };
 
 // Fixed schema order for the K fields this platform ever emits, so a
 // multi-rate invoice's SprzedazWiersz lists them consistently.
-const SALES_FIELD_ORDER = ['K_10', 'K_13', 'K_15', 'K_16', 'K_17', 'K_18', 'K_19', 'K_20', 'K_21', 'K_22', 'K_31'];
+const SALES_FIELD_ORDER = ['K_10', 'K_13', 'K_15', 'K_16', 'K_17', 'K_18', 'K_19', 'K_20', 'K_21', 'K_22'];
 
 // Per-invoice K-field contributions for the sales register. When line-level
 // rate data exists (invoices created through this platform), splits by the
@@ -215,10 +213,10 @@ ${kFieldsXml}
     const p20 = salesTotals['K_20'] || 0;
     const p21 = salesTotals['K_21'] || 0;
     const p22 = salesTotals['K_22'] || 0;
-    const p31 = salesTotals['K_31'] || 0;
 
     // P_37 = sum(P_10,P_11,P_13,P_15,P_17,P_19,P_21,P_22,P_23,P_25,P_27,P_29,P_31)
-    const p37 = round2(p10 + p13 + p15 + p17 + p19 + p21 + p22 + p31);
+    // - P_31 is always 0 here since no VatRateCode routes to K_31 anymore.
+    const p37 = round2(p10 + p13 + p15 + p17 + p19 + p21 + p22);
     // P_38 = sum(P_16,P_18,P_20,P_24,P_26,P_28,P_30,P_32,P_33,P_34) - P_35 - P_36 (mandatory)
     const p38 = round2(p16 + p18 + p20);
 
@@ -259,7 +257,7 @@ ${kFieldsXml}
         ['P_28', null],
         ['P_29', null],
         ['P_30', null],
-        ['P_31', p31 || null],
+        ['P_31', null], // no VatRateCode models art. 17 ust. 1 pkt 5 - see the round 10 finding above
         ['P_32', null],
         ['P_33', null],
         ['P_34', null],
