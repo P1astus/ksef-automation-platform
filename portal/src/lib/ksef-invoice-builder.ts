@@ -375,3 +375,22 @@ export function computeInvoiceTotals(lines: InvoiceLine[]) {
         lines: computed,
     };
 }
+
+// Totals exactly as buildKSeFInvoiceXml() will actually report them — for a
+// correction these are the delta (corrected − original, same as its
+// vatGroups/totalGross), for a normal invoice they're the absolute sums
+// (same as computeInvoiceTotals()). Round 11 found invoices/create/route.ts
+// trusting a client-supplied `totals` object with no server-side check
+// against `lines` at all — this is the single source of truth so
+// invoices.net_amount/vat_amount/gross_amount can never disagree with what
+// raw_xml actually reports to KSeF.
+export function computeReportedTotals(lines: InvoiceLine[], correction?: { originalLines: InvoiceLine[] }) {
+    const computed = computeLines(lines);
+    const vatGroups = correction ? deltaVatGroups(lines, correction.originalLines) : groupByVat(computed);
+    const totalNet = round2(vatGroups.reduce((s, g) => s + g.net, 0));
+    const totalVat = round2(vatGroups.reduce((s, g) => s + g.vat, 0));
+    const totalGross = correction
+        ? round2(computed.reduce((s, l) => s + l.gross, 0) - computeLines(correction.originalLines).reduce((s, l) => s + l.gross, 0))
+        : round2(computed.reduce((s, l) => s + l.gross, 0));
+    return { totalNet, totalVat, totalGross };
+}

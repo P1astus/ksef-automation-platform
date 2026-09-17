@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
-import { buildKSeFInvoiceXml } from '@/lib/ksef-invoice-builder';
+import { buildKSeFInvoiceXml, computeReportedTotals } from '@/lib/ksef-invoice-builder';
 import type { InvoiceLine, ExemptionBasis } from '@/lib/ksef-invoice-builder';
 
 export async function POST(request: Request) {
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const {
         clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName,
         buyerStreet, buyerCity, buyerPostalCode, buyerCountryCode,
-        lines, totals, offlineMode, correctingInvoiceId, correctionReason, exemptionBasis,
+        lines, offlineMode, correctingInvoiceId, correctionReason, exemptionBasis,
     } = body;
 
     if (!clientId || !invoiceNumber || !issueDate || !buyerNip || !buyerName || !lines?.length) {
@@ -117,6 +117,15 @@ export async function POST(request: Request) {
         correction,
         exemptionBasis: exemptionBasis as ExemptionBasis | undefined,
     });
+
+    // Recomputed from `lines` server-side (round 11 fix) — never trust a
+    // client-supplied totals object, since raw_xml below is built
+    // independently from `lines` and the two must never disagree. Uses the
+    // same delta math as the XML itself for a correction invoice.
+    const totals = computeReportedTotals(
+        lines as InvoiceLine[],
+        correction ? { originalLines: correction.originalLines } : undefined
+    );
 
     // Insert invoice record
     const insertRes = await query(
