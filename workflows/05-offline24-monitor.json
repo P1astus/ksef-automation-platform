@@ -132,8 +132,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND firm_id = {{ $json.firm_id }} AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
-        "options": {}
+        "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = $1 AND firm_id = $2 AND (seller_nip = $3 OR buyer_nip = $3) AND ksef_number IS NOT NULL LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ $json.invoice_number }}, {{ $json.firm_id }}, {{ $json.client_nip }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -141,7 +143,8 @@
           "name": "KSeF App DB"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "id": "a1b2c3d4-0001-4000-a000-000000000030",
@@ -286,8 +289,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = '{{ $json.ksef_number }}', updated_at = NOW() WHERE id = {{ $json.id }}",
-        "options": {}
+        "query": "=UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = $1, updated_at = NOW() WHERE id = $2",
+        "options": {
+          "queryReplacement": "={{ $json.ksef_number }}, {{ $json.id }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -307,8 +312,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}'::timestamptz < NOW() THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
-        "options": {}
+        "query": "=UPDATE invoices SET jpk_marker = CASE WHEN $1::timestamptz < NOW() THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = $2",
+        "options": {
+          "queryReplacement": "={{ $('Merge KSeF Result').item.json.upload_deadline }}, {{ $('Merge KSeF Result').item.json.ksef_number }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -421,8 +428,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE offline_invoices SET alert_sent_overdue = true, updated_at = NOW() WHERE id = {{ $json.id }}",
-        "options": {}
+        "query": "=UPDATE offline_invoices SET alert_sent_overdue = true, updated_at = NOW() WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ $('Merge KSeF Result').item.json.id }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -442,8 +451,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE offline_invoices SET alert_sent_1h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
-        "options": {}
+        "query": "=UPDATE offline_invoices SET alert_sent_1h = true, updated_at = NOW() WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ $('Merge KSeF Result').item.json.id }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -463,8 +474,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE offline_invoices SET alert_sent_4h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
-        "options": {}
+        "query": "=UPDATE offline_invoices SET alert_sent_4h = true, updated_at = NOW() WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ $('Merge KSeF Result').item.json.id }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -987,8 +1000,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = '{{ $json.invoice_number }}' AND firm_id = {{ $json.firm_id }} AND (seller_nip = '{{ $json.client_nip }}' OR buyer_nip = '{{ $json.client_nip }}') AND ksef_number IS NOT NULL LIMIT 1",
-          "options": {}
+          "query": "=SELECT ksef_number FROM invoices WHERE invoice_number = $1 AND firm_id = $2 AND (seller_nip = $3 OR buyer_nip = $3) AND ksef_number IS NOT NULL LIMIT 1",
+          "options": {
+            "queryReplacement": "={{ $json.invoice_number }}, {{ $json.firm_id }}, {{ $json.client_nip }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -996,7 +1011,8 @@
             "name": "KSeF App DB"
           }
         },
-        "onError": "continueRegularOutput"
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
       },
       {
         "id": "a1b2c3d4-0001-4000-a000-000000000030",
@@ -1141,8 +1157,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = '{{ $json.ksef_number }}', updated_at = NOW() WHERE id = {{ $json.id }}",
-          "options": {}
+          "query": "=UPDATE offline_invoices SET uploaded_to_ksef = true, ksef_number = $1, updated_at = NOW() WHERE id = $2",
+          "options": {
+            "queryReplacement": "={{ $json.ksef_number }}, {{ $json.id }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -1162,8 +1180,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}'::timestamptz < NOW() THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
-          "options": {}
+          "query": "=UPDATE invoices SET jpk_marker = CASE WHEN $1::timestamptz < NOW() THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = $2",
+          "options": {
+            "queryReplacement": "={{ $('Merge KSeF Result').item.json.upload_deadline }}, {{ $('Merge KSeF Result').item.json.ksef_number }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -1276,8 +1296,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE offline_invoices SET alert_sent_overdue = true, updated_at = NOW() WHERE id = {{ $json.id }}",
-          "options": {}
+          "query": "=UPDATE offline_invoices SET alert_sent_overdue = true, updated_at = NOW() WHERE id = $1",
+          "options": {
+            "queryReplacement": "={{ $('Merge KSeF Result').item.json.id }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -1297,8 +1319,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE offline_invoices SET alert_sent_1h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
-          "options": {}
+          "query": "=UPDATE offline_invoices SET alert_sent_1h = true, updated_at = NOW() WHERE id = $1",
+          "options": {
+            "queryReplacement": "={{ $('Merge KSeF Result').item.json.id }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -1318,8 +1342,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE offline_invoices SET alert_sent_4h = true, updated_at = NOW() WHERE id = {{ $json.id }}",
-          "options": {}
+          "query": "=UPDATE offline_invoices SET alert_sent_4h = true, updated_at = NOW() WHERE id = $1",
+          "options": {
+            "queryReplacement": "={{ $('Merge KSeF Result').item.json.id }}"
+          }
         },
         "credentials": {
           "postgres": {
