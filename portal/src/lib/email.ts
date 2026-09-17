@@ -16,7 +16,7 @@ export async function sendWelcome(email: string, firmName: string) {
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#6366f1;font-size:24px;margin-bottom:8px">Witamy w KSeF Auto!</h1>
             <p style="color:#555;font-size:15px">Twoje konto dla biura <strong>${firmName}</strong> zostało utworzone.</p>
-            <p style="color:#555;font-size:15px">Masz <strong>30 dni za darmo</strong> — zacznij od dodania pierwszego klienta.</p>
+            <p style="color:#555;font-size:15px">Masz <strong>14 dni za darmo</strong> — zacznij od dodania pierwszego klienta.</p>
             <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Przejdź do panelu →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
         </div>
