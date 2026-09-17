@@ -165,7 +165,7 @@ export function generateOptimaXml(invoices: any[]): OptimaExportResult {
 `;
             xml += `      <KONTRAHENT>
 `;
-            xml += `        <NIP>${inv.buyer_nip}</NIP>
+            xml += `        <NIP>${escapeXml(inv.buyer_nip)}</NIP>
 `;
             xml += `      </KONTRAHENT>
 `;
@@ -187,7 +187,7 @@ export function generateOptimaXml(invoices: any[]): OptimaExportResult {
             });
             xml += `      </POZYCJE>
 `;
-            xml += `      <OPIS>Faktura KSeF: ${inv.ksef_number}</OPIS>
+            xml += `      <OPIS>Faktura KSeF: ${escapeXml(inv.ksef_number)}</OPIS>
 `;
             xml += `    </REJESTR_SPRZEDAZY_VAT>
 `;
@@ -217,7 +217,7 @@ export function generateOptimaXml(invoices: any[]): OptimaExportResult {
 `;
             xml += `      <KONTRAHENT>
 `;
-            xml += `        <NIP>${inv.seller_nip}</NIP>
+            xml += `        <NIP>${escapeXml(inv.seller_nip)}</NIP>
 `;
             xml += `      </KONTRAHENT>
 `;
@@ -239,7 +239,7 @@ export function generateOptimaXml(invoices: any[]): OptimaExportResult {
             });
             xml += `      </POZYCJE>
 `;
-            xml += `      <OPIS>Faktura KSeF: ${inv.ksef_number}</OPIS>
+            xml += `      <OPIS>Faktura KSeF: ${escapeXml(inv.ksef_number)}</OPIS>
 `;
             xml += `    </REJESTR_ZAKUPU_VAT>
 `;
