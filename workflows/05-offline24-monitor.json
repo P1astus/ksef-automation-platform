@@ -307,7 +307,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}' < NOW()::text THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
+        "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}'::timestamptz < NOW() THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
         "options": {}
       },
       "credentials": {
@@ -1162,7 +1162,7 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}' < NOW()::text THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
+          "query": "=UPDATE invoices SET jpk_marker = CASE WHEN '{{ $json.upload_deadline }}'::timestamptz < NOW() THEN 'BFK' ELSE 'OFF' END WHERE ksef_number = '{{ $json.ksef_number }}'",
           "options": {}
         },
         "credentials": {
