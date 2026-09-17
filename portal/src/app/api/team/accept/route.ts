@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
 
 // GET /api/team/accept?token=xxx — validate token, return invite info
@@ -38,8 +39,14 @@ export async function POST(request: Request) {
     if (!invRes.rows[0]) return NextResponse.json({ error: 'Zaproszenie nieważne lub wygasło' }, { status: 404 });
     const inv = invRes.rows[0];
 
-    const { hashSync } = await import('bcryptjs').catch(() => ({ hashSync: (p: string) => p }));
-    const passwordHash = hashSync(password, 10);
+    // Round 11 fix: this used to be a dynamic `import('bcryptjs').catch(...)`
+    // whose failure silently fell back to an identity function — meaning a
+    // failed import would have stored the real plaintext password in
+    // firm_users.password_hash. register/login already use a static import
+    // (line 2 above); there's no reason this route should be the one place
+    // that can silently degrade instead of just failing loud like everything
+    // else that hashes a password.
+    const passwordHash = bcrypt.hashSync(password, 10);
 
     await query(
         `INSERT INTO firm_users (firm_id, email, password_hash, full_name, role)
