@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { PLAN_MAX_CLIENTS } from '@/lib/plans';
 
 // Constructed lazily (on first actual use), not at module load: `next build`
 // statically imports every route module to collect page data, with no
@@ -46,7 +47,11 @@ export async function GET() {
 
     return NextResponse.json({
         tier: row?.subscription_tier || 'start',
-        maxClients: row?.max_clients || 20,
+        // firms.max_clients is NOT NULL DEFAULT 15 — this fallback only
+        // matters if `row` itself is missing, which shouldn't happen for an
+        // authenticated session. Round 11 fix: it used to be a bare `20`,
+        // the same wrong-plan-cap number round 8 fixed everywhere else.
+        maxClients: row?.max_clients || PLAN_MAX_CLIENTS.start,
         clientCount: row?.client_count || 0,
         status: row?.subscription_status || 'trial',
         trialDaysLeft: daysLeft,

@@ -35,7 +35,18 @@ export async function POST(request: Request) {
 
                 if (!firmId || !targetPlan) break;
 
-                const maxClients = PLAN_MAX_CLIENTS[targetPlan] ?? 20;
+                // Round 11 fix: this used to fall back to a bare `20` for an
+                // unrecognized plan — the exact wrong number (marketed
+                // `start` is 15) round 8 fixed everywhere else. A plan
+                // that doesn't match a known PLAN_MAX_CLIENTS key (stale
+                // client, future plan rename) should never silently
+                // provision a client cap that wasn't sold; throwing here
+                // surfaces as a failed webhook in Stripe's dashboard
+                // (which retries) instead of a silent wrong grant.
+                const maxClients = PLAN_MAX_CLIENTS[targetPlan];
+                if (maxClients === undefined) {
+                    throw new Error(`checkout.session.completed: unrecognized targetPlan "${targetPlan}" for firm ${firmId}`);
+                }
 
                 await query(
                     `UPDATE firms SET
