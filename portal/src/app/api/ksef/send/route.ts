@@ -7,6 +7,7 @@ import {
     initInteractiveSession, openOnlineSession, encryptInvoiceForSession, sendInvoice,
     closeOnlineSession, terminateSession, getSessionInvoiceStatus, downloadUpo,
 } from '@/lib/ksef-client';
+import { clientCredentialContext, decryptSecret } from '@/lib/credential-crypto';
 
 // KSeF processes a submitted invoice asynchronously - sendInvoice() returning
 // only means it was accepted for processing, not that it has a permanent
@@ -114,7 +115,7 @@ export async function POST(request: Request) {
     const placeholders = invoiceIds.map((_, i) => `$${i + 2}`).join(',');
     const invRes = await query(
         `SELECT i.id, i.invoice_number, i.raw_xml, i.direction,
-                c.nip, c.client_name, c.ksef_token_encrypted
+                c.id AS client_id, c.nip, c.client_name, c.ksef_token_encrypted
          FROM invoices i
          JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
          WHERE i.id IN (${placeholders}) AND i.firm_id = $1`,
@@ -160,7 +161,7 @@ export async function POST(request: Request) {
     const results: { id: number; ksefReferenceNumber?: string; error?: string; upoPending?: boolean }[] = [];
 
     for (const [nip, invoices] of byClient) {
-        const { ksef_token_encrypted, client_name } = invoices[0];
+        const { ksef_token_encrypted, client_name, client_id } = invoices[0];
         if (!ksef_token_encrypted) {
             for (const inv of invoices) {
                 results.push({ id: inv.id, error: `Brak tokenu KSeF dla ${client_name}` });
@@ -168,7 +169,7 @@ export async function POST(request: Request) {
             continue;
         }
 
-        const tokenPlaintext = Buffer.from(ksef_token_encrypted, 'base64').toString('utf8');
+        const tokenPlaintext = decryptSecret(ksef_token_encrypted, clientCredentialContext(client_id));
         let accessToken: string | null = null;
 
         try {

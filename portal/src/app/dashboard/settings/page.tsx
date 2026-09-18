@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, AlertCircle } from 'lucide-react';
+import ImapSettings from './ImapSettings';
 
 interface FirmData {
     firm_name: string;
@@ -126,6 +127,12 @@ export default function SettingsPage() {
                         {loading['firm'] ? 'Zapisywanie...' : 'Zapisz dane biura'}
                     </button>
                     {msgs.firm && <StatusMsg msg={msgs.firm.text} ok={msgs.firm.ok} />}
+                </Section>
+            )}
+
+            {canManageFirm && (
+                <Section title="Skrzynka faktur (IMAP)">
+                    <ImapSettings />
                 </Section>
             )}
 

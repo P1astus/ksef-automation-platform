@@ -3,15 +3,8 @@ import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { XADES_SIDECAR } from '@/lib/ksef-client';
 import { requireActiveSubscription } from '@/lib/entitlements';
+import { clientCredentialContext, decryptSecret, encryptSecret, MissingCredentialKeyError } from '@/lib/credential-crypto';
 
-// Simple reversible obfuscation for storing tokens
-// In production, replace with proper encryption (e.g. AES-256-GCM with KMS)
-function mask(value: string): string {
-    return Buffer.from(value).toString('base64');
-}
-function unmask(value: string): string {
-    return Buffer.from(value, 'base64').toString('utf8');
-}
 function maskDisplay(value: string): string {
     if (!value || value.length < 8) return '••••••••';
     return value.slice(0, 4) + '••••••••' + value.slice(-4);
@@ -49,7 +42,7 @@ export async function GET(request: Request) {
                 auth_method: dbAuthMethodToApi(row.auth_method),
                 has_token: !!row.ksef_token_encrypted,
                 token_masked: row.ksef_token_encrypted
-                    ? maskDisplay(unmask(row.ksef_token_encrypted))
+                    ? maskDisplay(decryptSecret(row.ksef_token_encrypted, clientCredentialContext(row.id)))
                     : null,
             });
         }
@@ -120,7 +113,7 @@ export async function POST(request: Request) {
             if (!token?.trim()) return NextResponse.json({ error: 'Podaj token KSeF' }, { status: 400 });
             await query(
                 'UPDATE clients SET auth_method = $1, ksef_token_encrypted = $2 WHERE id = $3',
-                ['token', mask(token.trim()), client_id]
+                ['token', encryptSecret(token.trim(), clientCredentialContext(client_id)), client_id]
             );
         } else if (auth_method === 'cert') {
             if (!certBase64) return NextResponse.json({ error: 'Brak pliku certyfikatu' }, { status: 400 });
@@ -128,10 +121,10 @@ export async function POST(request: Request) {
             // Store cert as base64 and password encrypted — the XAdES sidecar handles the actual signing.
             // DB column's CHECK constraint requires 'certificate', not this route's own 'cert' - see
             // dbAuthMethodToApi() for the reverse translation on read.
-            const certData = JSON.stringify({ cert: certBase64, password: mask(certPassword) });
+            const certData = JSON.stringify({ cert: certBase64, password: certPassword });
             await query(
                 'UPDATE clients SET auth_method = $1, ksef_token_encrypted = $2 WHERE id = $3',
-                ['certificate', mask(certData), client_id]
+                ['certificate', encryptSecret(certData, clientCredentialContext(client_id)), client_id]
             );
         } else {
             return NextResponse.json({ error: 'Nieznana metoda uwierzytelniania' }, { status: 400 });
@@ -157,6 +150,9 @@ export async function POST(request: Request) {
             message: auth_method === 'cert' ? 'Certyfikat PKCS12 zapisany pomyślnie' : 'Token KSeF zapisany pomyślnie',
         });
     } catch (err: any) {
+        if (err instanceof MissingCredentialKeyError) {
+            return NextResponse.json({ error: 'Szyfrowanie danych uwierzytelniających nie jest skonfigurowane' }, { status: 503 });
+        }
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

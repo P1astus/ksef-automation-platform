@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { BASE_URL, getPublicKeyCertificate, getChallenge, sidecarHeaders } from '@/lib/ksef-client';
+import { clientCredentialContext, decryptSecret } from '@/lib/credential-crypto';
 
 // Dev-only diagnostic endpoint — blocked in production
 export async function GET(request: Request) {
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
             } else if (client.auth_method === 'certificate') {
                 result.sessionInit = { ok: false, error: 'Cert auth — session init test not supported here' };
             } else {
-                const tokenPlaintext = Buffer.from(client.ksef_token_encrypted, 'base64').toString('utf8');
+                const tokenPlaintext = decryptSecret(client.ksef_token_encrypted, clientCredentialContext(clientId));
                 const cert = await getPublicKeyCertificate();
                 const ch = await getChallenge();
 

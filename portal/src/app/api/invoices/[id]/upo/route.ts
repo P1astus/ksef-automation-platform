@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { initInteractiveSession, downloadUpoByKsefNumber } from '@/lib/ksef-client';
+import { clientCredentialContext, decryptSecret } from '@/lib/credential-crypto';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
@@ -16,7 +17,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // the fallback retry below needs — never for the ownership check itself.
     const res = await query(
         `SELECT i.upo_xml, i.upo_retrieved_at, i.ksef_number, i.ksef_session_reference_number,
-                c.nip, c.ksef_token_encrypted
+                c.id AS client_id, c.nip, c.ksef_token_encrypted
          FROM invoices i
          LEFT JOIN clients c ON c.nip = i.client_nip AND c.firm_id = i.firm_id
          WHERE i.id = $1 AND i.firm_id = $2`,
@@ -24,7 +25,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     );
 
     if (!res.rows[0]) return NextResponse.json({ error: 'Faktura nie znaleziona' }, { status: 404 });
-    const { upo_xml, upo_retrieved_at, ksef_number, ksef_session_reference_number, nip, ksef_token_encrypted } = res.rows[0];
+    const { upo_xml, upo_retrieved_at, ksef_number, ksef_session_reference_number, client_id, nip, ksef_token_encrypted } = res.rows[0];
 
     if (upo_xml) {
         return NextResponse.json({ upoXml: upo_xml, retrievedAt: upo_retrieved_at });
@@ -45,7 +46,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // available" response as before, not a 500.
     if (ksef_session_reference_number && nip && ksef_token_encrypted) {
         try {
-            const tokenPlaintext = Buffer.from(ksef_token_encrypted, 'base64').toString('utf8');
+            const tokenPlaintext = decryptSecret(ksef_token_encrypted, clientCredentialContext(client_id));
             const accessToken = await initInteractiveSession(nip, tokenPlaintext);
             const upo = await downloadUpoByKsefNumber(accessToken, ksef_session_reference_number, ksef_number);
             await query(

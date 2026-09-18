@@ -7,6 +7,7 @@ import imaps from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import { extractTextFromFile, extractInvoiceFields, needsManualReview } from '@/lib/ocr-extraction';
 import { saveUploadedFile, shortFileType } from '@/lib/file-storage';
+import { decryptSecret } from '@/lib/credential-crypto';
 
 // Routes an email attachment through ocr_queue exactly like ocr/route.ts's
 // manual upload path now does — a low-confidence extraction (see
@@ -81,39 +82,40 @@ export async function POST(request: Request) {
         const planError = await requireActiveSubscription(session.firmId);
         if (planError) return planError;
 
-        // In a real app, these would come from the Firm's DB settings, but we use hardcoded 
-        // environment variables or fallback values for the MVP demo.
+        const settings = await pool.query(
+            `SELECT host, port, username, password_encrypted, use_tls, mailbox
+             FROM firm_imap_settings WHERE firm_id = $1`,
+            [session.firmId]
+        );
+        const mailbox = settings.rows[0];
+        if (!mailbox) {
+            return NextResponse.json(
+                { error: 'Skonfiguruj skrzynkę IMAP w ustawieniach tego biura przed synchronizacją.' },
+                { status: 503 }
+            );
+        }
         const imapConfig = {
             imap: {
-                user: process.env.IMAP_USER || 'faktury@example.com',
-                password: process.env.IMAP_PASSWORD || 'password123',
-                host: process.env.IMAP_HOST || 'imap.example.com',
-                port: parseInt(process.env.IMAP_PORT || '993', 10),
-                tls: true,
+                user: mailbox.username,
+                password: decryptSecret(mailbox.password_encrypted, `firm:${session.firmId}:imap-password`),
+                host: mailbox.host,
+                port: mailbox.port,
+                tls: mailbox.use_tls,
                 authTimeout: 3000
             }
         };
 
-        // For MVP demo purposes, if no IMAP credentials exist in env, we simulate fetching an email
-        if (imapConfig.imap.user === 'faktury@example.com' || imapConfig.imap.host === 'imap.example.com') {
-            // Not a success: nothing was fetched. A 200 here told the user the
-            // inbox had been checked when no mailbox is even configured.
-            return NextResponse.json(
-                { error: 'Skrzynka pocztowa (IMAP) nie jest skonfigurowana po stronie serwera - nic nie zostało pobrane.' },
-                { status: 503 }
-            );
-        }
-
         const connection = await imaps.connect(imapConfig);
-        await connection.openBox('INBOX');
+        await connection.openBox(mailbox.mailbox);
 
         const searchCriteria = ['UNSEEN'];
-        const fetchOptions = { bodies: ['HEADER', 'TEXT', ''], struct: true, markSeen: true };
+        const fetchOptions = { bodies: ['HEADER', 'TEXT', ''], struct: true, markSeen: false };
         
         const messages = await connection.search(searchCriteria, fetchOptions);
         const parsedResults = [];
 
         for (const message of messages) {
+            let messageFailed = false;
             const struct = message.attributes.struct as any[];
             if (!struct) continue;
 
@@ -133,8 +135,15 @@ export async function POST(request: Request) {
                         parsedResults.push(result);
                     } catch (err) {
                         console.error('Failed to parse attachment:', err);
+                        messageFailed = true;
                     }
                 }
+            }
+            // Do not drain another firm's or a transiently failing message.
+            // Each firm has its own mailbox settings; a message is marked seen
+            // only after every relevant attachment was handled successfully.
+            if (!messageFailed && message.attributes?.uid) {
+                await connection.addFlags(message.attributes.uid, '\\Seen');
             }
         }
 
