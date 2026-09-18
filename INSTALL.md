@@ -146,10 +146,12 @@ ENVEOF
 | `N8N_API_KEY` | n8n REST API authentication key | `575cc0fe...` (48 hex chars) |
 | `NEXT_PUBLIC_APP_URL` | Public origin of the portal, used in every emailed/redirect link (invites, reset, document requests, Stripe). No trailing slash | `https://portal.example.pl` |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Transactional e-mail. Unset = reset/invite/notification mail cannot be sent (the portal now says so instead of claiming success) | |
+| `KSEF_CREDENTIALS_KEY` | 32-byte AES-256-GCM key encrypting stored KSeF tokens/certificates and per-firm IMAP passwords (`openssl rand -base64 32`). **Unset = those saves return 503.** Back it up; losing it makes the data unrecoverable. See §13.8 | |
+| `ALLOW_DEV_RESET_URL` | `true` only outside production, to get the reset link in the API response | `false` |
 | `DIGEST_SECRET` / `NOTIFY_SECRET` | Shared secrets for `/api/digest` and `/api/notify/*` (`openssl rand -hex 32`) | |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_START/BIZNES/PRO` | Stripe billing | |
 | `ANTHROPIC_API_KEY` | AI classification during client sync (Biznes/Pro) | |
-| `IMAP_HOST/PORT/USER/PASSWORD`, `N8N_SYNC_WEBHOOK_URL` | Optional: shared mailbox for `/api/email/sync`; sync webhook | |
+| `N8N_SYNC_WEBHOOK_URL` | Optional: sync webhook. (IMAP is now configured per firm in Settings, not via env) | |
 
 **The portal container reads none of these from a `.env` file** — `.dockerignore` excludes `.env*`, so
 each variable must be listed in `docker-compose.yml`'s `portal` `environment:` block (all of the above
@@ -811,3 +813,17 @@ read-only monitoring/reporting plan; invoice issuance (creation, offline modes, 
 exports, AI classification and team seats need Biznes or Pro. A firm's tier is `firms.subscription_tier`.
 Note: the Stripe webhook currently sets the tier only on `checkout.session.completed`, not on later plan
 changes — see `HANDOVER.md` before going live with billing.
+
+### 13.8 Credential encryption key and legacy-row migration
+
+1. `openssl rand -base64 32` -> `KSEF_CREDENTIALS_KEY=` in the root `.env`; **back it up together with `.env`**.
+2. `docker compose up -d` (portal and n8n both receive it), then re-import/patch workflow `02-ksef-authenticate`
+   in n8n (its Code node decrypts) - never activate it without sign-off.
+3. Apply `migrations/2026-09-19-firm-imap.sql`, `-auth-rate-limits.sql`, `-firm-user-reset.sql`.
+4. Re-encrypt existing rows (one-off; the legacy format must be stated because unprefixed rows are ambiguous):
+   ```bash
+   cd portal
+   DATABASE_URL="postgresql://ksef_app:<KSEF_DB_PASSWORD>@localhost:5433/ksef_platform" \
+   KSEF_CREDENTIALS_KEY='<the key>' KSEF_LEGACY_FORMAT=base64 node scripts/migrate-ksef-credentials.mjs
+   ```
+   Runs in one transaction. Rows already starting `enc:v1:` are skipped. Take a backup first (§13.1).
