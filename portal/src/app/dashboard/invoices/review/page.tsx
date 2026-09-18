@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle, XCircle, FileWarning } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, FileWarning, ExternalLink } from 'lucide-react';
 
 interface QueueItem {
     id: number;
@@ -115,6 +115,14 @@ export default function OcrReviewQueuePage() {
                                     <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>
                                         {new Date(item.created_at).toLocaleString('pl-PL')}
                                     </span>
+                                    <a
+                                        href={`/api/ocr-queue/${item.id}/file`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent-hover)', textDecoration: 'none' }}
+                                    >
+                                        <ExternalLink size={13} /> Otwórz oryginał
+                                    </a>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 14 }}>
                                     <div>

@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     const statuses = status ? [status] : ['manual_review', 'queued'];
 
     const res = await query(
-        `SELECT id, client_nip, source_type, file_path, file_type, ocr_status,
+        `SELECT id, client_nip, source_type, file_type, ocr_status,
                 extracted_data, confidence_score, matched_ksef_number, error_message,
                 created_at, processed_at
          FROM ocr_queue
