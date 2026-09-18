@@ -144,6 +144,23 @@ ENVEOF
 | `KSEF_DB_PASSWORD` | Password for KSeF platform database (`ksef_app` user) | `faf36a94...` (32 hex chars) |
 | `KSEF_ENVIRONMENT` | KSeF API target: `test` or `prod` | `test` |
 | `N8N_API_KEY` | n8n REST API authentication key | `575cc0fe...` (48 hex chars) |
+| `NEXT_PUBLIC_APP_URL` | Public origin of the portal, used in every emailed/redirect link (invites, reset, document requests, Stripe). No trailing slash | `https://portal.example.pl` |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Transactional e-mail. Unset = reset/invite/notification mail cannot be sent (the portal now says so instead of claiming success) | |
+| `DIGEST_SECRET` / `NOTIFY_SECRET` | Shared secrets for `/api/digest` and `/api/notify/*` (`openssl rand -hex 32`) | |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_START/BIZNES/PRO` | Stripe billing | |
+| `ANTHROPIC_API_KEY` | AI classification during client sync (Biznes/Pro) | |
+| `IMAP_HOST/PORT/USER/PASSWORD`, `N8N_SYNC_WEBHOOK_URL` | Optional: shared mailbox for `/api/email/sync`; sync webhook | |
+
+**The portal container reads none of these from a `.env` file** — `.dockerignore` excludes `.env*`, so
+each variable must be listed in `docker-compose.yml`'s `portal` `environment:` block (all of the above
+are, since round 15). Before that fix Stripe/Resend/`NEXT_PUBLIC_APP_URL`/`DIGEST_SECRET` could not reach
+the container at all. Adding a new `process.env.X` to the portal means adding `X` to that block too;
+`env-and-email-truthfulness.test.ts` fails if you forget. After editing `.env`, recreate the portal:
+`docker compose up -d portal` (then `docker restart ksef_nginx`).
+
+**Upload size:** nginx accepts request bodies up to 12 MB (`client_max_body_size` in `nginx/nginx.conf`,
+default was 1 MB, which rejected real scanned invoices with a 413); the portal itself caps a document at
+10 MB. Apply an nginx change with `docker exec ksef_nginx nginx -s reload`.
 
 ### Security
 
