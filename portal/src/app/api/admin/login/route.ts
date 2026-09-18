@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyOperatorLogin, setOperatorCookie, auditOperator, clientIp } from '@/lib/operator-auth';
+import { verifyOperatorLogin, setOperatorCookie, auditOperator } from '@/lib/operator-auth';
 
 export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const password = typeof body.password === 'string' ? body.password : '';
     if (!email || !password) return NextResponse.json({ error: 'Podaj e-mail i hasło' }, { status: 400 });
 
-    const result = await verifyOperatorLogin(email, password, await clientIp());
+    const result = await verifyOperatorLogin(email, password);
     if (!result.ok) {
         await auditOperator({ operatorId: null, email: email.trim().toLowerCase(), action: result.reason === 'throttled' ? 'login_throttled' : 'login_failed' });
         return result.reason === 'throttled'

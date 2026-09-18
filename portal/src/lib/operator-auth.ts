@@ -91,6 +91,8 @@ export async function requireOperator(): Promise<OperatorSession> {
     return session;
 }
 
+// Informational only (audit log): client-supplied when it comes via
+// X-Forwarded-For, so never use it for a security decision.
 export async function clientIp(): Promise<string | null> {
     const h = await headers();
     return h.get('x-forwarded-for')?.split(',')[0].trim() || h.get('x-real-ip') || null;
@@ -110,8 +112,11 @@ export async function auditOperator(
 }
 
 // --- login throttling -------------------------------------------------------
-// In-process (single portal container), per email+ip. Not a substitute for
-// real rate limiting at nginx, but stops trivial password guessing.
+// In-process (single portal container), keyed by EMAIL ONLY. Not by IP: nginx
+// here does not set X-Forwarded-For, so the header is client-controlled and an
+// IP-keyed limit could be evaded by rotating it. The trade-off is that someone
+// can briefly lock out a known operator email (15 min) - acceptable for a
+// handful of operators, and the alternative is unthrottled guessing.
 const MAX_FAILURES = 5;
 const WINDOW_MS = 15 * 60 * 1000;
 const failures = new Map<string, number[]>();
@@ -142,9 +147,9 @@ export type OperatorLoginResult =
     | { ok: true; operatorId: number; email: string }
     | { ok: false; reason: 'invalid' | 'throttled' };
 
-export async function verifyOperatorLogin(emailInput: string, password: string, ip: string | null): Promise<OperatorLoginResult> {
+export async function verifyOperatorLogin(emailInput: string, password: string): Promise<OperatorLoginResult> {
     const email = emailInput.trim().toLowerCase();
-    const k = `${email}|${ip ?? ''}`;
+    const k = email;
     if (isThrottled(k)) return { ok: false, reason: 'throttled' };
 
     const res = await query('SELECT id, password_hash, is_active FROM operators WHERE email = $1', [email]);

@@ -74,7 +74,7 @@ describe('verifyOperatorLogin', () => {
     const hash = bcrypt.hashSync('correct horse battery', 4);
     it('accepts the right password (case-insensitive email) and stamps last_login_at', async () => {
         queryMock.mockResolvedValueOnce({ rows: [{ id: 3, password_hash: hash, is_active: true }] });
-        const r = await op.verifyOperatorLogin(' O@X.pl ', 'correct horse battery', '1.1.1.1');
+        const r = await op.verifyOperatorLogin(' O@X.pl ', 'correct horse battery');
         expect(r).toEqual({ ok: true, operatorId: 3, email: 'o@x.pl' });
         expect(queryMock.mock.calls[0][1]).toEqual(['o@x.pl']);
         expect(queryMock.mock.calls[1][0]).toMatch(/UPDATE operators SET last_login_at/);
@@ -85,16 +85,17 @@ describe('verifyOperatorLogin', () => {
         ['deactivated operator with the right password', [{ id: 3, password_hash: hash, is_active: false }], 'correct horse battery'],
     ])('rejects: %s', async (_n, rows, pw) => {
         queryMock.mockResolvedValueOnce({ rows });
-        expect(await op.verifyOperatorLogin('o@x.pl', pw, '1.1.1.1')).toEqual({ ok: false, reason: 'invalid' });
+        expect(await op.verifyOperatorLogin('o@x.pl', pw)).toEqual({ ok: false, reason: 'invalid' });
     });
-    it('throttles after 5 failures, even for the correct password, and per email+ip', async () => {
+    it('throttles after 5 failures, even for the correct password - and a different IP cannot evade it', async () => {
         for (let i = 0; i < 5; i++) {
             queryMock.mockResolvedValueOnce({ rows: [{ id: 3, password_hash: hash, is_active: true }] });
-            await op.verifyOperatorLogin('o@x.pl', 'bad', '1.1.1.1');
+            await op.verifyOperatorLogin('o@x.pl', 'bad');
         }
-        expect(await op.verifyOperatorLogin('o@x.pl', 'correct horse battery', '1.1.1.1')).toEqual({ ok: false, reason: 'throttled' });
-        queryMock.mockResolvedValueOnce({ rows: [{ id: 3, password_hash: hash, is_active: true }] });
-        expect((await op.verifyOperatorLogin('o@x.pl', 'correct horse battery', '2.2.2.2')).ok).toBe(true);
+        expect(await op.verifyOperatorLogin('o@x.pl', 'correct horse battery')).toEqual({ ok: false, reason: 'throttled' });
+        // another operator is unaffected
+        queryMock.mockResolvedValueOnce({ rows: [{ id: 4, password_hash: hash, is_active: true }] });
+        expect((await op.verifyOperatorLogin('other@x.pl', 'correct horse battery')).ok).toBe(true);
     });
     it('failures expire after the window', () => {
         const t0 = 1_000_000;
