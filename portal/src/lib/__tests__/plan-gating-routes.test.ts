@@ -102,4 +102,29 @@ describe('subscription state is enforced on plain write routes too', () => {
         const res = await POST(post('/api/clients', { nip: '1234563218', client_name: 'X' }));
         expect(res.status).toBe(402);
     });
+
+    it.each([
+        ['client CRM changes', async () => {
+            const route = await import('@/app/api/clients/[id]/route');
+            return route.PATCH(post('/api/clients/1', { notes: 'changed' }), { params: Promise.resolve({ id: '1' }) });
+        }],
+        ['invoice payment changes', async () => {
+            const route = await import('@/app/api/invoices/[id]/payment/route');
+            return route.PATCH(post('/api/invoices/1/payment', { payment_status: 'paid' }), { params: Promise.resolve({ id: '1' }) });
+        }],
+        ['invoice workflow-status changes', async () => {
+            const route = await import('@/app/api/invoices/[id]/xml/route');
+            return route.PATCH(post('/api/invoices/1/xml', { processing_status: 'classified' }), { params: Promise.resolve({ id: '1' }) });
+        }],
+        ['KSeF credential changes', async () => {
+            const route = await import('@/app/api/settings/ksef/route');
+            return route.POST(post('/api/settings/ksef', { client_id: '1', auth_method: 'token', token: 'secret' }));
+        }],
+    ] as const)('%s are blocked before mutation when the subscription is canceled', async (_name, callRoute) => {
+        firmRow = { ...biznes, subscription_status: 'canceled' };
+        const response = await callRoute();
+        expect(response.status).toBe(402);
+        expect(await response.json()).toMatchObject({ code: 'SUBSCRIPTION_INACTIVE', state: 'canceled' });
+        expect(queryMock.mock.calls.some(([sql]) => /^\s*UPDATE/i.test(sql))).toBe(false);
+    });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { XADES_SIDECAR } from '@/lib/ksef-client';
+import { requireActiveSubscription } from '@/lib/entitlements';
 
 // Simple reversible obfuscation for storing tokens
 // In production, replace with proper encryption (e.g. AES-256-GCM with KMS)
@@ -82,6 +83,8 @@ export async function POST(request: Request) {
         // action in the system — restrict it to the firm owner/admin.
         const roleError = await requireRole(session, ['owner', 'admin']);
         if (roleError) return roleError;
+        const subscriptionError = await requireActiveSubscription(session.firmId);
+        if (subscriptionError) return subscriptionError;
 
         const contentType = request.headers.get('content-type') || '';
         let client_id: string, auth_method: string, token: string | undefined;
