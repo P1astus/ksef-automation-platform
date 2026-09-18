@@ -729,7 +729,7 @@ ORDER BY upload_deadline;
 
 ---
 
-### 13.4 Vendor console operators (`/admin`)
+### 13.7 Vendor console operators (`/admin`)
 
 The read-only operator console lives at `/admin` (login at `/admin/login`). There is no sign-up: apply
 `migrations/2026-09-19-operators.sql`, then create an operator from `portal/` on a machine that can reach the DB
