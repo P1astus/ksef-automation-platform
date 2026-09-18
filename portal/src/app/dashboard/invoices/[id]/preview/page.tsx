@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle, FileDown, FileEdit } from 'lucide-react';
 import { parseFa3Lines } from '@/lib/parse-fa3-lines';
+import JpkMarkersFields from '../../JpkMarkersFields';
+import type { GtuCode, ProcedureCode } from '@/lib/jpk-markers';
 
 interface InvoiceData {
     id: number;
@@ -25,6 +27,8 @@ interface InvoiceData {
     corrects_invoice_id: number | null;
     correction_reason: string | null;
     ksef_rejection_reason: string | null;
+    jpk_gtu?: GtuCode[] | null;
+    jpk_procedures?: ProcedureCode[] | null;
 }
 
 // Parse simple XML key-value fields for display
@@ -47,6 +51,44 @@ function parseXmlLines(xml: string) {
         net: l.net || '—',
         vatRate: l.vatRate || '—',
     }));
+}
+
+// Row-level JPK_V7M markers for a sales invoice - saved on their own, not
+// tied to the status buttons, since they can be corrected after a JPK run.
+function JpkMarkersPanel({ invoiceId, initialGtu, initialProcedures }: { invoiceId: string; initialGtu: GtuCode[]; initialProcedures: ProcedureCode[] }) {
+    const [gtu, setGtu] = useState<GtuCode[]>(initialGtu);
+    const [procedures, setProcedures] = useState<ProcedureCode[]>(initialProcedures);
+    const [saving, setSaving] = useState(false);
+    const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+    const save = async () => {
+        setSaving(true);
+        setMessage(null);
+        try {
+            const res = await fetch(`/api/invoices/${invoiceId}/jpk-markers`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gtu, procedures }),
+            });
+            const d = await res.json().catch(() => ({}));
+            setMessage(res.ok ? { ok: true, text: 'Zapisano. Wygeneruj JPK ponownie, aby uwzględnić zmiany.' } : { ok: false, text: d.error || 'Błąd zapisu' });
+        } catch {
+            setMessage({ ok: false, text: 'Błąd połączenia z serwerem' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div style={{ background: 'var(--bg-surface)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 24px', marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Oznaczenia JPK_V7M (GTU, procedury)</div>
+            <JpkMarkersFields gtu={gtu} procedures={procedures} onChange={n => { setGtu(n.gtu); setProcedures(n.procedures); }} disabled={saving} />
+            <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
+                <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? 'Zapisywanie...' : 'Zapisz oznaczenia'}</button>
+                {message && <span style={{ fontSize: 12.5, color: message.ok ? 'var(--success)' : 'var(--error)' }}>{message.text}</span>}
+            </div>
+        </div>
+    );
 }
 
 export default function InvoicePreviewPage() {
@@ -244,6 +286,10 @@ export default function InvoicePreviewPage() {
                     ))}
                 </div>
             </div>
+
+            {invoice.direction === 'sales' && (
+                <JpkMarkersPanel invoiceId={id} initialGtu={invoice.jpk_gtu ?? []} initialProcedures={invoice.jpk_procedures ?? []} />
+            )}
 
             {/* Line items (if parsed from XML) */}
             {xmlLines.length > 0 && (

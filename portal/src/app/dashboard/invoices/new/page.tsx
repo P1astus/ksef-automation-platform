@@ -6,6 +6,8 @@ import { Plus, Trash2, Send, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
 import { readApiFailure } from '@/lib/plan-errors';
+import JpkMarkersFields from '../JpkMarkersFields';
+import type { GtuCode, ProcedureCode } from '@/lib/jpk-markers';
 import { isZeroVatRate, type InvoiceLine, type ExemptionBasis } from '@/lib/ksef-invoice-builder';
 
 const VAT_RATES: { label: string; value: InvoiceLine['vatRate'] }[] = [
@@ -78,6 +80,8 @@ export default function NewInvoicePage() {
     const [buyerCountryCode, setBuyerCountryCode] = useState('PL');
     const [exemptionType, setExemptionType] = useState<ExemptionBasis['type']>('ustawa');
     const [exemptionText, setExemptionText] = useState('');
+    const [jpkGtu, setJpkGtu] = useState<GtuCode[]>([]);
+    const [jpkProcedures, setJpkProcedures] = useState<ProcedureCode[]>([]);
     const [nipStatus, setNipStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
     const [sellerClientId, setSellerClientId] = useState('');
     const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -184,6 +188,8 @@ export default function NewInvoicePage() {
                     correctingInvoiceId: correctingId ? parseInt(correctingId) : undefined,
                     correctionReason: correctingId ? correctionReason : undefined,
                     exemptionBasis: hasExemptLine ? { type: exemptionType, text: exemptionText.trim() } : undefined,
+                    jpkGtu,
+                    jpkProcedures,
                 }),
             });
             if (!saveRes.ok) {
@@ -246,7 +252,7 @@ export default function NewInvoicePage() {
                         </>
                     )}
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setBuyerStreet(''); setBuyerCity(''); setBuyerPostalCode(''); setBuyerCountryCode('PL'); setExemptionText(''); setInvoiceNumber(''); setIsOffline(false); }}>
+                        <button className="btn-secondary" onClick={() => { setResult(null); setLines([{ ...DEFAULT_LINE }]); setBuyerNip(''); setBuyerName(''); setBuyerStreet(''); setBuyerCity(''); setBuyerPostalCode(''); setBuyerCountryCode('PL'); setExemptionText(''); setJpkGtu([]); setJpkProcedures([]); setInvoiceNumber(''); setIsOffline(false); }}>
                             Wystaw kolejną
                         </button>
                         <Link href={result.queuedOffline ? '/dashboard/invoices/offline' : '/dashboard/invoices'} className="btn-primary" style={{ textDecoration: 'none', padding: '9px 20px', borderRadius: 7 }}>
@@ -527,6 +533,15 @@ export default function NewInvoicePage() {
                             </div>
                         </div>
                     )}
+
+                    <details style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                        <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                            Oznaczenia JPK_V7M (GTU, procedury){jpkGtu.length + jpkProcedures.length > 0 ? ` - zaznaczono ${jpkGtu.length + jpkProcedures.length}` : ''}
+                        </summary>
+                        <div style={{ marginTop: 12 }}>
+                            <JpkMarkersFields gtu={jpkGtu} procedures={jpkProcedures} onChange={n => { setJpkGtu(n.gtu); setJpkProcedures(n.procedures); }} />
+                        </div>
+                    </details>
 
                     {/* Totals */}
                     <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>

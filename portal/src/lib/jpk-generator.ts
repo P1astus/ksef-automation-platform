@@ -1,5 +1,6 @@
 import { sumLinesByRate, type InvoiceLine, type VatRateCode } from './ksef-invoice-builder';
 import { mapVatColumns } from './vat-mapper';
+import { normalizeJpkMarkers } from './jpk-markers';
 
 export interface JpkFirmData {
     nip: string;
@@ -36,6 +37,9 @@ export interface JpkInvoiceRow {
     // have no line-level data, so their rate is unknown - see
     // salesContribution()'s fallback below.
     invoice_lines?: InvoiceLine[] | null;
+    // Sales-side only: row-level GTU_xx / procedure markers (jpk-markers.ts).
+    jpk_gtu?: string[] | null;
+    jpk_procedures?: string[] | null;
 }
 
 function esc(s: string | undefined | null): string {
@@ -145,6 +149,13 @@ export function generateJpkV7M(
         for (const [field, amount] of Object.entries(contrib)) {
             salesTotals[field] = round2((salesTotals[field] || 0) + (amount || 0));
         }
+        // Throws on an unknown code rather than emitting a marker the schema
+        // doesn't define - a filed JPK with a bogus element is worse than a
+        // failed generation.
+        const markers = normalizeJpkMarkers({ gtu: inv.jpk_gtu, procedures: inv.jpk_procedures });
+        const markersXml = [...markers.gtu, ...markers.procedures]
+            .map(code => `            <tns:${code}>1</tns:${code}>`)
+            .join('\n');
         const kFieldsXml = SALES_FIELD_ORDER
             .filter(field => contrib[field] !== undefined)
             .map(field => `            <tns:${field}>${fmt2(contrib[field]!)}</tns:${field}>`)
@@ -157,7 +168,7 @@ export function generateJpkV7M(
             <tns:DowodSprzedazy>${esc(prefix + inv.invoice_number)}</tns:DowodSprzedazy>
             <tns:DataWystawienia>${fmtDate(inv.issue_date) || periodStart}</tns:DataWystawienia>
             ${ksefRef ? `<tns:KodKSeF>${esc(ksefRef)}</tns:KodKSeF>` : ''}
-${kFieldsXml}
+${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
         </tns:SprzedazWiersz>`;
     }).join('');
 

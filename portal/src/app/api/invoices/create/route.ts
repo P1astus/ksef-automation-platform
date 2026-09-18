@@ -5,6 +5,7 @@ import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { buildKSeFInvoiceXml, computeReportedTotals, isFa3Nip } from '@/lib/ksef-invoice-builder';
 import type { InvoiceLine, ExemptionBasis } from '@/lib/ksef-invoice-builder';
+import { normalizeJpkMarkers, InvalidJpkMarkerError, type JpkMarkers } from '@/lib/jpk-markers';
 
 export async function POST(request: Request) {
     const session = await getSession();
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
         clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName,
         buyerStreet, buyerCity, buyerPostalCode, buyerCountryCode,
         lines, offlineMode, correctingInvoiceId, correctionReason, exemptionBasis,
+        jpkGtu, jpkProcedures,
     } = body;
 
     if (!clientId || !invoiceNumber || !issueDate || !buyerNip || !buyerName || !lines?.length) {
@@ -53,6 +55,14 @@ export async function POST(request: Request) {
     const hasExemptLine = (lines as InvoiceLine[]).some(l => l.vatRate === 'zw');
     if (hasExemptLine && !exemptionBasis?.text?.trim()) {
         return NextResponse.json({ error: 'Faktura zawiera pozycję zwolnioną z VAT (zw.) - podaj podstawę prawną zwolnienia' }, { status: 400 });
+    }
+
+    let jpkMarkers: JpkMarkers;
+    try {
+        jpkMarkers = normalizeJpkMarkers({ gtu: jpkGtu, procedures: jpkProcedures });
+    } catch (err) {
+        if (err instanceof InvalidJpkMarkerError) return NextResponse.json({ error: err.message }, { status: 400 });
+        throw err;
     }
 
     const OFFLINE_MODES = ['offline24', 'unavailability', 'emergency', 'total_outage'];
@@ -144,8 +154,8 @@ export async function POST(request: Request) {
           buyer_street, buyer_city, buyer_postal_code,
           net_amount, vat_amount, gross_amount, issue_date, due_date,
           direction, processing_status, invoice_lines, raw_xml,
-          corrects_invoice_id, correction_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'sales','new',$15,$16,$17,$18)
+          corrects_invoice_id, correction_reason, jpk_gtu, jpk_procedures)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'sales','new',$15,$16,$17,$18,$19,$20)
          RETURNING id`,
         [
             session.firmId,
@@ -166,6 +176,8 @@ export async function POST(request: Request) {
             xml,
             correctingInvoiceId || null,
             correction?.reason || null,
+            jpkMarkers.gtu,
+            jpkMarkers.procedures,
         ]
     );
 

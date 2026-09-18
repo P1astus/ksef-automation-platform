@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         `SELECT id, invoice_number, issue_date, seller_name, seller_nip, buyer_name, buyer_nip,
                 net_amount, vat_amount, gross_amount, direction,
                 jpk_marker, jpk_period, jpk_correction_needed, ksef_number,
-                cost_category, invoice_lines
+                cost_category, invoice_lines, jpk_gtu, jpk_procedures
          FROM invoices
          WHERE client_nip = $1 AND firm_id = $2
            AND (jpk_period = $3 OR (jpk_period IS NULL AND issue_date BETWEEN $4 AND $5))
