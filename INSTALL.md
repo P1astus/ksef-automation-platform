@@ -603,29 +603,24 @@ echo "N8N_ENCRYPTION_KEY is in .env — save it in your password manager NOW"
 
 ### 13.1 Backups
 
-**Daily automated backup** (add to crontab on the host):
+**Daily automated backup** — `scripts/backup-ksef.sh` (add to the host's crontab):
 
 ```bash
-#!/bin/bash
-# backup-ksef.sh
-BACKUP_DIR="/path/to/backups"
-DATE=$(date +%Y%m%d)
-
-# Backup n8n internal database
-docker exec n8n_postgres pg_dump -U n8n n8n | gzip > "$BACKUP_DIR/n8n_${DATE}.sql.gz"
-
-# Backup KSeF platform database
-docker exec ksef_db pg_dump -U ksef_app ksef_platform | gzip > "$BACKUP_DIR/ksef_platform_${DATE}.sql.gz"
-
-# Keep last 30 days only
-find "$BACKUP_DIR" -name "*.sql.gz" -mtime +30 -delete
+0 3 * * * /path/to/ksef-platform/scripts/backup-ksef.sh >> /path/to/ksef-platform/backups/backup.log 2>&1
 ```
 
-```bash
-# Add to crontab (runs daily at 3:00 AM):
-# crontab -e
-0 3 * * * /path/to/backup-ksef.sh
-```
+It writes a timestamped directory under `backups/` (override with `BACKUP_DIR`) containing the
+`ksef_platform` and `n8n` dumps, the `ocr_uploads` volume, and a secrets archive (`.env`,
+`portal/.env.local`, `certificates/`), then verifies it (`gzip -t`, expected tables present, SHA256SUMS)
+and rotates runs older than `BACKUP_RETENTION_DAYS` (default 30). Optional env vars:
+
+- `BACKUP_ENCRYPT_PASSPHRASE_FILE` — AES-256 encrypts the secrets archive. **Set this before any off-site copy.**
+- `BACKUP_OFFSITE_CMD` — run after a verified backup with `$BACKUP_RUN_DIR` set, e.g.
+  `rclone copy "$BACKUP_RUN_DIR" remote:ksef-backups/$(basename "$BACKUP_RUN_DIR")`. A failing hook keeps the local backup and alerts.
+- `BACKUP_ALERT_URL` — webhook POSTed `{"message": ...}` on failure (e.g. `01-send-alert`).
+
+**Prove it restores** (monthly, and once before go-live): `scripts/verify-backup.sh` restores the newest
+dump into a throwaway Postgres container and compares every table's row count with the live DB.
 
 > **Critical:** If you restore a PostgreSQL backup onto an n8n instance with a DIFFERENT `N8N_ENCRYPTION_KEY`, all credentials will be unreadable. Always backup `.env` alongside the database.
 
@@ -774,3 +769,11 @@ For issues with the platform:
 2. Review container logs: `docker compose logs <service-name>`
 3. Verify database connectivity: `docker exec ksef_db psql -U ksef_app -d ksef_platform -c "SELECT 1;"`
 4. Check KSeF API status: `curl https://api-test.ksef.mf.gov.pl/api/system/status`
+
+### 13.3 Plans and entitlements
+
+Tier features are enforced server-side (`portal/src/lib/entitlements.ts`), not just in the UI. Start is a
+read-only monitoring/reporting plan; invoice issuance (creation, offline modes, KSeF sending), accounting
+exports, AI classification and team seats need Biznes or Pro. A firm's tier is `firms.subscription_tier`.
+Note: the Stripe webhook currently sets the tier only on `checkout.session.completed`, not on later plan
+changes — see `HANDOVER.md` before going live with billing.
