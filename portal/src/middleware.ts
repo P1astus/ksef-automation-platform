@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, updateSession } from '@/lib/auth';
+import { getSessionUnchecked, updateSession } from '@/lib/auth';
 
 // Add paths that require authentication here
 const protectedPaths = ['/dashboard'];
@@ -17,7 +17,7 @@ export async function middleware(request: NextRequest) {
     }
 
     if (isProtectedPath) {
-        const session = await getSession();
+        const session = await getSessionUnchecked();
 
         // Redirect to login if accessing protected route without valid session
         if (!session) {
@@ -29,7 +29,9 @@ export async function middleware(request: NextRequest) {
 
     // Redirect to dashboard if logged in and trying to access login/register/home
     // (but not /demo — let logged-in users view demo too)
-    if ((pathname === '/login' || pathname === '/register' || pathname === '/') && await getSession()) {
+    // ?session=ended: the dashboard rejected a JWT-valid session (e.g. deactivated
+    // firm) - don't bounce straight back to /dashboard, that would loop.
+    if (request.nextUrl.searchParams.get('session') !== 'ended' && (pathname === '/login' || pathname === '/register' || pathname === '/') && await getSessionUnchecked()) {
         return NextResponse.redirect(new URL('/dashboard', request.url));
     }
 

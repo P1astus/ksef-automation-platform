@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getSession, requireRole, sessionRole } from '@/lib/auth';
+import { getSession, requireRole, sessionRole, invalidateFirmActiveCache } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 
@@ -129,6 +129,7 @@ export async function PATCH(request: Request) {
         }
 
         await query('UPDATE firms SET is_active = false WHERE id = $1', [session.firmId]);
+        invalidateFirmActiveCache(session.firmId);
         await logActivity(session.firmId, 'account_deactivated', `Konto biura "${result.rows[0].firm_name}" zostało dezaktywowane przez właściciela`);
 
         return NextResponse.json({ success: true });

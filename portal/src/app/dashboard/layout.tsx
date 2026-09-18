@@ -25,7 +25,7 @@ export default async function DashboardLayout({
     children: React.ReactNode;
 }) {
     const session = await getSession();
-    if (!session) redirect('/login');
+    if (!session) redirect('/login?session=ended');
 
     const result = await query(
         'SELECT firm_name, trial_expires_at, subscription_tier, subscription_status, onboarding_complete FROM firms WHERE id = $1',

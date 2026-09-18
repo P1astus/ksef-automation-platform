@@ -102,7 +102,38 @@ export async function requireRole(session: { role?: SessionRole } | null, allowe
     return null;
 }
 
-export async function getSession() {
+// Round 13 fix: nothing re-checked firms.is_active once a session existed, and
+// updateSession() slides the cookie's expiry forward on every request, so a
+// team member of a firm deactivated after they logged in stayed logged in for
+// as long as they kept using the portal - login/route.ts only closes *new*
+// sessions. getSession() now checks the firm on every call, cached briefly
+// per firm to keep this off the hot path. The cache is per process (the portal
+// is a single container); settings/route.ts's deactivate_account clears its own
+// entry, any other way of flipping the flag lags by at most the TTL.
+const FIRM_ACTIVE_TTL_MS = 30_000;
+const firmActiveCache = new Map<number, { active: boolean; at: number }>();
+
+export function invalidateFirmActiveCache(firmId?: number) {
+    if (firmId === undefined) firmActiveCache.clear();
+    else firmActiveCache.delete(firmId);
+}
+
+async function isFirmActive(firmId: number): Promise<boolean> {
+    const hit = firmActiveCache.get(firmId);
+    if (hit && Date.now() - hit.at < FIRM_ACTIVE_TTL_MS) return hit.active;
+    // Lazy import keeps `pg` out of middleware's bundle, which only needs
+    // getSessionUnchecked(). A DB error propagates on purpose: failing open
+    // here would let a deactivated firm's sessions through during an outage.
+    const { query } = await import('./db');
+    const res = await query('SELECT is_active FROM firms WHERE id = $1', [firmId]);
+    const active = res.rows[0]?.is_active === true;
+    firmActiveCache.set(firmId, { active, at: Date.now() });
+    return active;
+}
+
+// JWT verification only, no DB access - safe for middleware. Route handlers and
+// server components should use getSession(), which also enforces firms.is_active.
+export async function getSessionUnchecked() {
     const cookieStore = await cookies();
     const session = cookieStore.get('session')?.value;
     if (!session) return null;
@@ -112,6 +143,13 @@ export async function getSession() {
         if (error instanceof MissingJwtSecretError) throw error;
         return null;
     }
+}
+
+export async function getSession() {
+    const session = await getSessionUnchecked();
+    if (!session) return null;
+    if (!(await isFirmActive(session.firmId))) return null;
+    return session;
 }
 
 export async function logout() {
