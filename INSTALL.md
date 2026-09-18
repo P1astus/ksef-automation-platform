@@ -641,6 +641,23 @@ dump into a throwaway Postgres container and compares every table's row count wi
 
 > **Critical:** If you restore a PostgreSQL backup onto an n8n instance with a DIFFERENT `N8N_ENCRYPTION_KEY`, all credentials will be unreadable. Always backup `.env` alongside the database.
 
+### 13.4 Vendor console operators (`/admin`)
+
+The read-only operator console lives at `/admin` (login at `/admin/login`). There is no sign-up: apply
+`migrations/2026-09-19-operators.sql`, then create an operator from `portal/` on a machine that can reach the DB
+(the password comes from the environment so it stays out of shell history/`ps`):
+
+```bash
+cd portal
+DATABASE_URL="postgresql://ksef_app:<KSEF_DB_PASSWORD>@localhost:5433/ksef_platform" \
+OPERATOR_PASSWORD='<12+ characters>' node scripts/create-operator.mjs you@example.com
+```
+
+Re-running for the same email resets its password. Disable an operator with
+`UPDATE operators SET is_active = false WHERE email = '...'` (takes effect on their next request). Logins and
+every view of tenant data are recorded in `operator_audit_log`. Put `/admin` behind an IP allowlist or VPN at
+nginx for production - the app's own throttle is per-email only.
+
 ### 13.2 Data Cleanup
 
 Run monthly to prevent unlimited table growth:
