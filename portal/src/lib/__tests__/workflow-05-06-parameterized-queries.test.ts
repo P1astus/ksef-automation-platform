@@ -98,6 +98,11 @@ describe('workflow 05 (offline24-monitor): Postgres nodes use parameterized quer
         expect(findNode(wf, 'Check KSeF Match').alwaysOutputData).toBe(true);
     });
 
+    it('Check KSeF Match stops the workflow on a database error instead of treating it as no match', () => {
+        expect(findNode(wf, 'Check KSeF Match').onError).toBe('stopWorkflow');
+        expect(findNode(wf.activeVersion, 'Check KSeF Match').onError).toBe('stopWorkflow');
+    });
+
     it('Flag JPK Correction reads from Merge KSeF Result, not $json (Mark Uploaded in DB has no RETURNING)', () => {
         const replacement = findNode(wf, 'Flag JPK Correction').parameters.options.queryReplacement;
         expect(replacement).toContain("$('Merge KSeF Result').item.json");
