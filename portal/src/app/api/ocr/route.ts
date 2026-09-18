@@ -4,7 +4,7 @@ import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
 import { ClientLimitReachedError, createClientWithinPlan } from '@/lib/client-cap';
 import { extractTextFromFile, extractInvoiceFields, needsManualReview } from '@/lib/ocr-extraction';
-import { saveUploadedFile, shortFileType } from '@/lib/file-storage';
+import { saveUploadedFile, shortFileType, MAX_UPLOAD_BYTES, UPLOAD_TOO_LARGE_MESSAGE } from '@/lib/file-storage';
 
 export async function POST(request: Request) {
     try {
@@ -25,6 +25,10 @@ export async function POST(request: Request) {
         }
         if (file.type !== 'application/pdf' && !file.type.startsWith('image/')) {
             return NextResponse.json({ error: 'Nieobsługiwany format pliku. Użyj PDF lub JPEG/PNG.' }, { status: 400 });
+        }
+
+        if (file.size > MAX_UPLOAD_BYTES) {
+            return NextResponse.json({ error: UPLOAD_TOO_LARGE_MESSAGE }, { status: 413 });
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());

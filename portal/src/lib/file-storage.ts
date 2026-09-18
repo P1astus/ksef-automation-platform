@@ -11,9 +11,23 @@ import { join } from 'path';
 // lost on every rebuild.
 const UPLOAD_DIR = process.env.OCR_UPLOAD_DIR || '/app/uploads';
 
+// Largest document any upload path accepts. Kept below nginx's
+// client_max_body_size (12m, nginx/nginx.conf) so the app returns a clear 413
+// itself instead of nginx cutting the request off first.
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const UPLOAD_TOO_LARGE_MESSAGE = 'Plik jest za duży. Maksymalny rozmiar to 10 MB.';
+
+// The extension comes from a client-supplied filename, so only a short
+// alphanumeric one is kept: anything else (a "/" in particular would make the
+// write below target a nonexistent subdirectory and 500) is dropped.
+export function safeExtension(originalFilename: string): string {
+    const m = /\.([A-Za-z0-9]{1,8})$/.exec(originalFilename);
+    return m ? `.${m[1].toLowerCase()}` : '';
+}
+
 export async function saveUploadedFile(buffer: Buffer, originalFilename: string): Promise<string> {
     await mkdir(UPLOAD_DIR, { recursive: true });
-    const ext = originalFilename.includes('.') ? originalFilename.slice(originalFilename.lastIndexOf('.')) : '';
+    const ext = safeExtension(originalFilename);
     const filename = `${randomUUID()}${ext}`;
     await writeFile(join(UPLOAD_DIR, filename), buffer);
     return filename; // relative path, stored as ocr_queue.file_path

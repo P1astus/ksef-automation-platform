@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { saveUploadedFile, shortFileType } from '@/lib/file-storage';
+import { saveUploadedFile, shortFileType, MAX_UPLOAD_BYTES, UPLOAD_TOO_LARGE_MESSAGE } from '@/lib/file-storage';
 
 // Public, no-login route — the whole point of a document request is that
 // the client doesn't have an account. firm_id/client_id are resolved here,
@@ -41,6 +41,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const ALLOWED = ['application/pdf', 'image/jpeg', 'image/png'];
     if (!ALLOWED.includes(file.type)) {
         return NextResponse.json({ error: 'Nieobsługiwany format pliku. Użyj PDF lub JPEG/PNG.' }, { status: 400 });
+    }
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+        return NextResponse.json({ error: UPLOAD_TOO_LARGE_MESSAGE }, { status: 413 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
