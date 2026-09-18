@@ -57,3 +57,6 @@ portal/update-token.js
 portal/auth_test.txt
 portal/optima_test.xml
 portal/test_out.txt
+
+# Backups (contain DB dumps and secrets)
+backups/
