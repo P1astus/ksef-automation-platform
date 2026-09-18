@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { query } from '@/lib/db';
-import { PLAN_MAX_CLIENTS } from '@/lib/plans';
+import { PLAN_MAX_CLIENTS, type PlanId } from '@/lib/plans';
 import { invalidateFirmActiveCache } from '@/lib/auth';
 
 // Constructed lazily (on first actual use), not at module load - see
@@ -10,6 +10,33 @@ let stripe: Stripe | null = null;
 function getStripe(): Stripe {
     if (!stripe) stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
     return stripe;
+}
+
+type SubscriptionPriceMap = Record<PlanId, string | undefined>;
+
+export function planFromSubscriptionPrices(
+    priceIds: readonly string[],
+    configuredPrices: SubscriptionPriceMap = {
+        start: process.env.STRIPE_PRICE_START,
+        biznes: process.env.STRIPE_PRICE_BIZNES,
+        pro: process.env.STRIPE_PRICE_PRO,
+    }
+): PlanId {
+    const matchedPlans = (Object.entries(configuredPrices) as [PlanId, string | undefined][])
+        .filter(([, configuredId]) => configuredId && priceIds.includes(configuredId))
+        .map(([plan]) => plan);
+
+    if (matchedPlans.length !== 1) {
+        throw new Error(`customer.subscription.updated: expected exactly one known plan price, matched ${matchedPlans.length}`);
+    }
+    return matchedPlans[0];
+}
+
+export function subscriptionStatus(status: Stripe.Subscription.Status): 'active' | 'past_due' | 'paused' | 'canceled' {
+    if (status === 'active' || status === 'trialing') return 'active';
+    if (status === 'past_due') return 'past_due';
+    if (status === 'paused') return 'paused';
+    return 'canceled';
 }
 
 export async function POST(request: Request) {
@@ -64,14 +91,19 @@ export async function POST(request: Request) {
 
             case 'customer.subscription.updated': {
                 const sub = event.data.object as Stripe.Subscription;
-                const firmId = sub.metadata?.firmId;
-                if (!firmId) break;
-
-                const status = sub.status === 'active' ? 'active' : sub.status === 'past_due' ? 'past_due' : 'canceled';
-                await query(
-                    'UPDATE firms SET subscription_status = $1 WHERE stripe_subscription_id = $2',
-                    [status, sub.id]
+                const targetPlan = planFromSubscriptionPrices(sub.items.data.map(item => item.price.id));
+                const result = await query(
+                    `UPDATE firms SET
+                        subscription_tier = $1,
+                        subscription_status = $2,
+                        max_clients = $3
+                     WHERE stripe_subscription_id = $4
+                     RETURNING id`,
+                    [targetPlan, subscriptionStatus(sub.status), PLAN_MAX_CLIENTS[targetPlan], sub.id]
                 );
+                if (result.rowCount !== 1) {
+                    throw new Error(`customer.subscription.updated: no firm found for subscription "${sub.id}"`);
+                }
                 break;
             }
 
