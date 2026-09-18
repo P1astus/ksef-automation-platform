@@ -48,7 +48,8 @@ vi.mock('@/lib/auth', () => ({
     requireRole: vi.fn(async () => null),
 }));
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn(async () => {}) }));
-vi.mock('@/lib/db', () => ({ query: vi.fn(async () => ({ rows: [] as any[] })) }));
+const queryMock = vi.fn(async (..._args: any[]) => ({ rows: [] as any[] }));
+vi.mock('@/lib/db', () => ({ query: (...args: any[]) => queryMock(...args) }));
 
 function req(body: object) {
     return new Request('http://localhost/api/invoices/create', {
@@ -61,6 +62,7 @@ function req(body: object) {
 describe('invoices/create/route.ts — rejects an unrecognized VAT rate before touching the DB', () => {
     beforeEach(() => {
         vi.resetModules();
+        queryMock.mockClear();
     });
 
     it('returns 400 naming the bad rate, for "oo" specifically', async () => {
@@ -81,5 +83,24 @@ describe('invoices/create/route.ts — rejects an unrecognized VAT rate before t
         const body = await res.json();
         expect(body.error).toMatch(/nieprawidłowa stawka vat/i);
         expect(body.error).toContain('oo');
+    });
+
+    it('returns 400 for a buyer NIP that FA(3) would reject before touching the DB', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req({
+            clientId: 1,
+            invoiceNumber: 'FV/1/2026',
+            issueDate: '2026-09-17',
+            buyerNip: 'not-a-nip',
+            buyerName: 'Nabywca',
+            buyerStreet: 'ul. Nabywcza 1',
+            buyerCity: 'Krakow',
+            buyerPostalCode: '30-001',
+            lines: [{ name: 'X', qty: 1, unit: 'szt', netPrice: 100, vatRate: '23' }],
+        }));
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error).toMatch(/nip nabywcy/i);
+        expect(queryMock).not.toHaveBeenCalled();
     });
 });

@@ -52,6 +52,14 @@ export interface InvoiceParty {
     countryCode?: string;
 }
 
+// FA(3)'s `etd:TNrNIP` pattern. This is deliberately stricter than merely
+// checking for ten digits: the schema rejects a value such as 0000000000 or
+// 1000000000. Keep this next to the XML builder so non-HTTP callers cannot
+// produce an invoice that the vendored schema will reject.
+export function isFa3Nip(value: string): boolean {
+    return /^[1-9](?:\d[1-9]|[1-9]\d)\d{7}$/.test(value);
+}
+
 // A correction invoice (faktura korygująca, RodzajFaktury=KOR). Per the FA(3)
 // schema's own annotation on the <Fa> element: "W przypadku wystawienia
 // faktury korygującej wypełnia się wszystkie pola wg stanu po korekcie, a
@@ -201,6 +209,12 @@ function assertHasAddress(party: InvoiceParty, label: string): void {
     }
 }
 
+function assertValidNip(party: InvoiceParty, label: string): void {
+    if (!isFa3Nip(party.nip)) {
+        throw new Error(`Nieprawidłowy NIP ${label} - wymagane 10 cyfr zgodnych ze schematem FA(3)`);
+    }
+}
+
 // TypeScript's VatRateCode union only guards a compile-time caller - a rate
 // read back from the DB (e.g. a pre-round-10 row that still has the removed
 // 'oo') or sent through an untyped request body reaches here as a plain
@@ -243,6 +257,8 @@ function zwolnienieXml(exemptionBasis: ExemptionBasis | undefined): string {
 export function buildKSeFInvoiceXml(input: InvoiceInput): string {
     assertHasAddress(input.seller, 'sprzedawcy');
     assertHasAddress(input.buyer, 'nabywcy');
+    assertValidNip(input.seller, 'sprzedawcy');
+    assertValidNip(input.buyer, 'nabywcy');
     assertKnownVatRates(input.lines);
     assertExemptionBasis(input.lines, input.exemptionBasis);
     const computed = computeLines(input.lines);

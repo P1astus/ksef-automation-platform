@@ -46,4 +46,14 @@ describe('buildKSeFInvoiceXml — address is required, not just optional metadat
         expect(() => buildKSeFInvoiceXml(invoiceInput({ buyer: { ...completeParty, nip: '2222222222', postCode: '   ' } })))
             .toThrow(/adresu nabywcy/i);
     });
+
+    it('throws for a buyer NIP that the FA(3) schema rejects', () => {
+        expect(() => buildKSeFInvoiceXml(invoiceInput({ buyer: { ...completeParty, nip: 'not-a-nip' } })))
+            .toThrow(/nieprawidłowy nip nabywcy/i);
+    });
+
+    it('throws for a seller NIP that the FA(3) schema rejects', () => {
+        expect(() => buildKSeFInvoiceXml(invoiceInput({ seller: { ...completeParty, nip: '0000000000' } })))
+            .toThrow(/nieprawidłowy nip sprzedawcy/i);
+    });
 });

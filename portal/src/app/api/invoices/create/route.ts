@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
-import { buildKSeFInvoiceXml, computeReportedTotals } from '@/lib/ksef-invoice-builder';
+import { buildKSeFInvoiceXml, computeReportedTotals, isFa3Nip } from '@/lib/ksef-invoice-builder';
 import type { InvoiceLine, ExemptionBasis } from '@/lib/ksef-invoice-builder';
 
 export async function POST(request: Request) {
@@ -23,6 +23,13 @@ export async function POST(request: Request) {
     }
     if (!buyerStreet?.trim() || !buyerCity?.trim() || !buyerPostalCode?.trim()) {
         return NextResponse.json({ error: 'Adres nabywcy (ulica, kod pocztowy, miasto) jest wymagany przez schemat FA(3)' }, { status: 400 });
+    }
+    // The UI removes separators while typing, but this endpoint is also an
+    // API boundary. FA(3)'s Podmiot2/NIP is not a free-text field: persisting
+    // an arbitrary string here produced raw_xml that KSeF rejected later.
+    const normalizedBuyerNip = typeof buyerNip === 'string' ? buyerNip.replace(/[-\s]/g, '') : '';
+    if (!isFa3Nip(normalizedBuyerNip)) {
+        return NextResponse.json({ error: 'NIP nabywcy musi mieć 10 cyfr zgodnych ze schematem FA(3)' }, { status: 400 });
     }
     // Checked here, not just left to buildKSeFInvoiceXml's VAT_GROUP_FIELD
     // lookup, so an unrecognized rate (e.g. a stale client sending the
@@ -112,7 +119,7 @@ export async function POST(request: Request) {
         issueDate,
         dueDate: dueDate || undefined,
         seller: { nip: client.nip, name: client.client_name || firmName, street: client.street, city: client.city, postCode: client.postal_code },
-        buyer: { nip: buyerNip, name: buyerName, street: buyerStreet, city: buyerCity, postCode: buyerPostalCode, countryCode: buyerCountryCode || 'PL' },
+        buyer: { nip: normalizedBuyerNip, name: buyerName, street: buyerStreet, city: buyerCity, postCode: buyerPostalCode, countryCode: buyerCountryCode || 'PL' },
         lines: lines as InvoiceLine[],
         correction,
         exemptionBasis: exemptionBasis as ExemptionBasis | undefined,
@@ -143,7 +150,7 @@ export async function POST(request: Request) {
             invoiceNumber,
             client.client_name || firmName,
             buyerName,
-            buyerNip,
+            normalizedBuyerNip,
             buyerStreet.trim(),
             buyerCity.trim(),
             buyerPostalCode.trim(),
