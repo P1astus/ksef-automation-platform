@@ -9,8 +9,14 @@ import { safeEqual } from '@/lib/auth';
 export async function POST(request: Request) {
     const auth = request.headers.get('Authorization');
     const secret = process.env.DIGEST_SECRET;
-    if (secret && !safeEqual(auth || '', `Bearer ${secret}`)) {
+    if (!secret) {
+        return NextResponse.json({ error: 'DIGEST_SECRET is not configured' }, { status: 503 });
+    }
+    if (!safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!process.env.RESEND_API_KEY) {
+        return NextResponse.json({ error: 'RESEND_API_KEY is not configured' }, { status: 503 });
     }
 
     const firmsRes = await query(`
@@ -20,6 +26,7 @@ export async function POST(request: Request) {
     `);
 
     let sent = 0;
+    let failed = 0;
     for (const firm of firmsRes.rows) {
         try {
             const statsRes = await query(`
@@ -43,8 +50,11 @@ export async function POST(request: Request) {
                 totalInvoices: parseInt(statsRes.rows[0].total) || 0,
             });
             sent++;
-        } catch { /* skip individual firm errors */ }
+        } catch (error) {
+            failed++;
+            console.error(`Daily digest failed for firm ${firm.id}:`, error);
+        }
     }
 
-    return NextResponse.json({ ok: true, sent });
+    return NextResponse.json({ ok: failed === 0, sent, failed }, { status: failed === 0 ? 200 : 502 });
 }

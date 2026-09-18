@@ -5,8 +5,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // urgency thresholds match that workflow's own "Calculate Time Remaining"
 // Code node exactly (overdue <=0, urgent_1h <1h, urgent_4h <4h), each tier
 // only fires once (its own client_notified_* flag gates it), and the
-// shared-secret check matches digest/route.ts's lenient-if-unset
-// convention.
+// shared-secret and email-provider checks fail closed: an inactive or
+// misconfigured delivery integration must never mark a legal-deadline alert
+// as sent.
 
 const queryMock = vi.fn(async (..._args: any[]) => ({ rows: [] as any[] }));
 vi.mock('@/lib/db', () => ({ query: (...args: any[]) => queryMock(...args) }));
@@ -17,7 +18,7 @@ vi.mock('@/lib/email', () => ({ sendOffline24Warning: (...args: any[]) => sendOf
 function req(auth?: string) {
     return new Request('http://localhost/api/notify/offline24', {
         method: 'POST',
-        headers: auth ? { Authorization: auth } : {},
+        headers: { Authorization: auth || 'Bearer right-secret' },
     });
 }
 
@@ -26,7 +27,8 @@ describe('POST /api/notify/offline24', () => {
         vi.resetModules();
         queryMock.mockReset();
         sendOffline24WarningMock.mockReset();
-        delete process.env.NOTIFY_SECRET;
+        process.env.NOTIFY_SECRET = 'right-secret';
+        process.env.RESEND_API_KEY = 'test-resend-key';
     });
 
     it('rejects a wrong secret when NOTIFY_SECRET is set', async () => {
@@ -36,11 +38,21 @@ describe('POST /api/notify/offline24', () => {
         expect(res.status).toBe(401);
     });
 
-    it('allows any caller when NOTIFY_SECRET is unset (matches digest/route.ts)', async () => {
-        queryMock.mockResolvedValue({ rows: [] });
+    it('fails closed when NOTIFY_SECRET is unset', async () => {
+        delete process.env.NOTIFY_SECRET;
         const { POST } = await import('@/app/api/notify/offline24/route');
         const res = await POST(req());
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(503);
+        expect(queryMock).not.toHaveBeenCalled();
+    });
+
+    it('does not inspect or flag deadlines when the email provider is unconfigured', async () => {
+        delete process.env.RESEND_API_KEY;
+        const { POST } = await import('@/app/api/notify/offline24/route');
+        const res = await POST(req());
+
+        expect(res.status).toBe(503);
+        expect(queryMock).not.toHaveBeenCalled();
     });
 
     it('sends an "overdue" warning and sets client_notified_overdue for a past deadline', async () => {
@@ -87,5 +99,18 @@ describe('POST /api/notify/offline24', () => {
         const body = await res.json();
         expect(body.sent).toBe(0);
         expect(sendOffline24WarningMock).not.toHaveBeenCalled();
+    });
+
+    it('does not set a notification flag when delivery fails', async () => {
+        const past = new Date(Date.now() - 60_000).toISOString();
+        queryMock.mockResolvedValueOnce({
+            rows: [{ id: 5, invoice_number: 'FV/5', upload_deadline: past, client_notified_4h: false, client_notified_1h: false, client_notified_overdue: false, contact_email: 'c@example.com', client_name: 'Client E' }],
+        });
+        sendOffline24WarningMock.mockRejectedValueOnce(new Error('Resend unavailable'));
+        const { POST } = await import('@/app/api/notify/offline24/route');
+        const res = await POST(req('Bearer right-secret'));
+
+        expect(res.status).toBe(502);
+        expect(queryMock.mock.calls.some(c => String(c[0]).includes('UPDATE offline_invoices'))).toBe(false);
     });
 });

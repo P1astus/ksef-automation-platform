@@ -17,8 +17,14 @@ import { safeEqual } from '@/lib/auth';
 export async function POST(request: Request) {
     const auth = request.headers.get('Authorization');
     const secret = process.env.NOTIFY_SECRET;
-    if (secret && !safeEqual(auth || '', `Bearer ${secret}`)) {
+    if (!secret) {
+        return NextResponse.json({ error: 'NOTIFY_SECRET is not configured' }, { status: 503 });
+    }
+    if (!safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!process.env.RESEND_API_KEY) {
+        return NextResponse.json({ error: 'RESEND_API_KEY is not configured' }, { status: 503 });
     }
 
     const pending = await query(`
@@ -32,6 +38,7 @@ export async function POST(request: Request) {
     `);
 
     let sent = 0;
+    let failed = 0;
     const now = Date.now();
     for (const row of pending.rows) {
         const diffMs = new Date(row.upload_deadline).getTime() - now;
@@ -49,8 +56,14 @@ export async function POST(request: Request) {
             await sendOffline24Warning(row.contact_email, row.client_name, row.invoice_number, row.upload_deadline, tier);
             await query(`UPDATE offline_invoices SET ${flagColumn} = true WHERE id = $1`, [row.id]);
             sent++;
-        } catch { /* best-effort - next run retries, since the flag was never set */ }
+        } catch (error) {
+            failed++;
+            // The flag remains false, so the next scheduled run can retry.
+            // Do not hide this: the response below is non-2xx if any warning
+            // could not be delivered, allowing n8n's error handling to alert.
+            console.error(`Offline24 ${tier} warning failed for queue row ${row.id}:`, error);
+        }
     }
 
-    return NextResponse.json({ ok: true, sent });
+    return NextResponse.json({ ok: failed === 0, sent, failed }, { status: failed === 0 ? 200 : 502 });
 }

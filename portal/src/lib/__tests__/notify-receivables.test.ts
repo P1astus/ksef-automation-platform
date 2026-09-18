@@ -16,7 +16,7 @@ vi.mock('@/lib/email', () => ({ sendReceivablesDigest: (...args: any[]) => sendR
 function req(auth?: string) {
     return new Request('http://localhost/api/notify/receivables', {
         method: 'POST',
-        headers: auth ? { Authorization: auth } : {},
+        headers: { Authorization: auth || 'Bearer right-secret' },
     });
 }
 
@@ -25,7 +25,8 @@ describe('POST /api/notify/receivables', () => {
         vi.resetModules();
         queryMock.mockReset();
         sendReceivablesDigestMock.mockReset();
-        delete process.env.NOTIFY_SECRET;
+        process.env.NOTIFY_SECRET = 'right-secret';
+        process.env.RESEND_API_KEY = 'test-resend-key';
     });
 
     it('rejects a wrong secret when NOTIFY_SECRET is set', async () => {

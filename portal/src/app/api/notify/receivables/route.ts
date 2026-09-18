@@ -14,8 +14,14 @@ import { safeEqual } from '@/lib/auth';
 export async function POST(request: Request) {
     const auth = request.headers.get('Authorization');
     const secret = process.env.NOTIFY_SECRET;
-    if (secret && !safeEqual(auth || '', `Bearer ${secret}`)) {
+    if (!secret) {
+        return NextResponse.json({ error: 'NOTIFY_SECRET is not configured' }, { status: 503 });
+    }
+    if (!safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!process.env.RESEND_API_KEY) {
+        return NextResponse.json({ error: 'RESEND_API_KEY is not configured' }, { status: 503 });
     }
 
     const overdue = await query(`
@@ -42,12 +48,19 @@ export async function POST(request: Request) {
     }
 
     let sent = 0;
+    let failed = 0;
     for (const client of byClient.values()) {
         try {
             await sendReceivablesDigest(client.contact_email, client.client_name, client.invoices);
             sent++;
-        } catch { /* best-effort - next week's run retries */ }
+        } catch (error) {
+            failed++;
+            console.error(`Receivables digest failed for ${client.contact_email}:`, error);
+        }
     }
 
-    return NextResponse.json({ ok: true, sent, clientsWithOverdue: byClient.size });
+    return NextResponse.json(
+        { ok: failed === 0, sent, failed, clientsWithOverdue: byClient.size },
+        { status: failed === 0 ? 200 : 502 }
+    );
 }

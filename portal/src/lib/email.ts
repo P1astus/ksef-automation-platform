@@ -3,12 +3,17 @@ const FROM = process.env.RESEND_FROM_EMAIL || 'KSeF Auto <noreply@ksef.auto>';
 
 async function send(to: string, subject: string, html: string) {
     const key = process.env.RESEND_API_KEY;
-    if (!key) return; // silently skip if not configured
-    await fetch(RESEND_API, {
+    if (!key) {
+        throw new Error('RESEND_API_KEY is not configured');
+    }
+    const response = await fetch(RESEND_API, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: FROM, to, subject, html }),
-    }).catch(() => { /* non-critical */ });
+    });
+    if (!response.ok) {
+        throw new Error(`Resend rejected email with HTTP ${response.status}`);
+    }
 }
 
 export async function sendWelcome(email: string, firmName: string) {
@@ -51,8 +56,9 @@ export async function sendSyncFailed(email: string, firmName: string, clientName
 // ── Client-facing notifications ─────────────────────────────────────────
 // Unlike everything above (sent to the firm's own admin_email), these go to
 // clients.contact_email — the accounting firm's own client, the taxpayer
-// whose deadline/receivables/documents these actually are. Same send()
-// helper, same silent no-op without RESEND_API_KEY.
+// whose deadline/receivables/documents these actually are. `send()` fails
+// loudly when delivery cannot be attempted, so callers never mark a legal
+// deadline warning as delivered when no email was actually sent.
 
 const URGENCY_COPY: Record<'4h' | '1h' | 'overdue', { color: string; title: string; body: string }> = {
     '4h': { color: '#f59e0b', title: 'Zbliża się termin wysyłki faktury do KSeF', body: 'Zostały mniej niż 4 godziny na przesłanie faktury wystawionej w trybie offline.' },
