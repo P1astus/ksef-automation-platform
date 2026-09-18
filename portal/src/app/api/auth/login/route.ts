@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
 import { createSession } from '@/lib/auth';
 import { tierHasFeature } from '@/lib/plans';
+import { consumeRateLimit, rateLimitResponse, requestIp } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
     try {
@@ -14,6 +15,11 @@ export async function POST(request: Request) {
                 { status: 400 }
             );
         }
+
+        const ipLimit = await consumeRateLimit('login-ip', requestIp(request), 30, 15 * 60 * 1000);
+        if (!ipLimit.allowed) return rateLimitResponse(ipLimit);
+        const emailLimit = await consumeRateLimit('login-email', String(email), 10, 15 * 60 * 1000);
+        if (!emailLimit.allowed) return rateLimitResponse(emailLimit);
 
         // Find the firm by admin email — the owner login path.
         const result = await query(

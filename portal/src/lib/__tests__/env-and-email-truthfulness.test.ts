@@ -48,8 +48,17 @@ describe('appUrl()', () => {
 
 describe('POST /api/auth/reset-password (request) in production', () => {
     const queryMock = vi.fn().mockResolvedValue({ rows: [] });
-    beforeEach(() => { vi.resetModules(); queryMock.mockClear(); vi.doMock('@/lib/db', () => ({ query: queryMock })); });
-    afterEach(() => { vi.unstubAllEnvs(); vi.doUnmock('@/lib/db'); });
+    beforeEach(() => {
+        vi.resetModules();
+        queryMock.mockClear();
+        vi.doMock('@/lib/db', () => ({ query: queryMock }));
+        vi.doMock('@/lib/rate-limit', () => ({
+            requestIp: () => '127.0.0.1',
+            consumeRateLimit: async () => ({ allowed: true, retryAfterSeconds: 1 }),
+            rateLimitResponse: vi.fn(),
+        }));
+    });
+    afterEach(() => { vi.unstubAllEnvs(); vi.doUnmock('@/lib/db'); vi.doUnmock('@/lib/rate-limit'); });
 
     async function call() {
         const { POST } = await import('../../app/api/auth/reset-password/route');
