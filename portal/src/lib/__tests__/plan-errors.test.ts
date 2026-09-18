@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { interpretApiFailure, readApiFailure } from '../plan-errors';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { subscriptionInactiveResponse, upgradeRequiredResponse } from '../entitlements';
 
 describe('interpretApiFailure', () => {
@@ -33,5 +35,16 @@ describe('interpretApiFailure', () => {
         const res = new Response('<html>oops</html>', { status: 502 });
         const f = await readApiFailure(res, 'Błąd wysyłki');
         expect(f).toEqual({ message: 'Błąd wysyłki', isPlanError: false, status: 502 });
+    });
+});
+
+describe('remaining gated UI actions', () => {
+    it('offers the shared billing link for OCR/email, JPK and KSeF settings failures', () => {
+        const app = join(__dirname, '..', '..', 'app', 'dashboard');
+        for (const relative of ['invoices/ManualUpload.tsx', 'jpk/page.tsx', 'settings/ksef/page.tsx']) {
+            const source = readFileSync(join(app, relative), 'utf8');
+            expect(source).toContain('interpretApiFailure');
+            expect(source).toContain('PlanErrorLink');
+        }
     });
 });

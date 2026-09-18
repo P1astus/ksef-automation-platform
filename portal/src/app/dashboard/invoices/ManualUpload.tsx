@@ -4,20 +4,29 @@ import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, FileUp, ListChecks } from 'lucide-react';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { ApiFailure, interpretApiFailure } from '@/lib/plan-errors';
 
 export default function ManualUpload() {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [statusText, setStatusText] = useState('');
+    const [failure, setFailure] = useState<ApiFailure | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
 
     const handleSyncEmail = async () => {
+        setFailure(null);
         setIsSyncing(true); setStatusText('Łączenie z serwerem poczty (IMAP)...');
         try {
             const res = await fetch('/api/email/sync', { method: 'POST' });
-            if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Błąd synchronizacji poczty'); }
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                const apiFailure = interpretApiFailure(res.status, body, 'Błąd synchronizacji poczty');
+                setFailure(apiFailure);
+                throw new Error(apiFailure.message);
+            }
             const data = await res.json();
             alert(`Synchronizacja poczty: ${data.message || 'Zakończono!'}`);
             router.refresh();
@@ -40,6 +49,7 @@ export default function ManualUpload() {
     };
 
     const processFile = async (file: File) => {
+        setFailure(null);
         if (!(file.type === 'application/pdf' || file.type.startsWith('image/'))) {
             alert('Obsługiwane są tylko pliki PDF i obrazy.'); return;
         }
@@ -49,7 +59,12 @@ export default function ManualUpload() {
         try {
             setStatusText('Przetwarzanie OCR (może potrwać kilka sekund)...');
             const res = await fetch('/api/ocr', { method: 'POST', body: formData });
-            if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Wystąpił błąd podczas OCR.'); }
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                const apiFailure = interpretApiFailure(res.status, body, 'Wystąpił błąd podczas OCR.');
+                setFailure(apiFailure);
+                throw new Error(apiFailure.message);
+            }
             const data = await res.json();
             setStatusText('Zakończono pomyślnie!');
             if (data.needsReview) {
@@ -74,6 +89,11 @@ export default function ManualUpload() {
                     <Mail size={15} /> {isSyncing ? 'Synchronizowanie skrzynki...' : 'Pobierz nowe faktury E-mail (IMAP)'}
                 </button>
             </div>
+            {failure && (
+                <div style={{ marginBottom: 12, color: 'var(--error)', fontSize: 13, textAlign: 'right' }}>
+                    {failure.message}<PlanErrorLink show={failure.isPlanError} />
+                </div>
+            )}
             <div
                 onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}
                 onClick={() => !isUploading && fileInputRef.current?.click()}

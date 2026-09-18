@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Key, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Upload, ShieldCheck } from 'lucide-react';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { interpretApiFailure } from '@/lib/plan-errors';
 
 interface ClientInfo {
     id: number;
@@ -29,7 +31,7 @@ export default function KsefSettingsPage() {
     const [showToken, setShowToken] = useState(false);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [result, setResult] = useState<{ ok: boolean; text: string; connectionOk?: boolean; connectionMsg?: string } | null>(null);
+    const [result, setResult] = useState<{ ok: boolean; text: string; connectionOk?: boolean; connectionMsg?: string; planError?: boolean } | null>(null);
     const [certFile, setCertFile] = useState<File | null>(null);
     const [certPassword, setCertPassword] = useState('');
     const [showCertPass, setShowCertPass] = useState(false);
@@ -79,7 +81,8 @@ export default function KsefSettingsPage() {
             }
             const d = await res.json();
             if (!res.ok) {
-                setResult({ ok: false, text: d.error || 'Błąd zapisu' });
+                const failure = interpretApiFailure(res.status, d, 'Błąd zapisu');
+                setResult({ ok: false, text: failure.message, planError: failure.isPlanError });
             } else {
                 setResult({ ok: true, text: d.message, connectionOk: d.connectionOk, connectionMsg: d.connectionMsg });
                 // Refresh client list
@@ -269,7 +272,7 @@ export default function KsefSettingsPage() {
                                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                         {result.ok ? <CheckCircle size={15} color="var(--success)" /> : <AlertCircle size={15} color="var(--error)" />}
                                         <span style={{ fontSize: 13, fontWeight: 600, color: result.ok ? 'var(--success)' : 'var(--error)' }}>
-                                            {result.text}
+                                            {result.text}<PlanErrorLink show={!!result.planError} />
                                         </span>
                                     </div>
                                     {result.connectionMsg && (

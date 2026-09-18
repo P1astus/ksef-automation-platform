@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { FileCheck, Download, RefreshCw, ChevronDown } from 'lucide-react';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { interpretApiFailure } from '@/lib/plan-errors';
 
 interface Client {
     id: number;
@@ -40,6 +42,7 @@ export default function JpkPage() {
     const [stats, setStats] = useState<JpkStats | null>(null);
     const [xmlBlob, setXmlBlob] = useState<string | null>(null);
     const [error, setError] = useState('');
+    const [planError, setPlanError] = useState(false);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
 
     useEffect(() => {
@@ -62,6 +65,7 @@ export default function JpkPage() {
         if (!selectedNip || !period) return;
         setGenerating(true);
         setError('');
+        setPlanError(false);
         setStats(null);
         setXmlBlob(null);
         try {
@@ -71,7 +75,11 @@ export default function JpkPage() {
                 body: JSON.stringify({ clientNip: selectedNip, period }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Błąd generowania');
+            if (!res.ok) {
+                const failure = interpretApiFailure(res.status, data, 'Błąd generowania');
+                setPlanError(failure.isPlanError);
+                throw new Error(failure.message);
+            }
             setStats(data.stats);
             setXmlBlob(data.xml);
             // Refresh history
@@ -150,7 +158,7 @@ export default function JpkPage() {
 
                 {error && (
                     <div style={{ marginTop: 16, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13 }}>
-                        {error}
+                        {error}<PlanErrorLink show={planError} />
                     </div>
                 )}
             </div>
