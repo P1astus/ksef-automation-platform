@@ -2,58 +2,26 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { PLANS as SHARED_PLANS } from '@/lib/plans';
 
-const PLANS = [
-    {
-        id: 'start',
-        name: 'Start',
-        monthly: 149,
-        annual: 119,
-        desc: 'Idealne dla małych biur. Automatyzacja KSeF dla do 15 klientów.',
-        highlight: false,
-        features: [
-            'Do 15 klientów (NIP)',
-            'Pobieranie faktur z KSeF',
-            'Generowanie JPK_V7M',
-            'Alerty e-mail',
-            'Wsparcie e-mail',
-        ],
-    },
-    {
-        id: 'biznes',
-        name: 'Biznes',
-        monthly: 399,
-        annual: 319,
-        desc: 'Dla rozwijających się biur. Pełna automatyzacja z wysyłką faktur i AI.',
-        highlight: true,
-        badge: 'Najpopularniejszy',
-        features: [
-            'Do 50 klientów (NIP)',
-            'Pobieranie faktur w czasie rzeczywistym',
-            'Wysyłka faktur do KSeF',
-            'JPK_V7M + JPK_FA',
-            'Klasyfikacja AI kosztów',
-            'Zarządzanie zespołem',
-            'Eksport CSV / Optima / Symfonia',
-        ],
-    },
-    {
-        id: 'pro',
-        name: 'Pro',
-        monthly: 799,
-        annual: 639,
-        desc: 'Nieograniczona skalowalność. Dedykowany opiekun i SLA dla dużych biur.',
-        highlight: false,
-        features: [
-            'Nieograniczona liczba klientów',
-            'Wszystkie funkcje Biznes',
-            'API do integracji z systemami FK',
-            'Dedykowany opiekun klienta',
-            'SLA 99.9% z gwarancją',
-            'White-label (własna domena)',
-        ],
-    },
-];
+// Price, client cap and feature bullets come from lib/plans.ts (the same source
+// billing and the paywall render), so this page cannot drift from what Stripe
+// charges. Only marketing-only fields live here. The annual price is not
+// offered by the Stripe checkout yet - see HANDOVER.md.
+const MARKETING: Record<string, { annual: number; desc: string; badge?: string }> = {
+    start: { annual: 119, desc: 'Plan tylko do odczytu i raportowania dla małych biur - do 15 klientów.' },
+    biznes: { annual: 319, desc: 'Dla rozwijających się biur. Wystawianie i wysyłka faktur, eksporty i klasyfikacja AI.', badge: 'Najpopularniejszy' },
+    pro: { annual: 639, desc: 'Wszystkie funkcje Biznes dla dużych biur - do 999 klientów.' },
+};
+
+const PLANS = SHARED_PLANS.map(p => ({
+    id: p.id,
+    name: p.name,
+    monthly: p.price,
+    highlight: !!p.highlight,
+    features: p.features,
+    ...MARKETING[p.id],
+}));
 
 export default function PricingSection() {
     const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
@@ -63,7 +31,7 @@ export default function PricingSection() {
             <div style={{ textAlign: 'center', marginBottom: 48 }}>
                 <div style={{ color: '#3b7ff5', fontSize: 13, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>Cennik</div>
                 <h2 style={{ fontSize: 40, fontWeight: 800, color: '#0f172a', letterSpacing: '-1.5px', margin: '0 0 16px' }}>Prosty, przejrzysty cennik</h2>
-                <p style={{ color: '#64748b', fontSize: 17, maxWidth: 500, margin: '0 auto 28px' }}>Żadnych ukrytych opłat. 30 dni za darmo, bez karty kredytowej.</p>
+                <p style={{ color: '#64748b', fontSize: 17, maxWidth: 500, margin: '0 auto 28px' }}>Żadnych ukrytych opłat. 14 dni za darmo, bez karty kredytowej.</p>
 
                 {/* Monthly / Annual toggle */}
                 <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 10, padding: 4, gap: 4 }}>
@@ -146,7 +114,7 @@ export default function PricingSection() {
             </div>
 
             <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginTop: 32 }}>
-                Wszystkie plany zawierają 30-dniowy okres próbny. Brak karty kredytowej. Możliwość anulowania w dowolnym momencie.
+                Wszystkie plany zawierają 14-dniowy okres próbny. Brak karty kredytowej. Możliwość anulowania w dowolnym momencie.
             </p>
         </div>
     );

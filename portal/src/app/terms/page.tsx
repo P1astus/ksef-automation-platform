@@ -34,9 +34,9 @@ Usługodawca nie świadczy usług doradztwa podatkowego ani prawnego. Odpowiedzi
         {
             title: '4. Plany i płatności',
             content: `Dostępne plany subskrypcyjne:
-• Start — 299 PLN/mies. — do 10 klientów KSeF
-• Biznes — 599 PLN/mies. — do 50 klientów KSeF
-• Pro — 1299 PLN/mies. — nielimitowani klienci KSeF + dedykowane wsparcie
+• Start — 149 PLN/mies. — do 15 klientów KSeF (odczyt i raportowanie: synchronizacja faktur, JPK_V7M, alerty e-mail)
+• Biznes — 399 PLN/mies. — do 50 klientów KSeF (dodatkowo: wystawianie i wysyłka faktur do KSeF, eksporty do systemów księgowych, klasyfikacja AI, zarządzanie zespołem)
+• Pro — 799 PLN/mies. — do 999 klientów KSeF (funkcje planu Biznes)
 
 Płatności są obsługiwane przez Stripe Inc. Opłaty są pobierane z góry za każdy okres rozliczeniowy (miesięcznie lub rocznie). Faktury VAT za subskrypcję są wysyłane automatycznie na adres e-mail konta.
 

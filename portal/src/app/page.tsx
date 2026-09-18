@@ -68,7 +68,7 @@ const testimonials = [
 ];
 
 const faqs = [
-    { q: 'Czy muszę podawać kartę kredytową przy rejestracji?', a: 'Nie. Okres próbny przez 30 dni jest całkowicie bezpłatny i nie wymaga karty kredytowej. Płatność jest wymagana dopiero po zakończeniu okresu próbnego.' },
+    { q: 'Czy muszę podawać kartę kredytową przy rejestracji?', a: 'Nie. Okres próbny przez 14 dni jest całkowicie bezpłatny i nie wymaga karty kredytowej. Płatność jest wymagana dopiero po zakończeniu okresu próbnego.' },
     { q: 'Jak bezpieczne są dane moich klientów?', a: 'Dane przechowywane są na serwerach w Polsce (zgodnie z RODO). Tokeny KSeF są szyfrowane w bazie danych. Komunikacja z KSeF odbywa się przez szyfrowane połączenie HTTPS z podpisem kryptograficznym XAdES-BES.' },
     { q: 'Co to jest KSeF i czy muszę go używać?', a: 'KSeF (Krajowy System e-Faktur) to obowiązkowy od 2026 roku system e-fakturowania MF. Każda firma w Polsce będzie zobligowana do wystawiania i odbierania faktur przez KSeF. Nasze biuro rachunkowe powinno być gotowe już teraz.' },
     { q: 'Jak długo trwa konfiguracja nowego klienta?', a: 'Dodanie klienta zajmuje mniej niż 5 minut. Wystarczy podać NIP firmy i token autoryzacyjny (lub certyfikat PKCS12). System automatycznie zacznie pobierać faktury w ciągu godziny.' },
@@ -202,7 +202,7 @@ export default function LandingPage() {
                     {[
                         { value: '10 000+', label: 'Faktur pobranych miesięcznie' },
                         { value: '< 5 min', label: 'Czas konfiguracji klienta' },
-                        { value: '99.9%',   label: 'Dostępność systemu (SLA)' },
+                        { value: '14 dni', label: 'Bezpłatnego okresu próbnego' },
                         { value: '0 zł',    label: 'Opłata za wdrożenie' },
                     ].map((s, i) => (
                         <div key={i} style={{
@@ -380,7 +380,7 @@ export default function LandingPage() {
                     </h2>
                     <p style={{ color: 'var(--text-muted)', fontSize: 17, lineHeight: 1.75, margin: '0 0 34px' }}>
                         Dołącz do biur rachunkowych, które już zaoszczędziły dziesiątki godzin miesięcznie.
-                        Pierwsze 30 dni całkowicie za darmo.
+                        Pierwsze 14 dni całkowicie za darmo.
                     </p>
                     <Link href="/register" style={{
                         display: 'inline-flex', alignItems: 'center', gap: 8,

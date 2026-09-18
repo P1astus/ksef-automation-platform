@@ -47,7 +47,7 @@ export default function PaywallOverlay({ reason }: { reason: 'expired' | 'cancel
                 </h1>
                 <p style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 36px', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }}>
                     {reason === 'expired'
-                        ? 'Twój 30-dniowy okres próbny dobiegł końca. Wybierz plan, aby kontynuować korzystanie z platformy.'
+                        ? 'Twój 14-dniowy okres próbny dobiegł końca. Wybierz plan, aby kontynuować korzystanie z platformy.'
                         : 'Twoja subskrypcja została anulowana. Wybierz plan, aby przywrócić dostęp do platformy.'}
                 </p>
 

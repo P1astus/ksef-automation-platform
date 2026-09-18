@@ -95,7 +95,7 @@ export default function OnboardingPage() {
                             Witamy w KSeF Auto!
                         </h1>
                         <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 28px' }}>
-                            Twoje konto jest gotowe. Masz <strong style={{ color: 'var(--accent-hover)' }}>30 dni za darmo</strong> — bez karty kredytowej.
+                            Twoje konto jest gotowe. Masz <strong style={{ color: 'var(--accent-hover)' }}>14 dni za darmo</strong> — bez karty kredytowej.
                         </p>
 
                         <div style={{ background: 'var(--accent-dim)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12, padding: '16px 20px', marginBottom: 28 }}>

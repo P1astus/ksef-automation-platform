@@ -261,7 +261,7 @@ export default function DemoPage() {
             {showCta && (
                 <Link href="/register" style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 200, background: 'var(--accent)', color: 'white', textDecoration: 'none', padding: '13px 22px', borderRadius: 12, fontSize: 13.5, fontWeight: 700, boxShadow: '0 0 30px rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', gap: 8, animation: 'slideUp 0.4s ease' }}>
                     <Zap size={14} strokeWidth={2.5} />
-                    Wypróbuj za darmo — 30 dni bez karty
+                    Wypróbuj za darmo — 14 dni bez karty
                     <ArrowRight size={14} />
                 </Link>
             )}

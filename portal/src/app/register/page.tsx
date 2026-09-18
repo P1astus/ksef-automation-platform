@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { Zap, CheckCircle, AlertCircle } from 'lucide-react';
 
 const PLAN_LABELS: Record<string, { name: string; price: string; clients: string }> = {
-    start:  { name: 'Start',  price: '299 zł/mies.', clients: 'do 20 klientów' },
-    biznes: { name: 'Biznes', price: '599 zł/mies.', clients: 'do 60 klientów' },
-    pro:    { name: 'Pro',    price: '1 299 zł/mies.', clients: 'nieograniczeni klienci' },
+    start:  { name: 'Start',  price: '149 zł/mies.', clients: 'do 15 klientów' },
+    biznes: { name: 'Biznes', price: '399 zł/mies.', clients: 'do 50 klientów' },
+    pro:    { name: 'Pro',    price: '799 zł/mies.', clients: 'do 999 klientów' },
 };
 
 const features = [
@@ -101,7 +101,7 @@ function RegisterForm() {
                         <span style={{ color: 'var(--text-muted)' }}>obsługę KSeF dziś</span>
                     </h2>
                     <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.7, margin: 0 }}>
-                        30 dni za darmo, bez karty kredytowej. Pełny dostęp do wszystkich funkcji wybranego planu.
+                        14 dni za darmo, bez karty kredytowej. Dostęp do funkcji wybranego planu.
                     </p>
 
                     {/* Selected plan badge */}
@@ -144,7 +144,7 @@ function RegisterForm() {
                             Utwórz konto
                         </h1>
                         <p style={{ fontSize: 13.5, color: 'var(--text-muted)', margin: 0 }}>
-                            30 dni za darmo — bez karty kredytowej
+                            14 dni za darmo — bez karty kredytowej
                         </p>
                     </div>
 
