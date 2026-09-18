@@ -3,6 +3,7 @@ import { requireFeature } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
+import { appUrl } from '@/lib/app-url';
 
 // Ensure tables exist (idempotent)
 async function ensureTables() {
@@ -94,13 +95,12 @@ export async function POST(request: Request) {
     const firmName = firmRes.rows[0]?.firm_name || 'KSeF Auto';
 
     // Send invite email (non-critical)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-    const inviteUrl = `${appUrl}/invite/accept?token=${token}`;
-    await sendInviteEmail(email, firmName, inviteUrl).catch(() => {});
+    const inviteUrl = `${appUrl()}/invite/accept?token=${token}`;
+    const emailSent = await sendInviteEmail(email, firmName, inviteUrl).then(() => true).catch(() => false);
 
     await logActivity(session.firmId, 'team_invite', `Zaproszenie wysłano do ${email} (rola: ${role})`);
 
-    return NextResponse.json({ ok: true, inviteUrl });
+    return NextResponse.json({ ok: true, inviteUrl, emailSent });
 }
 
 // DELETE /api/team?memberId=x or ?inviteId=x
@@ -125,9 +125,11 @@ export async function DELETE(request: Request) {
 
 async function sendInviteEmail(email: string, firmName: string, inviteUrl: string) {
     const key = process.env.RESEND_API_KEY;
-    if (!key) return;
+    // Throws (caller reports emailSent: false) rather than silently returning:
+    // with no provider or no public URL the invite email cannot be delivered.
+    if (!key || !appUrl()) throw new Error('email not configured');
     const FROM = process.env.RESEND_FROM_EMAIL || 'KSeF Auto <noreply@ksef.auto>';
-    await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,4 +144,5 @@ async function sendInviteEmail(email: string, firmName: string, inviteUrl: strin
             </div>`,
         }),
     });
+    if (!res.ok) throw new Error(`Resend responded ${res.status}`);
 }

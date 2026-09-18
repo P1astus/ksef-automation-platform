@@ -16,6 +16,27 @@ services:
       - XADES_SIDECAR_URL=http://xades-sidecar:8090
       - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
       - "NOTIFY_SECRET=${NOTIFY_SECRET:-}"
+      # The portal image ships no .env file (.dockerignore excludes .env*), so
+      # every optional variable the portal reads has to be passed through here
+      # or it can never reach the container, whatever the root .env says.
+      # Unset means "feature not configured" - the routes that need one fail
+      # loudly (503) rather than pretending. Public origin used to build every
+      # emailed/redirect link (invites, reset, document requests, Stripe).
+      - "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}"
+      - "RESEND_API_KEY=${RESEND_API_KEY:-}"
+      - "RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-}"
+      - "DIGEST_SECRET=${DIGEST_SECRET:-}"
+      - "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}"
+      - "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}"
+      - "STRIPE_PRICE_START=${STRIPE_PRICE_START:-}"
+      - "STRIPE_PRICE_BIZNES=${STRIPE_PRICE_BIZNES:-}"
+      - "STRIPE_PRICE_PRO=${STRIPE_PRICE_PRO:-}"
+      - "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
+      - "N8N_SYNC_WEBHOOK_URL=${N8N_SYNC_WEBHOOK_URL:-}"
+      - "IMAP_HOST=${IMAP_HOST:-}"
+      - "IMAP_PORT=${IMAP_PORT:-}"
+      - "IMAP_USER=${IMAP_USER:-}"
+      - "IMAP_PASSWORD=${IMAP_PASSWORD:-}"
     volumes:
       # OCR/email/tokened-upload source documents (ocr_queue.file_path) -
       # a named volume so they survive a portal rebuild, unlike the

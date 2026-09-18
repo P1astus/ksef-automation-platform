@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { query } from '@/lib/db';
+import { appUrl } from '@/lib/app-url';
 
 export async function POST(request: Request) {
     try {
@@ -26,10 +27,22 @@ export async function POST(request: Request) {
                 [token, expires, email.toLowerCase()]
             );
 
-            const resetUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/reset-password/${token}`;
+            const devMode = process.env.NODE_ENV !== 'production';
+            const base = appUrl() || (devMode ? 'http://localhost:3000' : '');
+            const resetUrl = `${base}/reset-password/${token}`;
 
-            // Send email if RESEND_API_KEY is configured
+            // Send email if RESEND_API_KEY is configured. In production, "not
+            // configured" (no mail provider, or no public URL to link to) is a
+            // server problem, not an account-specific one, so saying so leaks
+            // nothing - whereas answering "link sent" here left users waiting
+            // for an email that could never arrive.
             const resendKey = process.env.RESEND_API_KEY;
+            if (!devMode && (!resendKey || !base)) {
+                return NextResponse.json(
+                    { error: 'Wysyłka e-mail nie jest skonfigurowana. Skontaktuj się z administratorem.' },
+                    { status: 503 }
+                );
+            }
             if (resendKey) {
                 await fetch('https://api.resend.com/emails', {
                     method: 'POST',
@@ -56,7 +69,6 @@ export async function POST(request: Request) {
             }
 
             // In dev mode, return the URL so it can be tested without email
-            const devMode = process.env.NODE_ENV !== 'production';
             return NextResponse.json({
                 success: true,
                 message: 'Jeśli konto istnieje, link został wysłany na podany adres e-mail.',

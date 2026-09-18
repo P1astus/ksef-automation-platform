@@ -1,4 +1,5 @@
 const RESEND_API = 'https://api.resend.com/emails';
+import { appUrl } from '@/lib/app-url';
 const FROM = process.env.RESEND_FROM_EMAIL || 'KSeF Auto <noreply@ksef.auto>';
 
 async function send(to: string, subject: string, html: string) {
@@ -22,7 +23,7 @@ export async function sendWelcome(email: string, firmName: string) {
             <h1 style="color:#6366f1;font-size:24px;margin-bottom:8px">Witamy w KSeF Auto!</h1>
             <p style="color:#555;font-size:15px">Twoje konto dla biura <strong>${firmName}</strong> zostało utworzone.</p>
             <p style="color:#555;font-size:15px">Masz <strong>14 dni za darmo</strong> — zacznij od dodania pierwszego klienta.</p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Przejdź do panelu →</a>
+            <a href="${appUrl()}/dashboard" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Przejdź do panelu →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
         </div>
     `);
@@ -34,7 +35,7 @@ export async function sendTrialExpiry(email: string, firmName: string, daysLeft:
             <h1 style="color:#f59e0b;font-size:22px;margin-bottom:8px">Okres próbny kończy się wkrótce</h1>
             <p style="color:#555;font-size:15px">Hej ${firmName}, Twój bezpłatny okres próbny wygasa za <strong>${daysLeft} ${daysLeft === 1 ? 'dzień' : 'dni'}</strong>.</p>
             <p style="color:#555;font-size:15px">Wybierz plan, aby nie stracić dostępu do faktur i danych Twoich klientów.</p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Wybierz plan →</a>
+            <a href="${appUrl()}/dashboard/billing" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Wybierz plan →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
         </div>
     `);
@@ -47,7 +48,7 @@ export async function sendSyncFailed(email: string, firmName: string, clientName
             <p style="color:#555;font-size:15px">Biuro: <strong>${firmName}</strong></p>
             <p style="color:#555;font-size:15px">Klient: <strong>${clientName}</strong></p>
             <p style="color:#555;font-size:15px">Błąd: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px">${errorMsg}</code></p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/clients" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Sprawdź klientów →</a>
+            <a href="${appUrl()}/dashboard/clients" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Sprawdź klientów →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
         </div>
     `);
@@ -162,8 +163,8 @@ export async function sendDailyDigest(email: string, firmName: string, stats: {
                 </div>
             </div>
             <p style="color:${statusColor};font-weight:600;font-size:14px">● ${statusText}</p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:8px">Otwórz panel →</a>
-            <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/settings" style="color:#999">Wypisz się z raportów</a></p>
+            <a href="${appUrl()}/dashboard" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:8px">Otwórz panel →</a>
+            <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · <a href="${appUrl()}/dashboard/settings" style="color:#999">Wypisz się z raportów</a></p>
         </div>
     `);
 }

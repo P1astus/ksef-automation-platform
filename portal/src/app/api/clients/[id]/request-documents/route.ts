@@ -4,6 +4,7 @@ import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { sendDocumentRequest } from '@/lib/email';
 import { logActivity } from '@/lib/activity';
+import { appUrl } from '@/lib/app-url';
 
 // Generates a firm-scoped, expiring upload link and emails it to the
 // client — the firm-side half of the document-request flow (see
@@ -45,9 +46,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         [session.firmId, id, token, message || null, expiresAt]
     );
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-    const uploadUrl = `${appUrl}/upload/${token}`;
-    await sendDocumentRequest(client.contact_email, client.client_name, firmName, uploadUrl, message, expiresAt.toISOString()).catch(() => {});
+    const uploadUrl = `${appUrl()}/upload/${token}`;
+    // Not swallowed: the UI reports "link sent to the client", so a failed
+    // send (no mail provider, no public URL to link to) must say so instead.
+    if (!appUrl()) {
+        return NextResponse.json({ error: 'Adres publiczny portalu (NEXT_PUBLIC_APP_URL) nie jest skonfigurowany - link byłby nieprawidłowy.' }, { status: 503 });
+    }
+    try {
+        await sendDocumentRequest(client.contact_email, client.client_name, firmName, uploadUrl, message, expiresAt.toISOString());
+    } catch {
+        return NextResponse.json({ error: 'Nie udało się wysłać e-maila do klienta. Sprawdź konfigurację poczty.' }, { status: 502 });
+    }
 
     await logActivity(session.firmId, 'document_request', `Poproszono o dokumenty: ${client.client_name}`);
 

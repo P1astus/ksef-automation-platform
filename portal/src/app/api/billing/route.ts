@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { appUrl } from '@/lib/app-url';
 import Stripe from 'stripe';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -101,8 +102,8 @@ export async function POST(request: Request) {
             mode: 'subscription',
             payment_method_types: ['card', 'blik', 'p24'],
             line_items: [{ price: plan.priceId, quantity: 1 }],
-            success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?success=1`,
-            cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?cancelled=1`,
+            success_url: `${appUrl()}/dashboard/billing?success=1`,
+            cancel_url: `${appUrl()}/dashboard/billing?cancelled=1`,
             metadata: { firmId: String(session.firmId), targetPlan },
             subscription_data: {
                 metadata: { firmId: String(session.firmId), targetPlan },

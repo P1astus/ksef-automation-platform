@@ -96,11 +96,12 @@ export async function POST(request: Request) {
 
         // For MVP demo purposes, if no IMAP credentials exist in env, we simulate fetching an email
         if (imapConfig.imap.user === 'faktury@example.com' || imapConfig.imap.host === 'imap.example.com') {
-            return NextResponse.json({ 
-                message: 'No real IMAP credentials provided in .env. Mocking successful email fetch.',
-                emailsProcessed: 0,
-                invoicesParsed: []
-            });
+            // Not a success: nothing was fetched. A 200 here told the user the
+            // inbox had been checked when no mailbox is even configured.
+            return NextResponse.json(
+                { error: 'Skrzynka pocztowa (IMAP) nie jest skonfigurowana po stronie serwera - nic nie zostało pobrane.' },
+                { status: 503 }
+            );
         }
 
         const connection = await imaps.connect(imapConfig);
