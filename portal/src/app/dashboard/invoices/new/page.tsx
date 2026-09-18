@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Send, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { readApiFailure } from '@/lib/plan-errors';
 import { isZeroVatRate, type InvoiceLine, type ExemptionBasis } from '@/lib/ksef-invoice-builder';
 
 const VAT_RATES: { label: string; value: InvoiceLine['vatRate'] }[] = [
@@ -83,7 +85,7 @@ export default function NewInvoicePage() {
     const [dueDate, setDueDate] = useState('');
     const [lines, setLines] = useState<InvoiceLine[]>([{ ...DEFAULT_LINE }]);
     const [sending, setSending] = useState(false);
-    const [result, setResult] = useState<{ ksefReferenceNumber?: string; error?: string; queuedOffline?: boolean } | null>(null);
+    const [result, setResult] = useState<{ ksefReferenceNumber?: string; error?: string; planError?: boolean; queuedOffline?: boolean } | null>(null);
     const [isOffline, setIsOffline] = useState(false);
     const [offlineMode, setOfflineMode] = useState('offline24');
     const [correctionReason, setCorrectionReason] = useState('');
@@ -185,8 +187,9 @@ export default function NewInvoicePage() {
                 }),
             });
             if (!saveRes.ok) {
-                const errData = await saveRes.json().catch(() => ({}));
-                throw new Error(errData.error || 'Błąd zapisu faktury');
+                const failure = await readApiFailure(saveRes, 'Błąd zapisu faktury');
+                setResult({ error: failure.message, planError: failure.isPlanError });
+                return;
             }
             const saved = await saveRes.json();
 
@@ -204,6 +207,12 @@ export default function NewInvoicePage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ invoiceIds: [saved.id] }),
             });
+            if (!sendRes.ok) {
+                // 402/403 plan errors carry no `results` array - surface the real reason.
+                const failure = await readApiFailure(sendRes, 'Błąd wysyłki do KSeF');
+                setResult({ error: failure.message, planError: failure.isPlanError });
+                return;
+            }
             const sendData = await sendRes.json();
             const first = sendData.results?.[0];
             if (first?.ksefReferenceNumber) {
@@ -271,7 +280,7 @@ export default function NewInvoicePage() {
 
             {result?.error && (
                 <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: '#ef4444', fontSize: 13 }}>
-                    Błąd: {result.error}
+                    Błąd: {result.error}<PlanErrorLink show={!!result.planError} />
                 </div>
             )}
 

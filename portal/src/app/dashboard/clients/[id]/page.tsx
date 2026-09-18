@@ -1,4 +1,6 @@
 'use client';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { interpretApiFailure } from '@/lib/plan-errors';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -54,13 +56,13 @@ export default function ClientDetailPage() {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
-    const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string } | null>(null);
+    const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string; planError?: boolean } | null>(null);
     const [togglingSync, setTogglingSync] = useState(false);
     const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '', street: '', city: '', postal_code: '' });
     const [crmSaving, setCrmSaving] = useState(false);
     const [crmSaved, setCrmSaved] = useState(false);
     const [requestingDocs, setRequestingDocs] = useState(false);
-    const [docRequestResult, setDocRequestResult] = useState<{ ok: boolean; text: string } | null>(null);
+    const [docRequestResult, setDocRequestResult] = useState<{ ok: boolean; text: string; planError?: boolean } | null>(null);
     const [erasing, setErasing] = useState(false);
 
     const load = async () => {
@@ -93,7 +95,8 @@ export default function ClientDetailPage() {
         try {
             const res = await fetch(`/api/clients/${id}/sync`, { method: 'POST' });
             const data = await res.json();
-            setSyncResult({ ok: res.ok, text: res.ok ? data.message : data.error });
+            const failure = interpretApiFailure(res.status, data, 'Błąd synchronizacji');
+            setSyncResult({ ok: res.ok, text: res.ok ? data.message : failure.message, planError: failure.isPlanError });
             if (res.ok) await load();
         } finally {
             setSyncing(false);
@@ -119,7 +122,8 @@ export default function ClientDetailPage() {
         try {
             const res = await fetch(`/api/clients/${id}/request-documents`, { method: 'POST' });
             const data = await res.json();
-            setDocRequestResult({ ok: res.ok, text: res.ok ? 'Link do przesłania dokumentów wysłany na e-mail klienta' : data.error });
+            const failure = interpretApiFailure(res.status, data, 'Nie udało się wysłać prośby o dokumenty');
+            setDocRequestResult({ ok: res.ok, text: res.ok ? 'Link do przesłania dokumentów wysłany na e-mail klienta' : failure.message, planError: failure.isPlanError });
         } catch {
             setDocRequestResult({ ok: false, text: 'Błąd połączenia' });
         } finally {
@@ -229,7 +233,7 @@ export default function ClientDetailPage() {
                         ? <CheckCircle size={15} color="var(--success)" />
                         : <AlertCircle size={15} color="var(--error)" />}
                     <span style={{ fontSize: 13, fontWeight: 500, color: syncResult.ok ? 'var(--success)' : 'var(--error)' }}>
-                        {syncResult.text}
+                        {syncResult.text}<PlanErrorLink show={!!syncResult.planError} />
                     </span>
                 </div>
             )}
@@ -372,7 +376,7 @@ export default function ClientDetailPage() {
                         background: docRequestResult.ok ? 'rgba(34,197,94,0.1)' : 'var(--error-dim)',
                         color: docRequestResult.ok ? 'var(--success)' : 'var(--error)',
                     }}>
-                        {docRequestResult.text}
+                        {docRequestResult.text}<PlanErrorLink show={!!docRequestResult.planError} />
                     </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>

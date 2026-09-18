@@ -15,6 +15,7 @@ import {
     Bell,
     Search,
     Zap,
+    HelpCircle,
     FileCheck,
     UsersRound,
 } from 'lucide-react';
@@ -71,6 +72,7 @@ export default async function DashboardLayout({
         { href: '/dashboard/settings',         label: 'Ustawienia',   Icon: Settings },
         { href: '/dashboard/settings/team',    label: 'Zespół',       Icon: UsersRound },
         { href: '/dashboard/settings/ksef',    label: 'Tokeny KSeF',  Icon: Zap },
+        { href: '/dashboard/help',            label: 'Pomoc',        Icon: HelpCircle },
     ];
 
     return (

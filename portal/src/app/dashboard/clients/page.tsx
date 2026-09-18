@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { Plus, X, CheckCircle, AlertCircle, Users, Loader2, ChevronRight, Search } from 'lucide-react';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { interpretApiFailure } from '@/lib/plan-errors';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 interface Client {
@@ -64,6 +66,7 @@ export default function ClientsPage() {
     const [clientName, setClientName] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [planError, setPlanError] = useState(false);
     const [success, setSuccess] = useState('');
     const [nipStatus, setNipStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
     const nipDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,7 +100,7 @@ export default function ClientsPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setSubmitting(true); setError(''); setSuccess('');
+        setSubmitting(true); setError(''); setPlanError(false); setSuccess('');
         try {
             const res = await fetch('/api/clients', {
                 method: 'POST',
@@ -105,7 +108,10 @@ export default function ClientsPage() {
                 body: JSON.stringify({ nip, client_name: clientName }),
             });
             const data = await res.json();
-            if (!res.ok) { setError(data.error || 'Błąd podczas dodawania klienta'); }
+            if (!res.ok) {
+                const failure = interpretApiFailure(res.status, data, 'Błąd podczas dodawania klienta');
+                setError(failure.message); setPlanError(failure.isPlanError);
+            }
             else {
                 setSuccess(`Klient "${clientName}" dodany pomyślnie!`);
                 setNip(''); setClientName(''); setShowForm(false);
@@ -173,7 +179,7 @@ export default function ClientsPage() {
                         </div>
                         {error && (
                             <div style={{ background: 'var(--error-dim)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: 'var(--error)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <AlertCircle size={15} /> {error}
+                                <AlertCircle size={15} /> <span>{error}<PlanErrorLink show={planError} /></span>
                             </div>
                         )}
                         <button type="submit" disabled={submitting} className="btn-primary" style={{ opacity: submitting ? 0.7 : 1 }}>

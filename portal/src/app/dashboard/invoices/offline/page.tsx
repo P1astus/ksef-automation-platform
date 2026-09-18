@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { readApiFailure } from '@/lib/plan-errors';
 import { ArrowLeft, Clock, AlertTriangle, Upload, CheckCircle, WifiOff } from 'lucide-react';
 
 interface OfflineInvoice {
@@ -79,8 +80,8 @@ export default function OfflineInvoicesPage() {
         if (res.ok) {
             setSent(prev => new Set(prev).add(invoice.id));
         } else {
-            const d = await res.json().catch(() => ({}));
-            setErrors(prev => ({ ...prev, [invoice.id]: d.error || 'Błąd wysyłki' }));
+            const failure = await readApiFailure(res, 'Błąd wysyłki');
+            setErrors(prev => ({ ...prev, [invoice.id]: failure.message }));
         }
     };
 

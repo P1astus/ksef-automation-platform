@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
+import { interpretApiFailure } from '@/lib/plan-errors';
 import { UserPlus, Trash2, Mail, Shield } from 'lucide-react';
 
 interface Member {
@@ -40,6 +42,7 @@ export default function TeamPage() {
     const [role, setRole] = useState('member');
     const [sending, setSending] = useState(false);
     const [inviteResult, setInviteResult] = useState('');
+    const [invitePlanError, setInvitePlanError] = useState(false);
 
     async function load() {
         setLoading(true);
@@ -59,6 +62,7 @@ export default function TeamPage() {
         e.preventDefault();
         setSending(true);
         setInviteResult('');
+        setInvitePlanError(false);
         try {
             const res = await fetch('/api/team', {
                 method: 'POST',
@@ -67,11 +71,17 @@ export default function TeamPage() {
             });
             const data = await res.json();
             if (res.ok) {
-                setInviteResult(`✓ Zaproszenie wysłane do ${email}`);
+                setInviteResult(
+                    data.emailSent
+                        ? `✓ Zaproszenie wysłane do ${email}`
+                        : `✓ Zaproszenie utworzone, ale e-mail NIE został wysłany (poczta nie jest skonfigurowana). Przekaż link ręcznie: ${data.inviteUrl}`
+                );
                 setEmail('');
                 load();
             } else {
-                setInviteResult(`Błąd: ${data.error}`);
+                const failure = interpretApiFailure(res.status, data, 'Nie udało się wysłać zaproszenia');
+                setInviteResult(`Błąd: ${failure.message}`);
+                setInvitePlanError(failure.isPlanError);
             }
         } finally {
             setSending(false);
@@ -129,7 +139,7 @@ export default function TeamPage() {
                 </form>
                 {inviteResult && (
                     <div style={{ marginTop: 10, fontSize: 13, color: inviteResult.startsWith('✓') ? '#22c55e' : '#ef4444' }}>
-                        {inviteResult}
+                        {inviteResult}<PlanErrorLink show={invitePlanError} />
                     </div>
                 )}
             </div>
