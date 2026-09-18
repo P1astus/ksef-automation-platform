@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
+import { ClientLimitReachedError, createClientWithinPlan } from '@/lib/client-cap';
 import imaps from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import { extractTextFromFile, extractInvoiceFields, needsManualReview } from '@/lib/ocr-extraction';
@@ -25,19 +26,10 @@ async function extractAndQueueInvoice(buffer: Buffer, mimeType: string, firmId: 
         // — a placeholder row must exist even for "NIEZNANY" (see
         // ocr/route.ts's identical comment; found the same way, via a
         // pglite test failure).
-        const clientRes = await client.query('SELECT nip FROM clients WHERE firm_id = $1 AND nip = $2', [firmId, fields.nip]);
-        if (clientRes.rows.length === 0) {
-            // auth_method is NOT NULL with no default — see ocr/route.ts's
-            // identical comment on this same pattern.
-            // ON CONFLICT DO NOTHING (round 11 fix): see ocr/route.ts's
-            // identical comment — two ingestion paths racing for the same
-            // brand-new NIP used to throw an unhandled unique-violation here.
-            await client.query(
-                `INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (firm_id, nip) DO NOTHING`,
-                [firmId, fields.nip, fields.nipMatched ? `Email Client - ${fields.nip}` : 'Nieznany klient (OCR)', 'token']
-            );
-        }
+        await createClientWithinPlan(firmId, {
+            nip: fields.nip,
+            clientName: fields.nipMatched ? `Email Client - ${fields.nip}` : 'Nieznany klient (OCR)',
+        });
 
         const queueRes = await client.query(
             `INSERT INTO ocr_queue (firm_id, client_nip, source_type, file_path, file_type, ocr_status, extracted_data, confidence_score)
@@ -152,6 +144,9 @@ export async function POST(request: Request) {
 
     } catch (e: any) {
         console.error('Email Sync Error:', e);
+        if (e instanceof ClientLimitReachedError) {
+            return NextResponse.json({ error: e.message }, { status: 403 });
+        }
         // Special mapping for connection errors clearly
         if (e.code === 'ECONNREFUSED' || e.code === 'ENOTFOUND') {
             return NextResponse.json({ error: 'Niewłaściwe dane logowania IMAP lub serwer poczty jest niedostępny.' }, { status: 500 });

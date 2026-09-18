@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
+import { ClientLimitReachedError, createClientWithinPlan } from '@/lib/client-cap';
 import { extractTextFromFile, extractInvoiceFields, needsManualReview } from '@/lib/ocr-extraction';
 import { saveUploadedFile, shortFileType } from '@/lib/file-storage';
 
@@ -40,24 +41,10 @@ export async function POST(request: Request) {
             // real" version of this would have made every unmatched-NIP
             // scan — exactly the case meant to land in the review queue —
             // throw instead.
-            const clientRes = await client.query('SELECT nip FROM clients WHERE firm_id = $1 AND nip = $2', [session.firmId, fields.nip]);
-            if (clientRes.rows.length === 0) {
-                // auth_method is NOT NULL with no default (ksef-schema.sql)
-                // — 'token' is a placeholder the firm can correct via
-                // Settings -> KSeF; there's no real auth method to infer
-                // for a client that only exists because a document
-                // mentioned their NIP.
-                // ON CONFLICT DO NOTHING (round 11 fix): two ingestion paths
-                // (this upload, a concurrent email-sync scan, or an OCR
-                // review-queue approval) racing for the same brand-new NIP
-                // used to throw an unhandled unique-violation on
-                // clients(firm_id, nip) — nothing here guarded against it.
-                await client.query(
-                    `INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (firm_id, nip) DO NOTHING`,
-                    [session.firmId, fields.nip, fields.nipMatched ? `Manual OCR Client - ${fields.nip}` : 'Nieznany klient (OCR)', 'token']
-                );
-            }
+            await createClientWithinPlan(session.firmId, {
+                nip: fields.nip,
+                clientName: fields.nipMatched ? `Manual OCR Client - ${fields.nip}` : 'Nieznany klient (OCR)',
+            });
 
             const queueRes = await client.query(
                 `INSERT INTO ocr_queue (firm_id, client_nip, source_type, file_path, file_type, ocr_status, extracted_data, confidence_score)
@@ -112,6 +99,9 @@ export async function POST(request: Request) {
         }
     } catch (e: any) {
         console.error('OCR Error:', e);
+        if (e instanceof ClientLimitReachedError) {
+            return NextResponse.json({ error: e.message }, { status: 403 });
+        }
         return NextResponse.json({ error: 'Failed to process file' }, { status: 500 });
     }
 }

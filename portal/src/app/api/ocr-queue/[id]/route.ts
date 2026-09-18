@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
+import { ClientLimitReachedError, createClientWithinPlan } from '@/lib/client-cap';
 
 // Approve (create the invoice from the reviewer's — possibly corrected —
 // fields) or reject (discard without ever touching invoices) a queued OCR/
@@ -51,16 +52,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         }
 
         try {
-            // ON CONFLICT DO NOTHING (round 11 fix): two ingestion paths racing
-            // for the same brand-new NIP (e.g. this approval and a concurrent
-            // OCR/email-sync scan) used to throw an unhandled unique-violation
-            // on clients(firm_id, nip) — no ON CONFLICT guard existed anywhere
-            // this pattern is used.
-            await query(
-                `INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (firm_id, nip) DO NOTHING`,
-                [session.firmId, nip, `Klient z weryfikacji OCR - ${nip}`, 'token']
-            );
+            await createClientWithinPlan(session.firmId, {
+                nip,
+                clientName: `Klient z weryfikacji OCR - ${nip}`,
+            });
 
             const firmRes = await query('SELECT firm_nip, firm_name FROM firms WHERE id = $1', [session.firmId]);
             const firm = firmRes.rows[0];
@@ -87,6 +82,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             // forever if the invoice insert (or anything after the claim)
             // fails — it goes back to needing review, not silently lost.
             await query(`UPDATE ocr_queue SET ocr_status = 'manual_review' WHERE id = $1`, [id]).catch(() => {});
+            if (e instanceof ClientLimitReachedError) {
+                return NextResponse.json({ error: e.message }, { status: 403 });
+            }
             throw e;
         }
     }

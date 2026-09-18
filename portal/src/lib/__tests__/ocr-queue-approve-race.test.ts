@@ -16,6 +16,10 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn(async () => {}) }));
+vi.mock('@/lib/client-cap', () => ({
+    ClientLimitReachedError: class ClientLimitReachedError extends Error {},
+    createClientWithinPlan: vi.fn(async () => true),
+}));
 
 let row: { id: number; ocr_status: string; firm_id: number };
 let invoiceInserts: number;
