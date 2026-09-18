@@ -4,12 +4,15 @@ import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { classifyInvoice } from '@/lib/classify';
 import { mapVatColumns } from '@/lib/vat-mapper';
+import { loadEntitlements, subscriptionInactiveResponse } from '@/lib/entitlements';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const roleError = await requireRole(session, ['owner', 'admin', 'member']);
     if (roleError) return roleError;
+    const entitlements = await loadEntitlements(session.firmId);
+    if (entitlements.accessState !== 'ok') return subscriptionInactiveResponse(entitlements.accessState);
 
     const { id } = await params;
 
@@ -49,8 +52,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     await logActivity(session.firmId, 'sync_triggered', `Synchronizacja KSeF: ${client.client_name}`);
 
-    // Classify unclassified purchase invoices in the background
-    if (process.env.ANTHROPIC_API_KEY) {
+    // Classify unclassified purchase invoices in the background. AI
+    // classification is a paid feature, gated here rather than by blocking sync
+    // itself: Start keeps syncing, its purchases just stay unclassified (JPK
+    // maps a null category to K_42/K_43 like every other non-fixed-asset one).
+    if (entitlements.has('ai_classification') && process.env.ANTHROPIC_API_KEY) {
         const unclassified = await query(
             `SELECT id, seller_name, buyer_name, invoice_number, net_amount FROM invoices
              WHERE client_nip = $1 AND firm_id = $2 AND direction = 'purchase' AND cost_category IS NULL LIMIT 20`,

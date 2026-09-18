@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
+import { tierHasFeature } from './plans';
 
 // Round 11 fix: digest/route.ts, notify/offline24/route.ts and
 // notify/receivables/route.ts each compared their shared-secret
@@ -111,24 +112,24 @@ export async function requireRole(session: { role?: SessionRole } | null, allowe
 // is a single container); settings/route.ts's deactivate_account clears its own
 // entry, any other way of flipping the flag lags by at most the TTL.
 const FIRM_ACTIVE_TTL_MS = 30_000;
-const firmActiveCache = new Map<number, { active: boolean; at: number }>();
+const firmActiveCache = new Map<number, { active: boolean; tier: unknown; at: number }>();
 
 export function invalidateFirmActiveCache(firmId?: number) {
     if (firmId === undefined) firmActiveCache.clear();
     else firmActiveCache.delete(firmId);
 }
 
-async function isFirmActive(firmId: number): Promise<boolean> {
+async function loadFirmAccess(firmId: number): Promise<{ active: boolean; tier: unknown }> {
     const hit = firmActiveCache.get(firmId);
-    if (hit && Date.now() - hit.at < FIRM_ACTIVE_TTL_MS) return hit.active;
+    if (hit && Date.now() - hit.at < FIRM_ACTIVE_TTL_MS) return hit;
     // Lazy import keeps `pg` out of middleware's bundle, which only needs
     // getSessionUnchecked(). A DB error propagates on purpose: failing open
     // here would let a deactivated firm's sessions through during an outage.
     const { query } = await import('./db');
-    const res = await query('SELECT is_active FROM firms WHERE id = $1', [firmId]);
-    const active = res.rows[0]?.is_active === true;
-    firmActiveCache.set(firmId, { active, at: Date.now() });
-    return active;
+    const res = await query('SELECT is_active, subscription_tier FROM firms WHERE id = $1', [firmId]);
+    const entry = { active: res.rows[0]?.is_active === true, tier: res.rows[0]?.subscription_tier, at: Date.now() };
+    firmActiveCache.set(firmId, entry);
+    return entry;
 }
 
 // JWT verification only, no DB access - safe for middleware. Route handlers and
@@ -148,7 +149,13 @@ export async function getSessionUnchecked() {
 export async function getSession() {
     const session = await getSessionUnchecked();
     if (!session) return null;
-    if (!(await isFirmActive(session.firmId))) return null;
+    const access = await loadFirmAccess(session.firmId);
+    if (!access.active) return null;
+    // Team seats are a Biznes+ feature. Invited members (userId set) of a firm
+    // that has since downgraded lose their session here; the owner never does.
+    // Shares the 30 s cache above, so a webhook-driven downgrade lags by at
+    // most the TTL - settings/billing code should call invalidateFirmActiveCache().
+    if (session.userId != null && !tierHasFeature(access.tier, 'team')) return null;
     return session;
 }
 

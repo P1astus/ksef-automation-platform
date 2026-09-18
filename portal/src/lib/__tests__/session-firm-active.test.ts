@@ -15,8 +15,8 @@ vi.mock('next/headers', () => ({
 const queryMock = vi.fn();
 vi.mock('@/lib/db', () => ({ query: (...a: any[]) => queryMock(...a) }));
 
-async function token(firmId: number) {
-    return new SignJWT({ firmId, role: 'member', userId: 7 })
+async function token(firmId: number, userId: number | null = 7) {
+    return new SignJWT({ firmId, role: userId === null ? 'owner' : 'member', userId })
         .setProtectedHeader({ alg: 'HS256' })
         .setExpirationTime('8h')
         .sign(new TextEncoder().encode(process.env.JWT_SECRET!));
@@ -33,13 +33,13 @@ describe('getSession — firms.is_active enforcement', () => {
     afterEach(() => vi.useRealTimers());
 
     it('returns the session for an active firm', async () => {
-        queryMock.mockResolvedValue({ rows: [{ is_active: true }] });
+        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'biznes' }] });
         const { getSession } = await import('@/lib/auth');
         expect((await getSession())?.firmId).toBe(1);
     });
 
     it('returns null for a deactivated firm', async () => {
-        queryMock.mockResolvedValue({ rows: [{ is_active: false }] });
+        queryMock.mockResolvedValue({ rows: [{ is_active: false, subscription_tier: 'biznes' }] });
         const { getSession } = await import('@/lib/auth');
         expect(await getSession()).toBeNull();
     });
@@ -51,21 +51,21 @@ describe('getSession — firms.is_active enforcement', () => {
     });
 
     it('caches within the TTL, re-checks after it', async () => {
-        queryMock.mockResolvedValue({ rows: [{ is_active: true }] });
+        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'biznes' }] });
         const { getSession } = await import('@/lib/auth');
         await getSession(); await getSession();
         expect(queryMock).toHaveBeenCalledTimes(1);
         vi.advanceTimersByTime(31_000);
-        queryMock.mockResolvedValue({ rows: [{ is_active: false }] });
+        queryMock.mockResolvedValue({ rows: [{ is_active: false, subscription_tier: 'biznes' }] });
         expect(await getSession()).toBeNull();
         expect(queryMock).toHaveBeenCalledTimes(2);
     });
 
     it('invalidateFirmActiveCache makes deactivation take effect immediately', async () => {
-        queryMock.mockResolvedValue({ rows: [{ is_active: true }] });
+        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'biznes' }] });
         const { getSession, invalidateFirmActiveCache } = await import('@/lib/auth');
         expect(await getSession()).not.toBeNull();
-        queryMock.mockResolvedValue({ rows: [{ is_active: false }] });
+        queryMock.mockResolvedValue({ rows: [{ is_active: false, subscription_tier: 'biznes' }] });
         invalidateFirmActiveCache(1);
         expect(await getSession()).toBeNull();
     });
@@ -80,5 +80,25 @@ describe('getSession — firms.is_active enforcement', () => {
         const { getSessionUnchecked } = await import('@/lib/auth');
         expect((await getSessionUnchecked())?.firmId).toBe(1);
         expect(queryMock).not.toHaveBeenCalled();
+    });
+
+    // Round 14: team seats are a Biznes+ feature, enforced on existing sessions.
+    it('rejects an invited member once the firm is on a plan without team seats', async () => {
+        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'start' }] });
+        const { getSession } = await import('@/lib/auth');
+        expect(await getSession()).toBeNull();
+    });
+
+    it('never locks out the firm owner over the team feature', async () => {
+        cookieValue = await token(1, null);
+        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'start' }] });
+        const { getSession } = await import('@/lib/auth');
+        expect((await getSession())?.firmId).toBe(1);
+    });
+
+    it('fails closed for a member when the tier is unrecognised', async () => {
+        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'gold' }] });
+        const { getSession } = await import('@/lib/auth');
+        expect(await getSession()).toBeNull();
     });
 });

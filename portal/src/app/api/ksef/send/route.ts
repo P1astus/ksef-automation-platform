@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
+import { loadEntitlements, subscriptionInactiveResponse, upgradeRequiredResponse } from '@/lib/entitlements';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import {
@@ -122,6 +123,30 @@ export async function POST(request: Request) {
 
     if (!invRes.rows.length) {
         return NextResponse.json({ error: 'Nie znaleziono faktur' }, { status: 404 });
+    }
+
+    // Sending is part of the `invoice_issuance` capability (with invoice
+    // creation and the offline modes). One exception, on purpose: an invoice
+    // that already has an open offline_invoices row has a statutory upload
+    // deadline running, and that is the client's legal problem, not ours to
+    // hold hostage over a downgrade or lapsed subscription - so a firm that
+    // lost the capability can still submit exactly those invoices, and nothing
+    // else. A request mixing the two is refused whole rather than partially
+    // sent, so the caller never has to guess which invoices went out.
+    const entitlements = await loadEntitlements(session.firmId);
+    if (!entitlements.has('invoice_issuance')) {
+        const foundIds = invRes.rows.map((r: { id: number }) => r.id);
+        const open = await query(
+            `SELECT invoice_id FROM offline_invoices
+             WHERE firm_id = $1 AND uploaded_to_ksef = false AND invoice_id = ANY($2::int[])`,
+            [session.firmId, foundIds]
+        );
+        const pendingOffline = new Set(open.rows.map((r: { invoice_id: number }) => r.invoice_id));
+        if (!foundIds.every((id: number) => pendingOffline.has(id))) {
+            return entitlements.accessState !== 'ok'
+                ? subscriptionInactiveResponse(entitlements.accessState)
+                : upgradeRequiredResponse('invoice_issuance');
+        }
     }
 
     // Group by client (each client has its own token / session)

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireActiveSubscription } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
@@ -14,6 +15,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const roleError = await requireRole(session, ['owner', 'admin', 'member']);
     if (roleError) return roleError;
+    const planError = await requireActiveSubscription(session.firmId);
+    if (planError) return planError;
 
     const { id } = await params;
     const body = await request.json().catch(() => ({}));

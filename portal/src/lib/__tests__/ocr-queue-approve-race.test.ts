@@ -16,6 +16,11 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn(async () => {}) }));
+// Plan/subscription gating has its own tests (entitlements.test.ts); here it must not be the thing under test.
+vi.mock('@/lib/entitlements', () => ({
+    requireFeature: vi.fn(async () => null),
+    requireActiveSubscription: vi.fn(async () => null),
+}));
 vi.mock('@/lib/client-cap', () => ({
     ClientLimitReachedError: class ClientLimitReachedError extends Error {},
     createClientWithinPlan: vi.fn(async () => true),

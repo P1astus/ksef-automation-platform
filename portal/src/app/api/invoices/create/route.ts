@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireFeature } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
@@ -10,6 +11,8 @@ export async function POST(request: Request) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const roleError = await requireRole(session, ['owner', 'admin', 'member']);
     if (roleError) return roleError;
+    const planError = await requireFeature(session.firmId, 'invoice_issuance');
+    if (planError) return planError;
 
     const body = await request.json().catch(() => ({}));
     const {

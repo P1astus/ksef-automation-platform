@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { query } from '@/lib/db';
 import { PLAN_MAX_CLIENTS } from '@/lib/plans';
+import { invalidateFirmActiveCache } from '@/lib/auth';
 
 // Constructed lazily (on first actual use), not at module load - see
 // billing/route.ts for why.
@@ -84,6 +85,10 @@ export async function POST(request: Request) {
                 break;
             }
         }
+        // A tier change gates invited team members' existing sessions
+        // (getSession() caches the tier per firm); drop the cache so a
+        // downgrade takes effect now rather than after the TTL.
+        invalidateFirmActiveCache();
     } catch (err) {
         console.error('Webhook handler error:', err);
         return NextResponse.json({ error: 'Handler failed' }, { status: 500 });

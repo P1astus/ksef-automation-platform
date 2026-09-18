@@ -16,6 +16,11 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn(async () => {}) }));
+// Plan/subscription gating has its own tests (entitlements.test.ts); here it must not be the thing under test.
+vi.mock('@/lib/entitlements', () => ({
+    requireFeature: vi.fn(async () => null),
+    requireActiveSubscription: vi.fn(async () => null),
+}));
 
 const buildXmlMock = vi.fn((..._args: any[]) => '<fa:Faktura/>');
 vi.mock('@/lib/ksef-invoice-builder', async () => {

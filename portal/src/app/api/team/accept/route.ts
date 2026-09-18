@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
+import { tierHasFeature } from '@/lib/plans';
 
 // GET /api/team/accept?token=xxx — validate token, return invite info
 export async function GET(request: Request) {
@@ -9,13 +10,16 @@ export async function GET(request: Request) {
     if (!token) return NextResponse.json({ error: 'Brak tokenu' }, { status: 400 });
 
     const invRes = await query(
-        `SELECT i.*, f.firm_name FROM invitations i JOIN firms f ON f.id = i.firm_id
+        `SELECT i.*, f.firm_name, f.subscription_tier FROM invitations i JOIN firms f ON f.id = i.firm_id
          WHERE i.token = $1 AND i.accepted = false AND i.expires_at > NOW()`,
         [token]
     ).catch(() => ({ rows: [] }));
 
     if (!invRes.rows[0]) return NextResponse.json({ error: 'Zaproszenie nieważne lub wygasło' }, { status: 404 });
     const inv = invRes.rows[0];
+    if (!tierHasFeature(inv.subscription_tier, 'team')) {
+        return NextResponse.json({ error: 'Plan tego biura nie obejmuje kont zespołu', code: 'PLAN_UPGRADE_REQUIRED', feature: 'team' }, { status: 403 });
+    }
     return NextResponse.json({ email: inv.email, firmName: inv.firm_name, role: inv.role });
 }
 
@@ -32,12 +36,16 @@ export async function POST(request: Request) {
     }
 
     const invRes = await query(
-        `SELECT * FROM invitations WHERE token = $1 AND accepted = false AND expires_at > NOW()`,
+        `SELECT i.*, f.subscription_tier FROM invitations i JOIN firms f ON f.id = i.firm_id
+         WHERE i.token = $1 AND i.accepted = false AND i.expires_at > NOW()`,
         [token]
     ).catch(() => ({ rows: [] }));
 
     if (!invRes.rows[0]) return NextResponse.json({ error: 'Zaproszenie nieważne lub wygasło' }, { status: 404 });
     const inv = invRes.rows[0];
+    if (!tierHasFeature(inv.subscription_tier, 'team')) {
+        return NextResponse.json({ error: 'Plan tego biura nie obejmuje kont zespołu', code: 'PLAN_UPGRADE_REQUIRED', feature: 'team' }, { status: 403 });
+    }
 
     // Round 11 fix: this used to be a dynamic `import('bcryptjs').catch(...)`
     // whose failure silently fell back to an identity function — meaning a

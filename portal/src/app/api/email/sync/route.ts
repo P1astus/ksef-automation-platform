@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireActiveSubscription } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
 import { ClientLimitReachedError, createClientWithinPlan } from '@/lib/client-cap';
@@ -77,6 +78,8 @@ export async function POST(request: Request) {
         }
         const roleError = await requireRole(session, ['owner', 'admin', 'member']);
         if (roleError) return roleError;
+        const planError = await requireActiveSubscription(session.firmId);
+        if (planError) return planError;
 
         // In a real app, these would come from the Firm's DB settings, but we use hardcoded 
         // environment variables or fallback values for the MVP demo.

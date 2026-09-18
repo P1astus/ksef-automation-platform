@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireActiveSubscription } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import pool from '@/lib/db';
 import { ClientLimitReachedError, createClientWithinPlan } from '@/lib/client-cap';
@@ -13,6 +14,8 @@ export async function POST(request: Request) {
         }
         const roleError = await requireRole(session, ['owner', 'admin', 'member']);
         if (roleError) return roleError;
+        const planError = await requireActiveSubscription(session.firmId);
+        if (planError) return planError;
 
         const formData = await request.formData();
         const file = formData.get('file') as File;

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
 import { createSession } from '@/lib/auth';
+import { tierHasFeature } from '@/lib/plans';
 
 export async function POST(request: Request) {
     try {
@@ -52,18 +53,33 @@ export async function POST(request: Request) {
         // (and stay logged in, since nothing re-checks per request) after a
         // billing lapse or ops deactivation indefinitely.
         const memberResult = await query(
-            `SELECT fu.id, fu.firm_id, fu.password_hash, fu.role, fu.is_active
+            `SELECT fu.id, fu.firm_id, fu.password_hash, fu.role, fu.is_active, f.subscription_tier
              FROM firm_users fu JOIN firms f ON f.id = fu.firm_id
              WHERE fu.email = $1 AND f.is_active = true`,
             [email]
         );
 
+        let blockedByPlan = false;
         for (const member of memberResult.rows) {
             if (!member.is_active) continue;
+            // Team seats are a Biznes+ feature; a downgraded firm's members are locked out
+            // (getSession() enforces the same for sessions that already exist).
+            if (!tierHasFeature(member.subscription_tier, 'team')) {
+                // Only reveal the plan reason once the password is right.
+                if (await bcrypt.compare(password, member.password_hash)) blockedByPlan = true;
+                continue;
+            }
             if (await bcrypt.compare(password, member.password_hash)) {
                 await createSession(member.firm_id, email, member.role, member.id);
                 return NextResponse.json({ success: true, redirectUrl: '/dashboard' });
             }
+        }
+
+        if (blockedByPlan) {
+            return NextResponse.json(
+                { error: 'Plan Twojego biura nie obejmuje kont zespołu. Skontaktuj się z właścicielem konta.', code: 'PLAN_UPGRADE_REQUIRED', feature: 'team' },
+                { status: 403 }
+            );
         }
 
         return NextResponse.json(
