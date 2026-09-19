@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileCheck, Download, RefreshCw, ChevronDown } from 'lucide-react';
+import { FileCheck, Download, RefreshCw, ChevronDown, Send } from 'lucide-react';
 import PlanErrorLink from '@/app/dashboard/PlanErrorLink';
 import { interpretApiFailure } from '@/lib/plan-errors';
 
@@ -24,6 +24,18 @@ interface HistoryEntry {
     client_nip: string;
     period: string;
     status: string;
+    created_at: string;
+}
+
+interface TestSubmission {
+    id: number;
+    client_nip: string;
+    period: string;
+    reference_number?: string | null;
+    status: string;
+    gateway_code?: number | null;
+    gateway_description?: string | null;
+    gateway_details?: string | null;
     created_at: string;
 }
 
@@ -64,6 +76,10 @@ export default function JpkPage() {
     const [error, setError] = useState('');
     const [planError, setPlanError] = useState(false);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
+    const [testGatewayEnabled, setTestGatewayEnabled] = useState(false);
+    const [submissions, setSubmissions] = useState<TestSubmission[]>([]);
+    const [sendingTest, setSendingTest] = useState(false);
+    const [testGatewayError, setTestGatewayError] = useState('');
 
     useEffect(() => {
         fetch('/api/clients').then(r => r.json()).then(d => {
@@ -78,6 +94,13 @@ export default function JpkPage() {
         fetch(`/api/jpk/generate?clientNip=${encodeURIComponent(selectedNip)}`)
             .then(r => r.json())
             .then(d => setHistory(Array.isArray(d.history) ? d.history : []))
+            .catch(() => {});
+        fetch(`/api/jpk/test-gateway?clientNip=${encodeURIComponent(selectedNip)}`)
+            .then(r => r.json())
+            .then(d => {
+                setTestGatewayEnabled(d.enabled === true);
+                setSubmissions(Array.isArray(d.submissions) ? d.submissions : []);
+            })
             .catch(() => {});
     }, [selectedNip]);
 
@@ -122,6 +145,28 @@ export default function JpkPage() {
         a.download = `JPK_V7M_${selectedNip}_${period}.xml`;
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    async function sendToMfTestGateway() {
+        if (!selectedNip || !period || !xmlBlob) return;
+        setSendingTest(true);
+        setTestGatewayError('');
+        try {
+            const res = await fetch('/api/jpk/test-gateway', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientNip: selectedNip, period }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Błąd wysyłki do bramki testowej MF');
+            const hist = await fetch(`/api/jpk/test-gateway?clientNip=${encodeURIComponent(selectedNip)}`);
+            const histData = await hist.json();
+            setSubmissions(Array.isArray(histData.submissions) ? histData.submissions : []);
+        } catch (err: unknown) {
+            setTestGatewayError(err instanceof Error ? err.message : 'Błąd wysyłki do bramki testowej MF');
+        } finally {
+            setSendingTest(false);
+        }
     }
 
     const selectedClient = clients.find(c => c.nip === selectedNip);
@@ -234,6 +279,39 @@ export default function JpkPage() {
                             </div>
                         ))}
                     </div>
+
+                    <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Bramka testowa Ministerstwa Finansów</div>
+                        <p style={{ margin: '6px 0 12px', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                            Opcjonalna, ręczna wysyłka wyłącznie do środowiska TEST MF. Nie składa deklaracji produkcyjnej.
+                            Złożenie pliku w urzędzie skarbowym pozostaje odpowiedzialnością księgowego.
+                        </p>
+                        {testGatewayEnabled ? (
+                            <button onClick={sendToMfTestGateway} disabled={sendingTest} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                {sendingTest ? <><RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> Wysyłam i sprawdzam status…</> : <><Send size={15} /> Wyślij do bramki testowej MF</>}
+                            </button>
+                        ) : (
+                            <div style={{ fontSize: 12.5, color: 'var(--text-subtle)' }}>Integracja testowa jest wyłączona przez konfigurację serwera.</div>
+                        )}
+                        {testGatewayError && (
+                            <div style={{ marginTop: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                                {testGatewayError}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {submissions.length > 0 && (
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Wysyłki do bramki testowej MF</div>
+                    {submissions.map(s => (
+                        <div key={s.id} style={{ borderTop: '1px solid var(--border)', padding: '12px 0', fontSize: 12.5 }}>
+                            <div style={{ color: 'var(--text)', fontWeight: 700 }}>{s.period} — {s.status}{s.gateway_code != null ? ` (kod MF ${s.gateway_code})` : ''}</div>
+                            {s.reference_number && <div style={{ color: 'var(--text-muted)', marginTop: 3 }}>Numer referencyjny MF: <code>{s.reference_number}</code></div>}
+                            {(s.gateway_description || s.gateway_details) && <div style={{ color: '#ef4444', marginTop: 5, whiteSpace: 'pre-wrap' }}>{[s.gateway_description, s.gateway_details].filter(Boolean).join('\n')}</div>}
+                        </div>
+                    ))}
                 </div>
             )}
 

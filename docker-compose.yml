@@ -35,6 +35,13 @@ services:
       - "STRIPE_PRICE_PRO=${STRIPE_PRICE_PRO:-}"
       - "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
       - "N8N_SYNC_WEBHOOK_URL=${N8N_SYNC_WEBHOOK_URL:-}"
+      # Deliberately default-off, server-only switch for the MF JPK TEST
+      # gateway. This never enables a production endpoint.
+      - "JPK_TEST_GATEWAY_ENABLED=${JPK_TEST_GATEWAY_ENABLED:-false}"
+      # Public MF TEST encryption certificate (PEM). This is not a taxpayer
+      # certificate; leave empty while the feature flag is disabled.
+      - "JPK_TEST_GATEWAY_CERTIFICATE_PEM=${JPK_TEST_GATEWAY_CERTIFICATE_PEM:-}"
+      - "JPK_TEST_GATEWAY_CERTIFICATE_BASE64=${JPK_TEST_GATEWAY_CERTIFICATE_BASE64:-}"
     volumes:
       # OCR/email/tokened-upload source documents (ocr_queue.file_path) -
       # a named volume so they survive a portal rebuild, unlike the

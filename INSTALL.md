@@ -826,8 +826,27 @@ server: put it in `./certificates/` (mounted at `/app/certificates`, gitignored)
 keystore stops the sidecar from starting. A throwaway self-signed test key:
 `keytool -genkeypair -alias jpk-test -keyalg RSA -keysize 2048 -validity 365 -dname "CN=JPK Test Signer, C=PL" -storetype PKCS12 -keystore certificates/jpk-test-signing.p12`.
 The ministry's TEST gateway currently rejects such a certificate (423: it must carry the signer's NIP/PESEL in a format not
-publicly documented); a production filing needs the taxpayer's or agent's own qualified certificate. Nothing in the portal
-calls the gateway yet. Sidecar tests: `docker run --rm -v "$PWD/xades-sidecar":/app -w /app maven:3.9-eclipse-temurin-17 mvn -B test`.
+publicly documented); a production filing needs the taxpayer's or agent's own qualified certificate. See §13.10 before
+enabling the optional portal action. Sidecar tests: `docker run --rm -v "$PWD/xades-sidecar":/app -w /app maven:3.9-eclipse-temurin-17 mvn -B test`.
+
+### 13.10 JPK TEST gateway portal action (default off)
+
+`/dashboard/jpk` can submit an already-generated XML to **only**
+`https://test-e-dokumenty.mf.gov.pl`; it has no production URL or automatic trigger. Apply
+`migrations/2026-09-19-jpk-test-gateway-submissions.sql`, then set both root `.env` values and rebuild the portal:
+
+```bash
+JPK_TEST_GATEWAY_ENABLED=true
+# Current public MF TEST encryption certificate, encoded as one dotenv-safe line:
+JPK_TEST_GATEWAY_CERTIFICATE_BASE64=<base64 of the current MF TEST .cer>
+docker compose up -d --build portal nginx
+```
+
+The certificate is MF's public encryption key, not a taxpayer certificate or private key. The action is firm-scoped,
+requires an active subscription, signs metadata only through the already configured sidecar, stores the MF reference/status
+and exact error text, and polls Status during that manual request. It does **not** accept/store AuthData, a taxpayer
+certificate or a private key. Keep the flag `false` until MF documents the accepted signer attribute or answers the helpdesk
+question; filing with the tax office remains the accountant's responsibility.
 
 ### 13.8 Credential encryption key and legacy-row migration
 
@@ -841,6 +860,7 @@ calls the gateway yet. Sidecar tests: `docker run --rm -v "$PWD/xades-sidecar":/
    value; widens `buyer_nip`/`seller_nip`). A sole-trader client needs first name, surname and date of birth on its page.
    Also apply `migrations/2026-09-19-zus-declarations.sql` (round 19: `zus_declarations` + `zus_declaration_events`, the ZUS DRA/RCA
    import register at `/dashboard/zus`; storage/export only, no ZUS submission).
+   Apply `migrations/2026-09-19-jpk-test-gateway-submissions.sql` only if using the default-off TEST-only JPK action (§13.10).
 4. Re-encrypt existing rows (one-off; the legacy format must be stated because unprefixed rows are ambiguous):
    ```bash
    cd portal
