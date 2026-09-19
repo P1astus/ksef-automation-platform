@@ -814,6 +814,18 @@ exports, AI classification and team seats need Biznes or Pro. A firm's tier is `
 Note: the Stripe webhook currently sets the tier only on `checkout.session.completed`, not on later plan
 changes — see `HANDOVER.md` before going live with billing.
 
+### 13.9 JPK gateway signing key (test only, optional)
+
+The sidecar's `POST /sign-xades-bes` signs the MF JPK gateway's upload metadata (XAdES-BES). It needs a PKCS#12 key on the
+server: put it in `./certificates/` (mounted at `/app/certificates`, gitignored) and set in the root `.env`
+`JPK_SIGNING_KEYSTORE_PATH=/app/certificates/<file>.p12` and `JPK_SIGNING_KEYSTORE_PASSWORD=...`, then
+`docker compose up -d --build xades-sidecar`. Unset = the endpoint answers 503 (never an unsigned document); a set-but-unreadable
+keystore stops the sidecar from starting. A throwaway self-signed test key:
+`keytool -genkeypair -alias jpk-test -keyalg RSA -keysize 2048 -validity 365 -dname "CN=JPK Test Signer, C=PL" -storetype PKCS12 -keystore certificates/jpk-test-signing.p12`.
+The ministry's TEST gateway currently rejects such a certificate (423: it must carry the signer's NIP/PESEL in a format not
+publicly documented); a production filing needs the taxpayer's or agent's own qualified certificate. Nothing in the portal
+calls the gateway yet. Sidecar tests: `docker run --rm -v "$PWD/xades-sidecar":/app -w /app maven:3.9-eclipse-temurin-17 mvn -B test`.
+
 ### 13.8 Credential encryption key and legacy-row migration
 
 1. `openssl rand -base64 32` -> `KSEF_CREDENTIALS_KEY=` in the root `.env`; **back it up together with `.env`**.
