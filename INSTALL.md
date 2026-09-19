@@ -820,6 +820,8 @@ changes — see `HANDOVER.md` before going live with billing.
 2. `docker compose up -d` (portal and n8n both receive it), then re-import/patch workflow `02-ksef-authenticate`
    in n8n (its Code node decrypts) - never activate it without sign-off.
 3. Apply `migrations/2026-09-19-firm-imap.sql`, `-auth-rate-limits.sql`, `-firm-user-reset.sql`.
+   Also apply `migrations/2026-09-19-jpk-v7m3-envelope.sql` (round 17: client tax-office code and JPK document-type/IMP
+   columns). JPK generation refuses for a client with no tax-office code (client page) or no contact e-mail.
 4. Re-encrypt existing rows (one-off; the legacy format must be stated because unprefixed rows are ambiguous):
    ```bash
    cd portal
