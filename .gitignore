@@ -60,3 +60,10 @@ portal/test_out.txt
 
 # Backups (contain DB dumps and secrets)
 backups/
+
+# Internal agent notes - kept locally, not published
+CLAUDE.md
+HANDOVER.md
+NEXT-AGENT-BRIEF.md
+FIXES-2026-09-13.md
+AGENT-BRIEF-full.md
