@@ -50,7 +50,7 @@ describe('normalizeJpkMarkers', () => {
 
 describe('generateJpkV7M row markers', () => {
     it('emits <tns:CODE>1</tns:CODE> in schema order, before the K_ fields', () => {
-        const xml = generateJpkV7M(firm, '2026-09', [sale({ jpk_gtu: ['GTU_12', 'GTU_01'], jpk_procedures: ['TP', 'MR_UZ'], jpk_margin_gross: 123 })]);
+        const xml = generateJpkV7M(firm, '2026-09', [sale({ jpk_gtu: ['GTU_12', 'GTU_01'], jpk_procedures: ['TP', 'MR_UZ'], jpk_margin_gross: 123, jpk_margin_taxable_gross: 23, jpk_margin_vat_rate: '23', jpk_margin_method: 'individual' })]);
         const order = ['GTU_01', 'GTU_12', 'TP', 'MR_UZ', 'K_19'].map(c => xml.indexOf(`<tns:${c}>`));
         expect(order.every(i => i > 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);

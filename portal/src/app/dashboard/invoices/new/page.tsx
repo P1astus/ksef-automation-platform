@@ -82,6 +82,11 @@ export default function NewInvoicePage() {
     const [exemptionText, setExemptionText] = useState('');
     const [jpkGtu, setJpkGtu] = useState<GtuCode[]>([]);
     const [jpkProcedures, setJpkProcedures] = useState<ProcedureCode[]>([]);
+    const [marginScheme, setMarginScheme] = useState('');
+    const [marginGross, setMarginGross] = useState('');
+    const [marginTaxableGross, setMarginTaxableGross] = useState('');
+    const [marginVatRate, setMarginVatRate] = useState<'23' | '8' | '5'>('23');
+    const [marginMethod, setMarginMethod] = useState<'individual' | 'sum'>('individual');
     const [nipStatus, setNipStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
     const [sellerClientId, setSellerClientId] = useState('');
     const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -141,7 +146,8 @@ export default function NewInvoicePage() {
         return () => clearTimeout(t);
     }, [buyerNip]);
 
-    const totals = computeTotals(lines);
+    const isMarginInvoice = marginScheme !== '';
+    const totals = isMarginInvoice ? { totalNet: 0, totalVat: 0, totalGross: Number(marginGross) || 0 } : computeTotals(lines);
 
     function updateLine(i: number, field: keyof InvoiceLine, value: string | number) {
         setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: value } : l));
@@ -162,6 +168,9 @@ export default function NewInvoicePage() {
         if (!invoiceNumber) { alert('Wpisz numer faktury'); return; }
         if (lines.length === 0) { alert('Dodaj przynajmniej jedną pozycję'); return; }
         if (correctingId && !correctionReason.trim()) { alert('Podaj powód korekty'); return; }
+        if (isMarginInvoice && (!Number.isFinite(Number(marginGross)) || Number(marginGross) < 0 || !Number.isFinite(Number(marginTaxableGross)) || Number(marginTaxableGross) > Number(marginGross))) {
+            alert('Faktura VAT-marża wymaga kwoty brutto nabywcy oraz wewnętrznej marży brutto nie większej od tej kwoty'); return;
+        }
         const hasExemptLine = lines.some(l => l.vatRate === 'zw');
         if (hasExemptLine && !exemptionText.trim()) { alert('Wpisz podstawę prawną zwolnienia dla pozycji zwolnionej z VAT (zw.)'); return; }
 
@@ -192,6 +201,11 @@ export default function NewInvoicePage() {
                     exemptionBasis: hasExemptLine ? { type: exemptionType, text: exemptionText.trim() } : undefined,
                     jpkGtu,
                     jpkProcedures,
+                    marginScheme: marginScheme || undefined,
+                    marginGross: isMarginInvoice ? marginGross : undefined,
+                    marginTaxableGross: isMarginInvoice ? marginTaxableGross : undefined,
+                    marginVatRate: isMarginInvoice ? marginVatRate : undefined,
+                    marginMethod: isMarginInvoice ? marginMethod : undefined,
                 }),
             });
             if (!saveRes.ok) {
@@ -451,6 +465,22 @@ export default function NewInvoicePage() {
                             </div>
                         )}
                     </div>
+                    {!correctingId && (
+                        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={isMarginInvoice} onChange={e => setMarginScheme(e.target.checked ? 'used_goods' : '')} />
+                                Faktura VAT-marża (bez wykazywania VAT nabywcy)
+                            </label>
+                            {isMarginInvoice && <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                                <select value={marginScheme} onChange={e => setMarginScheme(e.target.value)}><option value="tourism">Usługi turystyki</option><option value="used_goods">Towary używane</option><option value="art">Dzieła sztuki</option><option value="collectibles_antiques">Przedmioty kolekcjonerskie i antyki</option></select>
+                                <input type="number" min="0" step="0.01" value={marginGross} onChange={e => setMarginGross(e.target.value)} placeholder="Kwota brutto nabywcy*" />
+                                <input type="number" step="0.01" value={marginTaxableGross} onChange={e => setMarginTaxableGross(e.target.value)} placeholder="Wewnętrzna marża brutto*" />
+                                <select value={marginVatRate} onChange={e => setMarginVatRate(e.target.value as '23' | '8' | '5')}><option value="23">23%</option><option value="8">8%</option><option value="5">5%</option></select>
+                                <select value={marginMethod} onChange={e => setMarginMethod(e.target.value as 'individual' | 'sum')}><option value="individual">Marża jednostkowa</option><option value="sum">Suma marż (WEW)</option></select>
+                                <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#f59e0b' }}>Wewnętrzna marża brutto nie jest przekazywana nabywcy ani do FA(3)/PDF; służy wyłącznie rozliczeniu JPK.</div>
+                            </div>}
+                        </div>
+                    )}
                 </div>
 
                 {/* Line items */}
@@ -469,9 +499,7 @@ export default function NewInvoicePage() {
                                     <th style={{ textAlign: 'left', fontWeight: 600, padding: '0 0 8px', width: '35%' }}>Nazwa</th>
                                     <th style={{ textAlign: 'right', fontWeight: 600, padding: '0 8px 8px', width: 60 }}>Ilość</th>
                                     <th style={{ textAlign: 'left', fontWeight: 600, padding: '0 8px 8px', width: 60 }}>J.m.</th>
-                                    <th style={{ textAlign: 'right', fontWeight: 600, padding: '0 8px 8px', width: 100 }}>Cena netto</th>
-                                    <th style={{ textAlign: 'center', fontWeight: 600, padding: '0 8px 8px', width: 70 }}>VAT</th>
-                                    <th style={{ textAlign: 'right', fontWeight: 600, padding: '0 0 8px', width: 100 }}>Wartość netto</th>
+                                    {!isMarginInvoice && <><th style={{ textAlign: 'right', fontWeight: 600, padding: '0 8px 8px', width: 100 }}>Cena netto</th><th style={{ textAlign: 'center', fontWeight: 600, padding: '0 8px 8px', width: 70 }}>VAT</th><th style={{ textAlign: 'right', fontWeight: 600, padding: '0 0 8px', width: 100 }}>Wartość netto</th></>}
                                     <th style={{ width: 32 }}></th>
                                 </tr>
                             </thead>
@@ -489,17 +517,17 @@ export default function NewInvoicePage() {
                                             <td style={{ padding: '8px 8px' }}>
                                                 <input value={l.unit} onChange={e => updateLine(i, 'unit', e.target.value)} style={{ width: '100%' }} />
                                             </td>
-                                            <td style={{ padding: '8px 8px' }}>
+                                            {!isMarginInvoice && <td style={{ padding: '8px 8px' }}>
                                                 <input type="number" value={l.netPrice} min={0} step={0.01} onChange={e => updateLine(i, 'netPrice', parseFloat(e.target.value) || 0)} style={{ width: '100%', textAlign: 'right' }} />
-                                            </td>
-                                            <td style={{ padding: '8px 8px' }}>
+                                            </td>}
+                                            {!isMarginInvoice && <td style={{ padding: '8px 8px' }}>
                                                 <select value={l.vatRate} onChange={e => updateLine(i, 'vatRate', e.target.value as InvoiceLine['vatRate'])} style={{ width: '100%' }}>
                                                     {VAT_RATES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                                 </select>
-                                            </td>
-                                            <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>
+                                            </td>}
+                                            {!isMarginInvoice && <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>
                                                 {lineNet.toFixed(2)}
-                                            </td>
+                                            </td>}
                                             <td style={{ padding: '8px 0 8px 8px' }}>
                                                 {lines.length > 1 && (
                                                     <button type="button" onClick={() => removeLine(i)} style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: 4, display: 'flex' }}>
@@ -514,7 +542,7 @@ export default function NewInvoicePage() {
                         </table>
                     </div>
 
-                    {lines.some(l => l.vatRate === 'zw') && (
+                    {!isMarginInvoice && lines.some(l => l.vatRate === 'zw') && (
                         <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-subtle)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                 Podstawa zwolnienia z VAT (zw.)*
@@ -540,24 +568,24 @@ export default function NewInvoicePage() {
                         </div>
                     )}
 
-                    <details style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                    {!isMarginInvoice && <details style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                         <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                             Oznaczenia JPK_V7M (GTU, procedury){jpkGtu.length + jpkProcedures.length > 0 ? ` - zaznaczono ${jpkGtu.length + jpkProcedures.length}` : ''}
                         </summary>
                         <div style={{ marginTop: 12 }}>
                             <JpkMarkersFields gtu={jpkGtu} procedures={jpkProcedures} onChange={n => { setJpkGtu(n.gtu); setJpkProcedures(n.procedures); }} />
                         </div>
-                    </details>
+                    </details>}
 
                     {/* Totals */}
                     <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
                         <div style={{ width: 260 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
-                                <span>Razem netto</span><span>{totals.totalNet.toFixed(2)} PLN</span>
+                                {!isMarginInvoice && <><span>Razem netto</span><span>{totals.totalNet.toFixed(2)} PLN</span></>}
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+                            {!isMarginInvoice && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                                 <span>VAT</span><span>{totals.totalVat.toFixed(2)} PLN</span>
-                            </div>
+                            </div>}
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>
                                 <span>Do zapłaty</span><span>{totals.totalGross.toFixed(2)} PLN</span>
                             </div>

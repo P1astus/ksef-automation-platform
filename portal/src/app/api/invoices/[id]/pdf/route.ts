@@ -32,7 +32,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         `SELECT invoice_number, ksef_number, direction, issue_date,
                 seller_name, seller_nip, buyer_name, buyer_nip,
                 net_amount, vat_amount, gross_amount, currency,
-                invoice_lines, raw_xml
+                invoice_lines, raw_xml, jpk_margin_taxable_gross
          FROM invoices WHERE id = $1 AND firm_id = $2`,
         [id, session.firmId]
     );
@@ -67,6 +67,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         grossAmount: invoice.gross_amount || 0,
         currency: invoice.currency || 'PLN',
         lines,
+        // Do not pass the internal taxable margin to the PDF renderer. Its
+        // mere presence only selects the buyer-facing VAT-marża layout.
+        isMarginScheme: invoice.jpk_margin_taxable_gross !== null && invoice.jpk_margin_taxable_gross !== undefined,
     });
 
     return new NextResponse(new Uint8Array(pdf), {

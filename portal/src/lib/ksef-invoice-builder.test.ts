@@ -159,6 +159,27 @@ describe('buildKSeFInvoiceXml — validates against the real vendored FA(3) XSD'
         expect(xml).not.toContain('FA (2)');
     });
 
+    it.skipIf(!xmllintAvailable)('a VAT-marża invoice has the required annotation and never exposes its internal taxable margin', () => {
+        const internalTaxableMargin = 321.98;
+        const xml = buildKSeFInvoiceXml({
+            ...baseInput,
+            lines: [{ name: 'Samochód używany', qty: 1, unit: 'szt', netPrice: 999999, vatRate: '23' }],
+            marginScheme: 'used_goods', marginGrossAmount: 1230,
+        });
+        expect(validateAgainstFa3Schema(xml).valid).toBe(true);
+        expect(xml).toContain('<fa:P_13_11>1230.00</fa:P_13_11>');
+        expect(xml).toContain('<fa:P_15>1230.00</fa:P_15>');
+        expect(xml).toContain('<fa:P_PMarzy>1</fa:P_PMarzy>');
+        expect(xml).toContain('<fa:P_PMarzy_3_1>1</fa:P_PMarzy_3_1>');
+        expect(xml).not.toMatch(/<fa:P_1[34]_1>/);
+        expect(xml).not.toContain('<fa:P_9A>');
+        expect(xml).not.toContain('<fa:P_11>');
+        expect(xml).not.toContain('<fa:P_12>');
+        // The builder receives only buyer gross; the operator-only taxable
+        // margin cannot be serialized by this public invoice builder.
+        expect(xml).not.toContain(String(internalTaxableMargin));
+    });
+
     it.skipIf(!xmllintAvailable)('a WDT invoice (0% intra-EU supply) validates and rolls up into P_13_6_2, not P_13_6_1', () => {
         const xml = buildKSeFInvoiceXml({
             ...baseInput,

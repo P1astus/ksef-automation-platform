@@ -33,7 +33,8 @@ describe('jpk/generate invoice query', () => {
             jpk_marker text, jpk_period text, jpk_correction_needed boolean, ksef_number text,
             cost_category text, invoice_lines jsonb, jpk_gtu text[], jpk_procedures text[],
             jpk_doc_type text, jpk_import boolean, delivery_date date, ksef_acquisition_date timestamptz,
-            jpk_counterparty_country text, jpk_margin_gross numeric, corrects_invoice_id int)`);
+            jpk_counterparty_country text, jpk_margin_gross numeric, jpk_margin_taxable_gross numeric,
+            jpk_margin_vat_rate text, jpk_margin_method text, corrects_invoice_id int)`);
         await db.query(`INSERT INTO invoices (id, firm_id, client_nip, invoice_number, issue_date, invoice_lines) VALUES (1, 1, '5260250274', 'A', '2026-09-10', '[{"name":"x"}]')`);
         await db.query(`INSERT INTO invoices (id, firm_id, client_nip, invoice_number, issue_date, corrects_invoice_id) VALUES (2, 1, '5260250274', 'K', '2026-09-11', 1)`);
         const res = await db.query<{ invoice_number: string; corrected_original_lines: unknown }>(invoiceSql.replace(/\$(\d)/g, (_, n) => `$${n}`), invoiceParams);

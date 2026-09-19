@@ -20,7 +20,7 @@ export async function POST(request: Request) {
         clientId, invoiceNumber, issueDate, deliveryDate, dueDate, buyerNip, buyerName,
         buyerStreet, buyerCity, buyerPostalCode, buyerCountryCode,
         lines, offlineMode, correctingInvoiceId, correctionReason, exemptionBasis,
-        jpkGtu, jpkProcedures,
+        jpkGtu, jpkProcedures, marginScheme, marginGross, marginTaxableGross, marginVatRate, marginMethod,
     } = body;
 
     if (!clientId || !invoiceNumber || !issueDate || !buyerNip || !buyerName || !lines?.length) {
@@ -45,6 +45,17 @@ export async function POST(request: Request) {
     if (invalidRate) {
         return NextResponse.json({ error: `Nieprawidłowa stawka VAT: ${invalidRate.vatRate}` }, { status: 400 });
     }
+    const isMarginInvoice = marginScheme !== undefined && marginScheme !== null && marginScheme !== '';
+    const MARGIN_SCHEMES = ['tourism', 'used_goods', 'art', 'collectibles_antiques'];
+    const gross = Number(marginGross);
+    const taxable = Number(marginTaxableGross);
+    if (isMarginInvoice) {
+        if (!MARGIN_SCHEMES.includes(marginScheme) || !Number.isFinite(gross) || gross < 0 || !Number.isFinite(taxable) || taxable > gross || !['5', '8', '23'].includes(String(marginVatRate)) || !['individual', 'sum'].includes(String(marginMethod))) {
+            return NextResponse.json({ error: 'Faktura VAT-marża wymaga rodzaju procedury, kwoty brutto nabywcy, wewnętrznej marży brutto nie większej od tej kwoty, stawki 5/8/23% i metody rozliczenia' }, { status: 400 });
+        }
+        if (correctingInvoiceId) return NextResponse.json({ error: 'Korekta faktury VAT-marża wymaga odrębnego rozliczenia marży i nie jest jeszcze obsługiwana' }, { status: 400 });
+    }
+    const marginProcedure = marginScheme === 'tourism' ? 'MR_T' : 'MR_UZ';
     if (correctingInvoiceId && !correctionReason?.trim()) {
         return NextResponse.json({ error: 'Podaj powód korekty' }, { status: 400 });
     }
@@ -147,13 +158,15 @@ export async function POST(request: Request) {
         lines: lines as InvoiceLine[],
         correction,
         exemptionBasis: exemptionBasis as ExemptionBasis | undefined,
+        marginScheme: isMarginInvoice ? marginScheme : undefined,
+        marginGrossAmount: isMarginInvoice ? gross : undefined,
     });
 
     // Recomputed from `lines` server-side (round 11 fix) — never trust a
     // client-supplied totals object, since raw_xml below is built
     // independently from `lines` and the two must never disagree. Uses the
     // same delta math as the XML itself for a correction invoice.
-    const totals = computeReportedTotals(
+    const totals = isMarginInvoice ? { totalNet: 0, totalVat: 0, totalGross: gross } : computeReportedTotals(
         lines as InvoiceLine[],
         correction ? { originalLines: correction.originalLines } : undefined
     );
@@ -165,8 +178,9 @@ export async function POST(request: Request) {
           buyer_street, buyer_city, buyer_postal_code,
           net_amount, vat_amount, gross_amount, issue_date, delivery_date, due_date,
           direction, processing_status, invoice_lines, raw_xml,
-          corrects_invoice_id, correction_reason, jpk_gtu, jpk_procedures)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'sales','new',$17,$18,$19,$20,$21,$22)
+          corrects_invoice_id, correction_reason, jpk_gtu, jpk_procedures,
+          jpk_margin_gross, jpk_margin_taxable_gross, jpk_margin_vat_rate, jpk_margin_method)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'sales','new',$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
          RETURNING id`,
         [
             session.firmId,
@@ -190,7 +204,11 @@ export async function POST(request: Request) {
             correctingInvoiceId || null,
             correction?.reason || null,
             jpkMarkers.gtu,
-            jpkMarkers.procedures,
+            isMarginInvoice ? [marginProcedure] : jpkMarkers.procedures,
+            isMarginInvoice ? gross : null,
+            isMarginInvoice ? taxable : null,
+            isMarginInvoice ? String(marginVatRate) : null,
+            isMarginInvoice ? String(marginMethod) : null,
         ]
     );
 

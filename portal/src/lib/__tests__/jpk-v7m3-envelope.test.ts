@@ -253,7 +253,7 @@ describe.skipIf(!hasXmllint)('remaining optional JPK_V7M(3) inputs validate agai
 
     it('margin-scheme rows carry SprzedazVAT_Marza / ZakupVAT_Marza; MR_T/MR_UZ without an amount is refused', () => {
         const xml = generateJpkV7M(firm, '2026-02', [
-            sale({ jpk_procedures: ['MR_UZ'], jpk_margin_gross: 1230.5 }),
+            sale({ jpk_procedures: ['MR_UZ'], jpk_margin_gross: 1230.5, jpk_margin_taxable_gross: 123, jpk_margin_vat_rate: '23', jpk_margin_method: 'individual' }),
             purchase({ jpk_margin_gross: 800 }),
         ]);
         expect(xml).toContain('<tns:SprzedazVAT_Marza>1230.50</tns:SprzedazVAT_Marza>');
@@ -261,6 +261,39 @@ describe.skipIf(!hasXmllint)('remaining optional JPK_V7M(3) inputs validate agai
         expect(validate(xml).ok).toBe(true);
         expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_procedures: ['MR_T'] })])).toThrow(/SprzedazVAT_Marza/);
         expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_margin_gross: 10 })])).toThrow(/bez oznaczenia/);
+    });
+
+    it('splits the internal taxable margin into the rate K fields, while retaining only buyer gross in SprzedazVAT_Marza', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [sale({
+            invoice_lines: [{ name: 'used', qty: 1, unit: 'szt', netPrice: 1000, vatRate: '23' }],
+            jpk_procedures: ['MR_UZ'], jpk_margin_gross: 1230, jpk_margin_taxable_gross: 123,
+            jpk_margin_vat_rate: '23', jpk_margin_method: 'individual',
+        })]);
+        expect(xml).toContain('<tns:SprzedazVAT_Marza>1230.00</tns:SprzedazVAT_Marza>');
+        expect(xml).toContain('<tns:K_19>100.00</tns:K_19>');
+        expect(xml).toContain('<tns:K_20>23.00</tns:K_20>');
+        expect(xml).toContain('<tns:P_19>100</tns:P_19>');
+        expect(xml).toContain('<tns:P_20>23</tns:P_20>');
+        expect(validate(xml).ok).toBe(true);
+    });
+
+    it('uses a DI/WEW row for a sum of margins and excludes a negative margin from declaration totals', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [
+            sale({ jpk_procedures: ['MR_T'], jpk_margin_gross: 1000, jpk_margin_taxable_gross: 123, jpk_margin_vat_rate: '23', jpk_margin_method: 'sum' }),
+            sale({ id: 3, invoice_number: 'FV/LOSS', jpk_procedures: ['MR_T'], jpk_margin_gross: 900, jpk_margin_taxable_gross: -50, jpk_margin_vat_rate: '23', jpk_margin_method: 'sum' }),
+        ]);
+        expect(xml).toContain('<tns:TypDokumentu>WEW</tns:TypDokumentu>');
+        expect(xml).toContain('<tns:DI>1</tns:DI>');
+        expect(xml).toContain('<tns:K_19>59.35</tns:K_19>');
+        expect(xml).toContain('<tns:K_20>13.65</tns:K_20>');
+        expect(xml).toContain('<tns:P_19>59</tns:P_19>');
+        expect(xml).toContain('<tns:P_20>14</tns:P_20>');
+        expect(validate(xml).ok).toBe(true);
+    });
+
+    it('refuses a taxable margin above buyer gross or incomplete margin inputs', () => {
+        expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_procedures: ['MR_UZ'], jpk_margin_gross: 100, jpk_margin_taxable_gross: 101, jpk_margin_vat_rate: '23', jpk_margin_method: 'individual' })])).toThrow(/nie może przekraczać/);
+        expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_procedures: ['MR_UZ'], jpk_margin_gross: 100, jpk_margin_taxable_gross: 10 })])).toThrow(/wymaga wewnętrznej/);
     });
 });
 

@@ -37,7 +37,7 @@ export async function PATCH(
 
     // Ownership is checked directly against invoices.firm_id (same reason as
     // the payment route: a NIP can belong to more than one firm).
-    const check = await query('SELECT direction FROM invoices WHERE id = $1 AND firm_id = $2', [id, session.firmId]);
+    const check = await query('SELECT direction, jpk_margin_gross, jpk_margin_taxable_gross FROM invoices WHERE id = $1 AND firm_id = $2', [id, session.firmId]);
     if (!check.rows[0]) return NextResponse.json({ error: 'Nie znaleziono faktury' }, { status: 404 });
     const direction: 'sales' | 'purchase' = check.rows[0].direction === 'sales' ? 'sales' : 'purchase';
 
@@ -70,6 +70,28 @@ export async function PATCH(
         const m = raw === '' || raw === null ? null : Number(raw);
         if (m !== null && (!Number.isFinite(m) || m < 0)) return NextResponse.json({ error: 'Wartość marży musi być liczbą nieujemną' }, { status: 400 });
         extraArgs.push(m); extras.push(`jpk_margin_gross = $${extraArgs.length}`);
+    }
+    if ('marginTaxableGross' in body) {
+        if (direction !== 'sales') return NextResponse.json({ error: 'Marża opodatkowana dotyczy wyłącznie sprzedaży' }, { status: 400 });
+        const raw = body.marginTaxableGross;
+        const m = raw === '' || raw === null ? null : Number(raw);
+        if (m !== null && !Number.isFinite(m)) return NextResponse.json({ error: 'Wewnętrzna marża brutto musi być liczbą' }, { status: 400 });
+        extraArgs.push(m); extras.push(`jpk_margin_taxable_gross = $${extraArgs.length}`);
+    }
+    if ('marginVatRate' in body) {
+        const rate = body.marginVatRate === '' ? null : String(body.marginVatRate);
+        if (rate !== null && !['5', '8', '23'].includes(rate)) return NextResponse.json({ error: 'Stawka marży musi wynosić 5%, 8% albo 23%' }, { status: 400 });
+        extraArgs.push(rate); extras.push(`jpk_margin_vat_rate = $${extraArgs.length}`);
+    }
+    if ('marginMethod' in body) {
+        const method = body.marginMethod === '' ? null : String(body.marginMethod);
+        if (method !== null && !['individual', 'sum'].includes(method)) return NextResponse.json({ error: 'Metoda marży musi być indywidualna albo suma marż' }, { status: 400 });
+        extraArgs.push(method); extras.push(`jpk_margin_method = $${extraArgs.length}`);
+    }
+    const candidateGross = 'marginGross' in body ? Number(body.marginGross) : Number(check.rows[0].jpk_margin_gross);
+    const candidateTaxable = 'marginTaxableGross' in body ? Number(body.marginTaxableGross) : Number(check.rows[0].jpk_margin_taxable_gross);
+    if (Number.isFinite(candidateGross) && Number.isFinite(candidateTaxable) && candidateTaxable > candidateGross) {
+        return NextResponse.json({ error: 'Wewnętrzna marża brutto nie może przekraczać kwoty brutto należnej od nabywcy' }, { status: 400 });
     }
     if ('saleDate' in body) {
         if (direction !== 'sales') return NextResponse.json({ error: 'Data sprzedaży dotyczy wyłącznie faktur sprzedaży' }, { status: 400 });

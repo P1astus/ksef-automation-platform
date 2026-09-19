@@ -58,6 +58,7 @@ export async function POST(request: Request) {
                 i.jpk_marker, i.jpk_period, i.jpk_correction_needed, i.ksef_number,
                 i.cost_category, i.invoice_lines, i.jpk_gtu, i.jpk_procedures, i.jpk_doc_type, i.jpk_import,
                 i.delivery_date, i.ksef_acquisition_date, i.jpk_counterparty_country, i.jpk_margin_gross,
+                i.jpk_margin_taxable_gross, i.jpk_margin_vat_rate, i.jpk_margin_method,
                 original.invoice_lines AS corrected_original_lines
          FROM invoices i
          LEFT JOIN invoices original ON original.id = i.corrects_invoice_id AND original.firm_id = i.firm_id

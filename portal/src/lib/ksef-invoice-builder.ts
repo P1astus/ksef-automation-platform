@@ -86,6 +86,10 @@ export interface InvoiceInput {
     currency?: string;
     correction?: CorrectionInfo;
     exemptionBasis?: ExemptionBasis;  // required if any line is 'zw' — see assertExemptionBasis()
+    // A VAT-marża invoice shows no buyer-visible net/VAT/rate. Its total due
+    // is the buyer amount (not the internal taxable margin used only by JPK).
+    marginScheme?: 'tourism' | 'used_goods' | 'art' | 'collectibles_antiques';
+    marginGrossAmount?: number;
 }
 
 interface VatGroup {
@@ -259,8 +263,13 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
     assertHasAddress(input.buyer, 'nabywcy');
     assertValidNip(input.seller, 'sprzedawcy');
     assertValidNip(input.buyer, 'nabywcy');
-    assertKnownVatRates(input.lines);
-    assertExemptionBasis(input.lines, input.exemptionBasis);
+    if (input.marginScheme) {
+        if (input.correction) throw new Error('Korekta faktury VAT-marża wymaga odrębnego rozliczenia marży i nie jest jeszcze obsługiwana');
+        if (!Number.isFinite(input.marginGrossAmount) || (input.marginGrossAmount ?? 0) < 0) throw new Error('Faktura VAT-marża wymaga nieujemnej kwoty brutto należnej od nabywcy');
+    } else {
+        assertKnownVatRates(input.lines);
+        assertExemptionBasis(input.lines, input.exemptionBasis);
+    }
     const computed = computeLines(input.lines);
     const currency = input.currency || 'PLN';
     const countryCode = input.seller.countryCode || 'PL';
@@ -271,11 +280,17 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
     const vatGroups = input.correction
         ? deltaVatGroups(input.lines, input.correction.originalLines)
         : groupByVat(computed);
-    const totalGross = input.correction
+    const totalGross = input.marginScheme ? round2(input.marginGrossAmount!) : input.correction
         ? round2(computed.reduce((s, l) => s + l.gross, 0) - computeLines(input.correction.originalLines).reduce((s, l) => s + l.gross, 0))
         : round2(computed.reduce((s, l) => s + l.gross, 0));
 
-    const linesXml = computed.map((l, i) => `
+    const linesXml = computed.map((l, i) => input.marginScheme ? `
+        <fa:FaWiersz>
+            <fa:NrWierszaFa>${i + 1}</fa:NrWierszaFa>
+            <fa:P_7>${esc(l.name)}</fa:P_7>
+            <fa:P_8A>${esc(l.unit)}</fa:P_8A>
+            <fa:P_8B>${l.qty}</fa:P_8B>
+        </fa:FaWiersz>` : `
         <fa:FaWiersz>
             <fa:NrWierszaFa>${i + 1}</fa:NrWierszaFa>
             <fa:P_7>${esc(l.name)}</fa:P_7>
@@ -286,7 +301,9 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
             <fa:P_12>${VAT_GROUP_FIELD[l.vatRate].p12}</fa:P_12>
         </fa:FaWiersz>`).join('');
 
-    const vatGroupsXml = vatGroups.map(g => {
+    const vatGroupsXml = input.marginScheme
+        ? `\n        <fa:P_13_11>${totalGross.toFixed(2)}</fa:P_13_11>`
+        : vatGroups.map(g => {
         const field = VAT_GROUP_FIELD[g.rate as InvoiceLine['vatRate']];
         const netXml = `<fa:${field.net}>${g.net.toFixed(2)}</fa:${field.net}>`;
         const vatXml = field.vat ? `\n        <fa:${field.vat}>${g.vat.toFixed(2)}</fa:${field.vat}>` : '';
@@ -361,13 +378,16 @@ export function buildKSeFInvoiceXml(input: InvoiceInput): string {
                  no VatRateCode models it; see the type's doc comment above. -->
             <fa:P_18>2</fa:P_18>
             <fa:P_18A>2</fa:P_18A>
-            ${zwolnienieXml(input.exemptionBasis)}
+            ${input.marginScheme ? `<fa:Zwolnienie>
+                <fa:P_19N>1</fa:P_19N>
+            </fa:Zwolnienie>` : zwolnienieXml(input.exemptionBasis)}
             <fa:NoweSrodkiTransportu>
                 <fa:P_22N>1</fa:P_22N>
             </fa:NoweSrodkiTransportu>
             <fa:P_23>2</fa:P_23>
             <fa:PMarzy>
-                <fa:P_PMarzyN>1</fa:P_PMarzyN>
+                ${input.marginScheme ? `<fa:P_PMarzy>1</fa:P_PMarzy>
+                <fa:${input.marginScheme === 'tourism' ? 'P_PMarzy_2' : input.marginScheme === 'used_goods' ? 'P_PMarzy_3_1' : input.marginScheme === 'art' ? 'P_PMarzy_3_2' : 'P_PMarzy_3_3'}>1</fa:${input.marginScheme === 'tourism' ? 'P_PMarzy_2' : input.marginScheme === 'used_goods' ? 'P_PMarzy_3_1' : input.marginScheme === 'art' ? 'P_PMarzy_3_2' : 'P_PMarzy_3_3'}>` : '<fa:P_PMarzyN>1</fa:P_PMarzyN>'}
             </fa:PMarzy>
         </fa:Adnotacje>
         <fa:RodzajFaktury>${input.correction ? 'KOR' : 'VAT'}</fa:RodzajFaktury>

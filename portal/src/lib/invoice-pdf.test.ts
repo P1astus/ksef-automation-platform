@@ -44,4 +44,17 @@ describe('buildInvoicePdf', () => {
         });
         expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF');
     });
+
+    it('uses the buyer-facing VAT-marża layout with no net or VAT values', async () => {
+        const buf = await buildInvoicePdf({
+            invoiceNumber: 'M/1/2026', ksefNumber: null, direction: 'sales', issueDate: '2026-09-19',
+            sellerName: 'Sprzedawca', sellerNip: '1111111111', buyerName: 'Nabywca', buyerNip: '2222222222',
+            netAmount: 0, vatAmount: 0, grossAmount: 1230, currency: 'PLN', isMarginScheme: true,
+            lines: [{ name: 'Towar używany', qty: 1, unit: 'szt', net: 999999, vat: 999999, gross: 999999 }],
+        });
+        const text = buf.toString('latin1');
+        expect(text).not.toContain('999999');
+        expect(text).not.toContain('Razem netto');
+        expect(text).not.toContain('VAT:');
+    });
 });

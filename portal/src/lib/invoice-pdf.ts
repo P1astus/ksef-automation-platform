@@ -30,6 +30,7 @@ export interface InvoicePdfData {
     grossAmount: string | number;
     currency: string;
     lines: InvoicePdfLine[];
+    isMarginScheme?: boolean;
 }
 
 function fmt(v: string | number): string {
@@ -67,13 +68,15 @@ export function buildInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
 
         // Line items table
         const tableTop = doc.y;
-        const cols = { name: 50, qty: 300, net: 360, vat: 430, gross: 490 };
+        const cols = data.isMarginScheme ? { name: 50, qty: 420, net: 0, vat: 0, gross: 0 } : { name: 50, qty: 300, net: 360, vat: 430, gross: 490 };
         doc.font('Helvetica-Bold').fontSize(9).fillColor('#666');
         doc.text('Nazwa', cols.name, tableTop);
         doc.text('Ilość', cols.qty, tableTop);
-        doc.text('Netto', cols.net, tableTop);
-        doc.text('VAT', cols.vat, tableTop);
-        doc.text('Brutto', cols.gross, tableTop);
+        if (!data.isMarginScheme) {
+            doc.text('Netto', cols.net, tableTop);
+            doc.text('VAT', cols.vat, tableTop);
+            doc.text('Brutto', cols.gross, tableTop);
+        }
         doc.moveTo(50, tableTop + 14).lineTo(545, tableTop + 14).strokeColor('#ddd').stroke();
 
         let y = tableTop + 20;
@@ -81,20 +84,24 @@ export function buildInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
         for (const line of data.lines) {
             doc.text(String(line.name), cols.name, y, { width: 240 });
             doc.text(`${line.qty}${line.unit ? ' ' + line.unit : ''}`, cols.qty, y);
-            doc.text(fmt(line.net), cols.net, y);
-            doc.text(fmt(line.vat), cols.vat, y);
-            doc.text(fmt(line.gross), cols.gross, y);
+            if (!data.isMarginScheme) {
+                doc.text(fmt(line.net), cols.net, y);
+                doc.text(fmt(line.vat), cols.vat, y);
+                doc.text(fmt(line.gross), cols.gross, y);
+            }
             y += 18;
         }
 
         doc.moveTo(50, y + 4).lineTo(545, y + 4).strokeColor('#ddd').stroke();
         y += 16;
         doc.font('Helvetica').fontSize(10);
-        doc.text(`Razem netto: ${fmt(data.netAmount)} ${data.currency}`, cols.net, y);
-        y += 16;
-        doc.text(`VAT: ${fmt(data.vatAmount)} ${data.currency}`, cols.net, y);
-        y += 16;
-        doc.font('Helvetica-Bold').text(`Do zapłaty: ${fmt(data.grossAmount)} ${data.currency}`, cols.net, y);
+        if (!data.isMarginScheme) {
+            doc.text(`Razem netto: ${fmt(data.netAmount)} ${data.currency}`, cols.net, y);
+            y += 16;
+            doc.text(`VAT: ${fmt(data.vatAmount)} ${data.currency}`, cols.net, y);
+            y += 16;
+        }
+        doc.font('Helvetica-Bold').text(`Do zapłaty: ${fmt(data.grossAmount)} ${data.currency}`, data.isMarginScheme ? 360 : cols.net, y);
 
         doc.fontSize(8).fillColor('#999').text('Wygenerowano automatycznie przez KSeF Auto', 50, 780, { align: 'center', width: 495 });
 

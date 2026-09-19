@@ -101,6 +101,11 @@ export interface JpkInvoiceRow {
     jpk_counterparty_country?: string | null;
     // SprzedazVAT_Marza / ZakupVAT_Marza: gross value under the margin scheme.
     jpk_margin_gross?: number | string | null;
+    // Internal VAT-inclusive taxable margin. Unlike jpk_margin_gross, this
+    // is never buyer-facing; it is split into the K fields only.
+    jpk_margin_taxable_gross?: number | string | null;
+    jpk_margin_vat_rate?: '5' | '8' | '23' | string | null;
+    jpk_margin_method?: 'individual' | 'sum' | string | null;
 }
 
 function esc(s: string | undefined | null): string {
@@ -268,6 +273,10 @@ export function generateJpkV7M(
 
     // Sales rows + running per-field totals
     const salesTotals: Record<string, number> = {};
+    // Negative VAT-marża bases remain in the register but must not lower the
+    // declaration (MF brochure, VAT-marża section).
+    const declarationSalesTotals: Record<string, number> = {};
+    const sumMarginRows: { procedure: 'MR_T' | 'MR_UZ'; rate: '5' | '8' | '23'; gross: number }[] = [];
     const salesRows = sales.map((inv, idx) => {
         const prefix = inv.jpk_correction_needed ? 'COR' : '';
         // Throws on an unknown code rather than emitting a marker the schema
@@ -280,13 +289,14 @@ export function generateJpkV7M(
         const docType = normalizeJpkDocType(inv.jpk_doc_type, 'sales');
         // FP rows are listed at full value but must not increase sales or VAT
         // totals; the fiscal receipt already accounts for that transaction.
-        if (docType !== 'FP') {
-            const contrib = salesContribution(inv);
-            for (const [field, amount] of Object.entries(contrib)) {
-                salesTotals[field] = round2((salesTotals[field] || 0) + (amount || 0));
-            }
-        }
         const contrib = salesContribution(inv);
+        const addContribution = (target: Record<string, number>, values: Partial<Record<string, number>>) => {
+            for (const [field, amount] of Object.entries(values)) target[field] = round2((target[field] || 0) + (amount || 0));
+        };
+        if (docType !== 'FP') {
+            addContribution(salesTotals, contrib);
+            addContribution(declarationSalesTotals, contrib);
+        }
         const tin = contractorTin(inv.buyer_nip, inv.jpk_counterparty_country);
         if (inv.jpk_counterparty_country && !isValidCountryCode(inv.jpk_counterparty_country)) {
             problems.push(`faktura ${inv.invoice_number}: nieznany kod kraju ${inv.jpk_counterparty_country}`);
@@ -300,10 +310,43 @@ export function generateJpkV7M(
         if (!isMargin && margin !== null) {
             problems.push(`faktura ${inv.invoice_number}: wartość marży bez oznaczenia MR_T/MR_UZ`);
         }
+        const taxable = inv.jpk_margin_taxable_gross === null || inv.jpk_margin_taxable_gross === undefined || inv.jpk_margin_taxable_gross === '' ? null : num(inv.jpk_margin_taxable_gross);
+        const rate = inv.jpk_margin_vat_rate;
+        const method = inv.jpk_margin_method;
+        let marginContrib: Partial<Record<string, number>> = {};
+        if (isMargin) {
+            if (taxable === null || !['5', '8', '23'].includes(String(rate)) || !['individual', 'sum'].includes(String(method))) {
+                problems.push(`faktura ${inv.invoice_number}: MR_T/MR_UZ wymaga wewnętrznej marży opodatkowanej brutto, stawki 5/8/23% i metody indywidualnej albo sumy marż`);
+            } else if (margin === null || taxable > margin) {
+                problems.push(`faktura ${inv.invoice_number}: marża opodatkowana brutto nie może przekraczać kwoty brutto należnej od nabywcy`);
+            } else {
+                const fields = SALES_RATE_FIELD[rate as VatRateCode];
+                // A negative margin has no VAT; its negative base stays in
+                // the register only, never in declaration P fields.
+                const base = taxable < 0 ? round2(taxable) : round2(taxable / (1 + Number(rate) / 100));
+                const tax = taxable < 0 ? 0 : round2(taxable - base);
+                marginContrib = { [fields.net]: base, [fields.vat!]: tax };
+                if (method === 'sum') sumMarginRows.push({ procedure: markers.procedures.includes('MR_T') ? 'MR_T' : 'MR_UZ', rate: rate as '5' | '8' | '23', gross: taxable });
+                if (method === 'individual' && docType !== 'FP') {
+                    // Replace normal invoice-line K values: a margin invoice's
+                    // taxable base is the margin, not its customer price.
+                    addContribution(salesTotals, Object.fromEntries(Object.entries(contrib).map(([k, v]) => [k, -(v || 0)])));
+                    addContribution(declarationSalesTotals, Object.fromEntries(Object.entries(contrib).map(([k, v]) => [k, -(v || 0)])));
+                    addContribution(salesTotals, marginContrib);
+                    if (taxable >= 0) addContribution(declarationSalesTotals, marginContrib);
+                } else if (method === 'sum' && docType !== 'FP') {
+                    // The customer invoice carries only SprzedazVAT_Marza;
+                    // the WEW row below carries every K amount.
+                    addContribution(salesTotals, Object.fromEntries(Object.entries(contrib).map(([k, v]) => [k, -(v || 0)])));
+                    addContribution(declarationSalesTotals, Object.fromEntries(Object.entries(contrib).map(([k, v]) => [k, -(v || 0)])));
+                }
+            }
+        }
         const marginXml = margin !== null ? `\n            <tns:SprzedazVAT_Marza>${fmt2(margin)}</tns:SprzedazVAT_Marza>` : '';
+        const rowContrib = isMargin ? (method === 'individual' ? marginContrib : {}) : contrib;
         const kFieldsXml = SALES_FIELD_ORDER
-            .filter(field => contrib[field] !== undefined)
-            .map(field => `            <tns:${field}>${fmt2(contrib[field]!)}</tns:${field}>`)
+            .filter(field => rowContrib[field] !== undefined)
+            .map(field => `            <tns:${field}>${fmt2(rowContrib[field]!)}</tns:${field}>`)
             .join('\n');
         return `
         <tns:SprzedazWiersz>
@@ -314,6 +357,33 @@ ${tin.country ? `            <tns:KodKrajuNadaniaTIN>${tin.country}</tns:KodKraj
             <tns:DataWystawienia>${fmtDate(inv.issue_date) || periodStart}</tns:DataWystawienia>
 ${saleDate && saleDate !== fmtDate(inv.issue_date) ? `            <tns:DataSprzedazy>${saleDate}</tns:DataSprzedazy>\n` : ''}            ${ksefReference(inv, problems)}
 ${docType ? `            <tns:TypDokumentu>${docType}</tns:TypDokumentu>\n` : ''}${markersXml ? markersXml + '\n' : ''}${kFieldsXml}${marginXml}
+        </tns:SprzedazWiersz>`;
+    }).join('');
+
+    // Sum-of-margins is represented by an internal document, not by K fields
+    // on the buyer invoices. DI is the brochure's marker for a non-invoice
+    // document; TypDokumentu=WEW identifies the internal document.
+    const sumRows = new Map<string, number>();
+    for (const row of sumMarginRows) sumRows.set(`${row.procedure}:${row.rate}`, round2((sumRows.get(`${row.procedure}:${row.rate}`) || 0) + row.gross));
+    const wewRows = Array.from(sumRows.entries()).map(([key, gross], index) => {
+        const [procedure, rate] = key.split(':') as ['MR_T' | 'MR_UZ', '5' | '8' | '23'];
+        const fields = SALES_RATE_FIELD[rate];
+        const base = gross < 0 ? round2(gross) : round2(gross / (1 + Number(rate) / 100));
+        const tax = gross < 0 ? 0 : round2(gross - base);
+        const values = { [fields.net]: base, [fields.vat!]: tax };
+        for (const [field, amount] of Object.entries(values)) salesTotals[field] = round2((salesTotals[field] || 0) + amount);
+        if (gross >= 0) for (const [field, amount] of Object.entries(values)) declarationSalesTotals[field] = round2((declarationSalesTotals[field] || 0) + amount);
+        return `
+        <tns:SprzedazWiersz>
+            <tns:LpSprzedazy>${sales.length + index + 1}</tns:LpSprzedazy>
+            <tns:NrKontrahenta>BRAK</tns:NrKontrahenta>
+            <tns:NazwaKontrahenta>BRAK</tns:NazwaKontrahenta>
+            <tns:DowodSprzedazy>WEW-MARZA-${period}-${index + 1}</tns:DowodSprzedazy>
+            <tns:DataWystawienia>${periodStart}</tns:DataWystawienia>
+            <tns:DI>1</tns:DI>
+            <tns:TypDokumentu>WEW</tns:TypDokumentu>
+            <tns:${procedure}>1</tns:${procedure}>
+${SALES_FIELD_ORDER.filter(field => values[field] !== undefined).map(field => `            <tns:${field}>${fmt2(values[field]!)}</tns:${field}>`).join('\n')}
         </tns:SprzedazWiersz>`;
     }).join('');
 
@@ -373,16 +443,16 @@ ${docType ? `            <tns:DokumentZakupu>${docType}</tns:DokumentZakupu>\n` 
     // applicable) and is omitted from the XML entirely rather than written as
     // a misleading "0" - see declarationFields() below.
     const zl = (n: number | undefined): number => Math.round(n || 0);
-    const p10 = zl(salesTotals['K_10']);
-    const p13 = zl(salesTotals['K_13']);
-    const p15 = zl(salesTotals['K_15']);
-    const p16 = zl(salesTotals['K_16']);
-    const p17 = zl(salesTotals['K_17']);
-    const p18 = zl(salesTotals['K_18']);
-    const p19 = zl(salesTotals['K_19']);
-    const p20 = zl(salesTotals['K_20']);
-    const p21 = zl(salesTotals['K_21']);
-    const p22 = zl(salesTotals['K_22']);
+    const p10 = zl(declarationSalesTotals['K_10']);
+    const p13 = zl(declarationSalesTotals['K_13']);
+    const p15 = zl(declarationSalesTotals['K_15']);
+    const p16 = zl(declarationSalesTotals['K_16']);
+    const p17 = zl(declarationSalesTotals['K_17']);
+    const p18 = zl(declarationSalesTotals['K_18']);
+    const p19 = zl(declarationSalesTotals['K_19']);
+    const p20 = zl(declarationSalesTotals['K_20']);
+    const p21 = zl(declarationSalesTotals['K_21']);
+    const p22 = zl(declarationSalesTotals['K_22']);
 
     // P_37 = sum(P_10,P_11,P_13,P_15,P_17,P_19,P_21,P_22,P_23,P_25,P_27,P_29,P_31)
     // - P_31 is always 0 here since no VatRateCode routes to K_31 anymore.
@@ -513,9 +583,9 @@ ${declarationXml}
     </tns:Deklaracja>
 
     <tns:Ewidencja>
-        ${salesRows}
+        ${salesRows}${wewRows}
         <tns:SprzedazCtrl>
-            <tns:LiczbaWierszySprzedazy>${sales.length}</tns:LiczbaWierszySprzedazy>
+            <tns:LiczbaWierszySprzedazy>${sales.length + sumRows.size}</tns:LiczbaWierszySprzedazy>
             <tns:PodatekNalezny>${fmt2(sprzedazPodatekNalezny)}</tns:PodatekNalezny>
         </tns:SprzedazCtrl>
         ${purchaseRows}
