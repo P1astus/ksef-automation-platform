@@ -38,6 +38,7 @@ export default function JpkPage() {
     const [clients, setClients] = useState<Client[]>([]);
     const [selectedNip, setSelectedNip] = useState('');
     const [period, setPeriod] = useState(getPrevMonth());
+    const [correction, setCorrection] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [stats, setStats] = useState<JpkStats | null>(null);
     const [xmlBlob, setXmlBlob] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export default function JpkPage() {
             const res = await fetch('/api/jpk/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clientNip: selectedNip, period }),
+                body: JSON.stringify({ clientNip: selectedNip, period, correction }),
             });
             const data = await res.json();
             if (!res.ok) {
@@ -144,6 +145,10 @@ export default function JpkPage() {
                             style={{ width: '100%' }}
                         />
                     </div>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={correction} onChange={e => setCorrection(e.target.checked)} />
+                        Korekta (CelZłożenia = 2)
+                    </label>
                     <button
                         onClick={generate}
                         disabled={generating || !selectedNip}

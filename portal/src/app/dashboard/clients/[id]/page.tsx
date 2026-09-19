@@ -34,6 +34,10 @@ interface Client {
     city: string | null;
     postal_code: string | null;
     tax_office_code: string | null;
+    taxpayer_type: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    birth_date: string | null;
 }
 
 interface Invoice {
@@ -59,7 +63,7 @@ export default function ClientDetailPage() {
     const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string; planError?: boolean } | null>(null);
     const [togglingSync, setTogglingSync] = useState(false);
-    const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '', street: '', city: '', postal_code: '', tax_office_code: '' });
+    const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '', street: '', city: '', postal_code: '', tax_office_code: '', taxpayer_type: 'company', first_name: '', last_name: '', birth_date: '' });
     const [crmSaving, setCrmSaving] = useState(false);
     const [crmSaved, setCrmSaved] = useState(false);
     const [requestingDocs, setRequestingDocs] = useState(false);
@@ -83,6 +87,10 @@ export default function ClientDetailPage() {
                 city: data.client.city || '',
                 postal_code: data.client.postal_code || '',
                 tax_office_code: data.client.tax_office_code || '',
+                taxpayer_type: data.client.taxpayer_type || 'company',
+                first_name: data.client.first_name || '',
+                last_name: data.client.last_name || '',
+                birth_date: data.client.birth_date ? String(data.client.birth_date).slice(0, 10) : '',
             });
         } finally {
             setLoading(false);
@@ -346,6 +354,31 @@ export default function ClientDetailPage() {
                     <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kod urzędu skarbowego (JPK_V7M)</label>
                     <input value={crm.tax_office_code} onChange={e => setCrm(prev => ({ ...prev, tax_office_code: e.target.value.trim() }))} placeholder="np. 1471" inputMode="numeric" maxLength={4} style={{ width: '100%', boxSizing: 'border-box' }} />
                     {!crm.tax_office_code && <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 5 }}>Wymagany do wygenerowania pliku JPK_V7M. Podaj kod urzędu, do którego klient składa deklarację VAT.</div>}
+                </div>
+                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                    <div>
+                        <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Podatnik w JPK</label>
+                        <select value={crm.taxpayer_type} onChange={e => setCrm(prev => ({ ...prev, taxpayer_type: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box' }}>
+                            <option value="company">Osoba niefizyczna (spółka)</option>
+                            <option value="individual">Osoba fizyczna (jednoosobowa dz.)</option>
+                        </select>
+                    </div>
+                    {crm.taxpayer_type === 'individual' && (
+                        <>
+                            <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Imię</label>
+                                <input value={crm.first_name} onChange={e => setCrm(prev => ({ ...prev, first_name: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nazwisko</label>
+                                <input value={crm.last_name} onChange={e => setCrm(prev => ({ ...prev, last_name: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Data urodzenia</label>
+                                <input type="date" value={crm.birth_date} onChange={e => setCrm(prev => ({ ...prev, birth_date: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box' }} />
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
 

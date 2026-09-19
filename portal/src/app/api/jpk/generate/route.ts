@@ -27,6 +27,8 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const { clientNip, period } = body; // period: YYYY-MM
+    // correction: true files the period again as a correction (CelZlozenia=2).
+    const purpose: 1 | 2 = body.correction === true ? 2 : 1;
 
     if (!clientNip || !period || !/^\d{4}-\d{2}$/.test(period)) {
         return NextResponse.json({ error: 'Wymagane pola: clientNip, period (YYYY-MM)' }, { status: 400 });
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
 
     // Verify client belongs to firm
     const clientRes = await query(
-        'SELECT id, nip, client_name, tax_office_code, contact_email FROM clients WHERE nip = $1 AND firm_id = $2',
+        'SELECT id, nip, client_name, tax_office_code, contact_email, taxpayer_type, first_name, last_name, birth_date FROM clients WHERE nip = $1 AND firm_id = $2',
         [clientNip, session.firmId]
     );
     if (!clientRes.rows[0]) return NextResponse.json({ error: 'Klient nie znaleziony' }, { status: 404 });
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
         `SELECT id, invoice_number, issue_date, seller_name, seller_nip, buyer_name, buyer_nip,
                 net_amount, vat_amount, gross_amount, direction,
                 jpk_marker, jpk_period, jpk_correction_needed, ksef_number,
-                cost_category, invoice_lines, jpk_gtu, jpk_procedures, jpk_doc_type, jpk_import
+                cost_category, invoice_lines, jpk_gtu, jpk_procedures, jpk_doc_type, jpk_import,
+                delivery_date, ksef_acquisition_date, jpk_counterparty_country, jpk_margin_gross
          FROM invoices
          WHERE client_nip = $1 AND firm_id = $2
            AND (jpk_period = $3 OR (jpk_period IS NULL AND issue_date BETWEEN $4 AND $5))
@@ -76,9 +79,14 @@ export async function POST(request: Request) {
                 name: client.client_name || firmName,
                 taxOfficeCode: client.tax_office_code,
                 email: client.contact_email,
+                taxpayerType: client.taxpayer_type,
+                firstName: client.first_name,
+                lastName: client.last_name,
+                birthDate: client.birth_date,
             },
             period,
-            invoices
+            invoices,
+            { purpose }
         );
     } catch (err) {
         if (err instanceof JpkGenerationError) {

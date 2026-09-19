@@ -31,6 +31,9 @@ interface InvoiceData {
     jpk_procedures?: ProcedureCode[] | null;
     jpk_doc_type?: string | null;
     jpk_import?: boolean | null;
+    jpk_counterparty_country?: string | null;
+    jpk_margin_gross?: string | number | null;
+    delivery_date?: string | null;
 }
 
 // Parse simple XML key-value fields for display
@@ -57,15 +60,18 @@ function parseXmlLines(xml: string) {
 
 // Row-level JPK_V7M markers for a sales invoice - saved on their own, not
 // tied to the status buttons, since they can be corrected after a JPK run.
-function JpkMarkersPanel({ invoiceId, direction, initialGtu, initialProcedures, initialDocType, initialImport }: {
+function JpkMarkersPanel({ invoiceId, direction, initialGtu, initialProcedures, initialDocType, initialImport, initialCountry, initialMargin, initialSaleDate }: {
     invoiceId: string; direction: 'sales' | 'purchase'; initialGtu: GtuCode[]; initialProcedures: ProcedureCode[];
-    initialDocType: string; initialImport: boolean;
+    initialDocType: string; initialImport: boolean; initialCountry: string; initialMargin: string; initialSaleDate: string;
 }) {
     const isSales = direction === 'sales';
     const [gtu, setGtu] = useState<GtuCode[]>(initialGtu);
     const [procedures, setProcedures] = useState<ProcedureCode[]>(initialProcedures);
     const [docType, setDocType] = useState<string>(initialDocType);
     const [isImport, setIsImport] = useState<boolean>(initialImport);
+    const [country, setCountry] = useState<string>(initialCountry);
+    const [margin, setMargin] = useState<string>(initialMargin);
+    const [saleDate, setSaleDate] = useState<string>(initialSaleDate);
     const docTypes: readonly string[] = isSales ? SALES_DOC_TYPES : PURCHASE_DOC_TYPES;
     const docLabels: Record<string, string> = isSales ? SALES_DOC_TYPE_LABELS : PURCHASE_DOC_TYPE_LABELS;
     const [saving, setSaving] = useState(false);
@@ -78,7 +84,12 @@ function JpkMarkersPanel({ invoiceId, direction, initialGtu, initialProcedures, 
             const res = await fetch(`/api/invoices/${invoiceId}/jpk-markers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(isSales ? { gtu, procedures, docType } : { docType, import: isImport }),
+                body: JSON.stringify({
+                    ...(isSales ? { gtu, procedures, docType } : { docType, import: isImport }),
+                    counterpartyCountry: country.trim().toUpperCase(),
+                    marginGross: margin.trim(),
+                    ...(isSales ? { saleDate } : {}),
+                }),
             });
             const d = await res.json().catch(() => ({}));
             setMessage(res.ok ? { ok: true, text: 'Zapisano. Wygeneruj JPK ponownie, aby uwzględnić zmiany.' } : { ok: false, text: d.error || 'Błąd zapisu' });
@@ -101,6 +112,20 @@ function JpkMarkersPanel({ invoiceId, direction, initialGtu, initialProcedures, 
                         {docTypes.map(c => <option key={c} value={c}>{c} - {docLabels[c]}</option>)}
                     </select>
                 </label>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                    <span>Kraj kontrahenta (KodKrajuNadaniaTIN, tylko zagraniczny)</span>
+                    <input value={country} disabled={saving} maxLength={2} placeholder="np. DE" onChange={e => setCountry(e.target.value)} style={{ width: 60 }} />
+                </label>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                    <span>{isSales ? 'SprzedazVAT_Marza (brutto, procedura marży MR_T/MR_UZ)' : 'ZakupVAT_Marza (brutto, nabycie w procedurze marży)'}</span>
+                    <input value={margin} disabled={saving} inputMode="decimal" placeholder="0.00" onChange={e => setMargin(e.target.value)} style={{ width: 110 }} />
+                </label>
+                {isSales && (
+                    <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                        <span>Data sprzedaży (DataSprzedazy, jeśli inna niż wystawienia)</span>
+                        <input type="date" value={saleDate} disabled={saving} onChange={e => setSaleDate(e.target.value)} />
+                    </label>
+                )}
                 {!isSales && (
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
                         <input type="checkbox" checked={isImport} disabled={saving} onChange={e => setIsImport(e.target.checked)} />
@@ -320,6 +345,9 @@ export default function InvoicePreviewPage() {
                     initialProcedures={invoice.jpk_procedures ?? []}
                     initialDocType={invoice.jpk_doc_type ?? ''}
                     initialImport={!!invoice.jpk_import}
+                    initialCountry={invoice.jpk_counterparty_country ?? ''}
+                    initialMargin={invoice.jpk_margin_gross != null ? String(invoice.jpk_margin_gross) : ''}
+                    initialSaleDate={invoice.delivery_date ? String(invoice.delivery_date).slice(0, 10) : ''}
                 />
             )}
 

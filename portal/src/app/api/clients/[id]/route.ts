@@ -68,8 +68,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         body.tax_office_code = code;
     }
 
+    // Taxpayer identity for JPK Podmiot1: a sole trader (individual) is filed as
+    // OsobaFizyczna and needs first name, surname and date of birth.
+    if ('taxpayer_type' in body && body.taxpayer_type !== 'company' && body.taxpayer_type !== 'individual') {
+        return NextResponse.json({ error: 'Nieprawidłowy typ podatnika' }, { status: 400 });
+    }
+    if ('birth_date' in body) {
+        const d = body.birth_date === '' ? null : body.birth_date;
+        if (d !== null && !(typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)))) {
+            return NextResponse.json({ error: 'Data urodzenia: oczekiwano RRRR-MM-DD' }, { status: 400 });
+        }
+        body.birth_date = d;
+    }
+    for (const f of ['first_name', 'last_name'] as const) {
+        if (f in body && body[f] === '') body[f] = null;
+    }
+
     // CRM + address fields update
-    const crmFields = ['contact_person', 'contact_email', 'contact_phone', 'notes', 'tags', 'street', 'city', 'postal_code', 'tax_office_code'] as const;
+    const crmFields = ['contact_person', 'contact_email', 'contact_phone', 'notes', 'tags', 'street', 'city', 'postal_code', 'tax_office_code', 'taxpayer_type', 'first_name', 'last_name', 'birth_date'] as const;
     const crmUpdates = crmFields.filter(f => f in body);
     if (crmUpdates.length > 0) {
         const sets = crmUpdates.map((f, i) => `${f} = $${i + 1}`).join(', ');

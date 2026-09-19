@@ -50,7 +50,7 @@ describe('normalizeJpkMarkers', () => {
 
 describe('generateJpkV7M row markers', () => {
     it('emits <tns:CODE>1</tns:CODE> in schema order, before the K_ fields', () => {
-        const xml = generateJpkV7M(firm, '2026-09', [sale({ jpk_gtu: ['GTU_12', 'GTU_01'], jpk_procedures: ['TP', 'MR_UZ'] })]);
+        const xml = generateJpkV7M(firm, '2026-09', [sale({ jpk_gtu: ['GTU_12', 'GTU_01'], jpk_procedures: ['TP', 'MR_UZ'], jpk_margin_gross: 123 })]);
         const order = ['GTU_01', 'GTU_12', 'TP', 'MR_UZ', 'K_19'].map(c => xml.indexOf(`<tns:${c}>`));
         expect(order.every(i => i > 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -115,6 +115,29 @@ describe('PATCH /api/invoices/[id]/jpk-markers', () => {
         queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] });
         expect((await call({ docType: 'MK' })).status).toBe(400);
         expect(queryMock).toHaveBeenCalledTimes(1); // lookup only, no UPDATE
+    });
+    it('saves country, margin and sale date in one UPDATE, only for the keys sent', async () => {
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] }).mockResolvedValueOnce({ rows: [] });
+        const res = await call({ counterpartyCountry: 'DE', marginGross: '99.5', saleDate: '2026-02-01' });
+        expect(res.status).toBe(200);
+        const [sql, args] = queryMock.mock.calls[1];
+        expect(sql).toMatch(/SET jpk_counterparty_country = \$1, jpk_margin_gross = \$2, delivery_date = \$3 WHERE id = \$4 AND firm_id = \$5/);
+        expect(args).toEqual(['DE', 99.5, '2026-02-01', '7', 1]);
+    });
+    it('an extras-only request does not touch GTU / procedures / document type', async () => {
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] }).mockResolvedValueOnce({ rows: [] });
+        expect((await call({ counterpartyCountry: 'FR' })).status).toBe(200);
+        expect(queryMock).toHaveBeenCalledTimes(2); // lookup + the extras UPDATE, no marker UPDATE
+        expect(queryMock.mock.calls[1][0]).toMatch(/SET jpk_counterparty_country = \$1 WHERE/);
+        expect(queryMock.mock.calls[1][0]).not.toMatch(/jpk_gtu/);
+    });
+    it('rejects an unknown country, a negative margin, a bad date, and a sale date on a purchase', async () => {
+        for (const [dir, body] of [['sales', { counterpartyCountry: 'ZZ' }], ['sales', { marginGross: -1 }], ['sales', { saleDate: '01.02.2026' }], ['purchase', { saleDate: '2026-02-01' }]] as const) {
+            queryMock.mockClear();
+            queryMock.mockResolvedValueOnce({ rows: [{ direction: dir }] });
+            expect((await call(body)).status).toBe(400);
+            expect(queryMock).toHaveBeenCalledTimes(1); // lookup only, nothing written
+        }
     });
     it('sets DokumentZakupu and IMP on a purchase invoice; refuses GTU/procedures and IMP on the wrong side', async () => {
         queryMock.mockResolvedValueOnce({ rows: [{ direction: 'purchase' }] }).mockResolvedValueOnce({ rows: [] });

@@ -2,6 +2,7 @@ import { sumLinesByRate, type InvoiceLine, type VatRateCode } from './ksef-invoi
 import { mapVatColumns } from './vat-mapper';
 import { normalizeJpkMarkers, normalizeJpkDocType } from './jpk-markers';
 import { isValidTaxOfficeCode } from './tax-office-codes';
+import { isValidCountryCode } from './country-codes';
 
 // Namespace and structure of JPK_V7M(3), schema v1-0E (mandatory from the
 // 2026-02 period). Taken from the official XSD, vendored in
@@ -38,6 +39,17 @@ export interface JpkFirmData {
     // Podmiot1/Email - the taxpayer's e-mail; required by the schema
     // (clients.contact_email).
     email?: string | null;
+    // Podmiot1 is OsobaNiefizyczna (default) or, for a sole trader, OsobaFizyczna,
+    // which the schema wants with first name, surname and date of birth.
+    taxpayerType?: 'company' | 'individual' | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    birthDate?: string | Date | null;
+}
+
+export interface JpkOptions {
+    // CelZlozenia: 1 = first filing (default), 2 = correction of a filed period.
+    purpose?: 1 | 2;
 }
 
 export interface JpkInvoiceRow {
@@ -76,6 +88,16 @@ export interface JpkInvoiceRow {
     jpk_doc_type?: string | null;
     // Purchase-side IMP flag (import of goods).
     jpk_import?: boolean | null;
+    // DataSprzedazy (sales): date of supply when it differs from the issue date.
+    delivery_date?: string | Date | null;
+    // Purchases: when the document was received. For a KSeF invoice that is the
+    // moment KSeF assigned its number; DataWplywu is written only if that day
+    // differs from the purchase date.
+    ksef_acquisition_date?: string | Date | null;
+    // KodKrajuNadaniaTIN: country that issued a foreign contractor's tax number.
+    jpk_counterparty_country?: string | null;
+    // SprzedazVAT_Marza / ZakupVAT_Marza: gross value under the margin scheme.
+    jpk_margin_gross?: number | string | null;
 }
 
 function esc(s: string | undefined | null): string {
@@ -108,6 +130,25 @@ function fmtDate(v: string | Date | null | undefined): string {
         return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
     }
     return String(v).slice(0, 10);
+}
+
+// A timestamptz as the Polish calendar day it fell on. Not the server's local
+// day (the portal container runs in UTC): a KSeF number assigned at 23:30 on
+// the 31st must not become the 1st of the next month in the register.
+function warsawDate(v: string | Date | null | undefined): string {
+    if (!v) return '';
+    const d = v instanceof Date ? v : new Date(v);
+    if (Number.isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
+// KodKrajuNadaniaTIN + NrKontrahenta. The number is written WITHOUT the
+// country prefix (broszura); a Polish contractor gets no country element.
+function contractorTin(nip: string | undefined | null, country: string | null | undefined): { country: string; number: string } {
+    const cleaned = String(nip ?? '').replace(/[\s-]/g, '');
+    const code = country && country !== 'PL' ? country : '';
+    const number = code && cleaned.toUpperCase().startsWith(code) ? cleaned.slice(code.length) : cleaned;
+    return { country: code, number: number || 'BRAK' };
 }
 
 // Ewidencja sprzedaży (K_10-K_36) field pair per VAT rate, confirmed
@@ -158,13 +199,6 @@ function salesContribution(inv: JpkInvoiceRow): Partial<Record<string, number>> 
     return contrib;
 }
 
-// Contractor number: digits/letters only, "BRAK" when there is none (the
-// broszura's instruction for NrKontrahenta / NazwaKontrahenta).
-function contractorId(nip: string | undefined | null): string {
-    const cleaned = String(nip ?? '').replace(/[\s-]/g, '');
-    return cleaned || 'BRAK';
-}
-
 // Every register row must carry exactly one of NrKSeF / OFF / BFK / DI.
 // A KSeF number the invoice already has wins (NrKSeF is "filled when on the
 // filing date the invoice has a number"); otherwise the stored marker. An
@@ -194,7 +228,8 @@ function ksefReference(inv: JpkInvoiceRow, problems: string[]): string {
 export function generateJpkV7M(
     firm: JpkFirmData,
     period: string, // YYYY-MM
-    invoices: JpkInvoiceRow[]
+    invoices: JpkInvoiceRow[],
+    options: JpkOptions = {}
 ): string {
     const [year, month] = period.split('-');
     const periodStart = `${year}-${month}-01`;
@@ -206,6 +241,11 @@ export function generateJpkV7M(
     }
     if (!isValidTaxOfficeCode(firm.taxOfficeCode)) {
         problems.push('brak prawidłowego kodu urzędu skarbowego klienta (4 cyfry z listy MF)');
+    }
+    if (firm.taxpayerType === 'individual') {
+        if (!firm.firstName?.trim() || !firm.lastName?.trim() || !fmtDate(firm.birthDate)) {
+            problems.push('podatnik będący osobą fizyczną wymaga imienia, nazwiska i daty urodzenia');
+        }
     }
     if (!EMAIL_RE.test(firm.email ?? '')) {
         problems.push('brak adresu e-mail podatnika (wymagany w Podmiot1) - uzupełnij e-mail kontaktowy klienta');
@@ -231,6 +271,20 @@ export function generateJpkV7M(
             .map(code => `            <tns:${code}>1</tns:${code}>`)
             .join('\n');
         const docType = normalizeJpkDocType(inv.jpk_doc_type, 'sales');
+        const tin = contractorTin(inv.buyer_nip, inv.jpk_counterparty_country);
+        if (inv.jpk_counterparty_country && !isValidCountryCode(inv.jpk_counterparty_country)) {
+            problems.push(`faktura ${inv.invoice_number}: nieznany kod kraju ${inv.jpk_counterparty_country}`);
+        }
+        const saleDate = fmtDate(inv.delivery_date);
+        const isMargin = markers.procedures.includes('MR_T') || markers.procedures.includes('MR_UZ');
+        const margin = inv.jpk_margin_gross === null || inv.jpk_margin_gross === undefined || inv.jpk_margin_gross === '' ? null : num(inv.jpk_margin_gross);
+        if (isMargin && margin === null) {
+            problems.push(`faktura ${inv.invoice_number}: oznaczenie MR_T/MR_UZ wymaga wartości brutto sprzedaży na zasadach marży (SprzedazVAT_Marza)`);
+        }
+        if (!isMargin && margin !== null) {
+            problems.push(`faktura ${inv.invoice_number}: wartość marży bez oznaczenia MR_T/MR_UZ`);
+        }
+        const marginXml = margin !== null ? `\n            <tns:SprzedazVAT_Marza>${fmt2(margin)}</tns:SprzedazVAT_Marza>` : '';
         const kFieldsXml = SALES_FIELD_ORDER
             .filter(field => contrib[field] !== undefined)
             .map(field => `            <tns:${field}>${fmt2(contrib[field]!)}</tns:${field}>`)
@@ -238,12 +292,12 @@ export function generateJpkV7M(
         return `
         <tns:SprzedazWiersz>
             <tns:LpSprzedazy>${idx + 1}</tns:LpSprzedazy>
-            <tns:NrKontrahenta>${esc(contractorId(inv.buyer_nip))}</tns:NrKontrahenta>
+${tin.country ? `            <tns:KodKrajuNadaniaTIN>${tin.country}</tns:KodKrajuNadaniaTIN>\n` : ''}            <tns:NrKontrahenta>${esc(tin.number)}</tns:NrKontrahenta>
             <tns:NazwaKontrahenta>${esc(inv.buyer_name) || 'BRAK'}</tns:NazwaKontrahenta>
             <tns:DowodSprzedazy>${esc(prefix + inv.invoice_number)}</tns:DowodSprzedazy>
             <tns:DataWystawienia>${fmtDate(inv.issue_date) || periodStart}</tns:DataWystawienia>
-            ${ksefReference(inv, problems)}
-${docType ? `            <tns:TypDokumentu>${docType}</tns:TypDokumentu>\n` : ''}${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
+${saleDate && saleDate !== fmtDate(inv.issue_date) ? `            <tns:DataSprzedazy>${saleDate}</tns:DataSprzedazy>\n` : ''}            ${ksefReference(inv, problems)}
+${docType ? `            <tns:TypDokumentu>${docType}</tns:TypDokumentu>\n` : ''}${markersXml ? markersXml + '\n' : ''}${kFieldsXml}${marginXml}
         </tns:SprzedazWiersz>`;
     }).join('');
 
@@ -261,16 +315,23 @@ ${docType ? `            <tns:TypDokumentu>${docType}</tns:TypDokumentu>\n` : ''
         purchaseTotals[netField] = round2(purchaseTotals[netField] + net);
         purchaseTotals[vatField] = round2(purchaseTotals[vatField] + vat);
         const docType = normalizeJpkDocType(inv.jpk_doc_type, 'purchase');
+        const tin = contractorTin(inv.seller_nip, inv.jpk_counterparty_country);
+        if (inv.jpk_counterparty_country && !isValidCountryCode(inv.jpk_counterparty_country)) {
+            problems.push(`faktura ${inv.invoice_number}: nieznany kod kraju ${inv.jpk_counterparty_country}`);
+        }
+        const purchaseDate = fmtDate(inv.issue_date) || periodStart;
+        const receivedDate = warsawDate(inv.ksef_acquisition_date);
+        const purchaseMargin = inv.jpk_margin_gross === null || inv.jpk_margin_gross === undefined || inv.jpk_margin_gross === '' ? null : num(inv.jpk_margin_gross);
         return `
         <tns:ZakupWiersz>
             <tns:LpZakupu>${idx + 1}</tns:LpZakupu>
-            <tns:NrDostawcy>${esc(contractorId(inv.seller_nip))}</tns:NrDostawcy>
+${tin.country ? `            <tns:KodKrajuNadaniaTIN>${tin.country}</tns:KodKrajuNadaniaTIN>\n` : ''}            <tns:NrDostawcy>${esc(tin.number)}</tns:NrDostawcy>
             <tns:NazwaDostawcy>${esc(inv.seller_name) || 'BRAK'}</tns:NazwaDostawcy>
             <tns:DowodZakupu>${esc(inv.invoice_number)}</tns:DowodZakupu>
-            <tns:DataZakupu>${fmtDate(inv.issue_date) || periodStart}</tns:DataZakupu>
-            ${ksefReference(inv, problems)}
+            <tns:DataZakupu>${purchaseDate}</tns:DataZakupu>
+${receivedDate && receivedDate !== purchaseDate ? `            <tns:DataWplywu>${receivedDate}</tns:DataWplywu>\n` : ''}            ${ksefReference(inv, problems)}
 ${docType ? `            <tns:DokumentZakupu>${docType}</tns:DokumentZakupu>\n` : ''}${inv.jpk_import ? '            <tns:IMP>1</tns:IMP>\n' : ''}            <tns:${netField}>${fmt2(net)}</tns:${netField}>
-            <tns:${vatField}>${fmt2(vat)}</tns:${vatField}>
+            <tns:${vatField}>${fmt2(vat)}</tns:${vatField}>${purchaseMargin !== null ? `\n            <tns:ZakupVAT_Marza>${fmt2(purchaseMargin)}</tns:ZakupVAT_Marza>` : ''}
         </tns:ZakupWiersz>`;
     }).join('');
 
@@ -387,6 +448,23 @@ ${docType ? `            <tns:DokumentZakupu>${docType}</tns:DokumentZakupu>\n` 
         .map(([name, value]) => `            <tns:${name}>${value}</tns:${name}>`)
         .join('\n');
 
+    // Company: tns-namespaced identity elements. Sole trader: the shared etd
+    // identity type (NIP, first name, surname, date of birth) followed by the
+    // tns:Email - both orders are dictated by the XSD.
+    const podmiotXml = firm.taxpayerType === 'individual'
+        ? `        <tns:OsobaFizyczna>
+            <etd:NIP>${firm.nip}</etd:NIP>
+            <etd:ImiePierwsze>${esc(firm.firstName?.trim())}</etd:ImiePierwsze>
+            <etd:Nazwisko>${esc(firm.lastName?.trim())}</etd:Nazwisko>
+            <etd:DataUrodzenia>${fmtDate(firm.birthDate)}</etd:DataUrodzenia>
+            <tns:Email>${esc(firm.email)}</tns:Email>
+        </tns:OsobaFizyczna>`
+        : `        <tns:OsobaNiefizyczna>
+            <tns:NIP>${firm.nip}</tns:NIP>
+            <tns:PelnaNazwa>${esc(firm.fullName || firm.name)}</tns:PelnaNazwa>
+            <tns:Email>${esc(firm.email)}</tns:Email>
+        </tns:OsobaNiefizyczna>`;
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <tns:JPK xmlns:tns="${JPK_NAMESPACE}"
          xmlns:etd="${ETD_NAMESPACE}"
@@ -397,18 +475,14 @@ ${docType ? `            <tns:DokumentZakupu>${docType}</tns:DokumentZakupu>\n` 
         <tns:WariantFormularza>3</tns:WariantFormularza>
         <tns:DataWytworzeniaJPK>${now}</tns:DataWytworzeniaJPK>
         <tns:NazwaSystemu>KSeF Auto v1.0</tns:NazwaSystemu>
-        <tns:CelZlozenia poz="P_7">1</tns:CelZlozenia>
+        <tns:CelZlozenia poz="P_7">${options.purpose === 2 ? 2 : 1}</tns:CelZlozenia>
         <tns:KodUrzedu>${firm.taxOfficeCode}</tns:KodUrzedu>
         <tns:Rok>${year}</tns:Rok>
         <tns:Miesiac>${parseInt(month)}</tns:Miesiac>
     </tns:Naglowek>
 
     <tns:Podmiot1 rola="Podatnik">
-        <tns:OsobaNiefizyczna>
-            <tns:NIP>${firm.nip}</tns:NIP>
-            <tns:PelnaNazwa>${esc(firm.fullName || firm.name)}</tns:PelnaNazwa>
-            <tns:Email>${esc(firm.email)}</tns:Email>
-        </tns:OsobaNiefizyczna>
+${podmiotXml}
     </tns:Podmiot1>
 
     <tns:Deklaracja>

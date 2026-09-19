@@ -3,6 +3,7 @@ import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { requireActiveSubscription } from '@/lib/entitlements';
+import { isValidCountryCode } from '@/lib/country-codes';
 import { normalizeJpkMarkers, normalizeJpkDocType, InvalidJpkMarkerError } from '@/lib/jpk-markers';
 
 // Sets the row-level JPK_V7M(3) markers on an invoice.
@@ -55,12 +56,48 @@ export async function PATCH(
         if (err instanceof InvalidJpkMarkerError) return NextResponse.json({ error: err.message }, { status: 400 });
         throw err;
     }
+    // Optional extras - only touched when present in the body, so the checkbox
+    // panel and the extras form can save independently.
+    const extras: string[] = [];
+    const extraArgs: unknown[] = [];
+    if ('counterpartyCountry' in body) {
+        const c = body.counterpartyCountry === '' ? null : body.counterpartyCountry;
+        if (c !== null && !isValidCountryCode(c)) return NextResponse.json({ error: 'Nieprawidłowy kod kraju kontrahenta' }, { status: 400 });
+        extraArgs.push(c); extras.push(`jpk_counterparty_country = $${extraArgs.length}`);
+    }
+    if ('marginGross' in body) {
+        const raw = body.marginGross;
+        const m = raw === '' || raw === null ? null : Number(raw);
+        if (m !== null && (!Number.isFinite(m) || m < 0)) return NextResponse.json({ error: 'Wartość marży musi być liczbą nieujemną' }, { status: 400 });
+        extraArgs.push(m); extras.push(`jpk_margin_gross = $${extraArgs.length}`);
+    }
+    if ('saleDate' in body) {
+        if (direction !== 'sales') return NextResponse.json({ error: 'Data sprzedaży dotyczy wyłącznie faktur sprzedaży' }, { status: 400 });
+        const d = body.saleDate === '' ? null : body.saleDate;
+        if (d !== null && !(typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)))) {
+            return NextResponse.json({ error: 'Data sprzedaży: oczekiwano RRRR-MM-DD' }, { status: 400 });
+        }
+        extraArgs.push(d); extras.push(`delivery_date = $${extraArgs.length}`);
+    }
+
     const isImport = direction === 'purchase' && body.import === true;
 
-    await query(
-        'UPDATE invoices SET jpk_gtu = $1, jpk_procedures = $2, jpk_doc_type = $3, jpk_import = $4 WHERE id = $5 AND firm_id = $6',
-        [markers.gtu, markers.procedures, docType, isImport, id, session.firmId]
-    );
+    // The marker set is replaced wholesale when any marker key is sent (the
+    // preview panel always sends the full set), but a request carrying ONLY the
+    // extras must not wipe GTU/procedures/document type it never mentioned.
+    const touchesMarkers = ['gtu', 'procedures', 'docType', 'import'].some(k => k in body) || extras.length === 0;
+    if (touchesMarkers) {
+        await query(
+            'UPDATE invoices SET jpk_gtu = $1, jpk_procedures = $2, jpk_doc_type = $3, jpk_import = $4 WHERE id = $5 AND firm_id = $6',
+            [markers.gtu, markers.procedures, docType, isImport, id, session.firmId]
+        );
+    }
+    if (extras.length > 0) {
+        await query(
+            `UPDATE invoices SET ${extras.join(', ')} WHERE id = $${extraArgs.length + 1} AND firm_id = $${extraArgs.length + 2}`,
+            [...extraArgs, id, session.firmId]
+        );
+    }
     await logActivity(
         session.firmId,
         'jpk_markers_updated',

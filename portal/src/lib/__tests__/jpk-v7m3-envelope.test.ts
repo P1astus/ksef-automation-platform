@@ -195,3 +195,78 @@ describe('document-type markers and tax office codes', () => {
         expect(isValidTaxOfficeCode(undefined)).toBe(false);
     });
 });
+
+describe.skipIf(!hasXmllint)('remaining optional JPK_V7M(3) inputs validate against the official XSD', () => {
+    const individual = { ...firm, taxpayerType: 'individual' as const, firstName: 'Jan', lastName: 'Kowalski', birthDate: '1980-05-17' };
+
+    it('a sole trader is written as OsobaFizyczna (NIP, name, surname, birth date, then Email)', () => {
+        const xml = generateJpkV7M(individual, '2026-02', [sale()]);
+        expect(xml).toContain('<tns:OsobaFizyczna>');
+        expect(xml).toContain('<etd:DataUrodzenia>1980-05-17</etd:DataUrodzenia>');
+        expect(xml).not.toContain('OsobaNiefizyczna');
+        const r = validate(xml);
+        expect(r.output).toContain('validates');
+    });
+
+    it('a correction filing carries CelZlozenia 2', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [sale()], { purpose: 2 });
+        expect(xml).toContain('<tns:CelZlozenia poz="P_7">2</tns:CelZlozenia>');
+        expect(validate(xml).ok).toBe(true);
+        expect(generateJpkV7M(firm, '2026-02', [sale()])).toContain('<tns:CelZlozenia poz="P_7">1</tns:CelZlozenia>');
+    });
+
+    it('foreign contractors get KodKrajuNadaniaTIN and a number without the prefix', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [
+            sale({ buyer_nip: 'DE 123456789', jpk_counterparty_country: 'DE' }),
+            purchase({ seller_nip: 'EL123456789', jpk_counterparty_country: 'EL' }),
+            sale({ id: 5, invoice_number: 'FV/PL', jpk_counterparty_country: 'PL' }),
+        ]);
+        expect(xml).toContain('<tns:KodKrajuNadaniaTIN>DE</tns:KodKrajuNadaniaTIN>');
+        expect(xml).toContain('<tns:NrKontrahenta>123456789</tns:NrKontrahenta>');
+        expect(xml).toContain('<tns:KodKrajuNadaniaTIN>EL</tns:KodKrajuNadaniaTIN>');
+        expect((xml.match(/KodKrajuNadaniaTIN>/g) || []).length).toBe(4); // DE and EL only, never PL
+        expect(validate(xml).ok).toBe(true);
+    });
+
+    it('an unknown country code is refused', () => {
+        expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_counterparty_country: 'ZZ' })])).toThrow(JpkGenerationError);
+    });
+
+    it('DataSprzedazy only when the supply date differs from the issue date', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [
+            sale({ delivery_date: '2026-02-01' }),
+            sale({ id: 6, invoice_number: 'FV/SAME', delivery_date: '2026-02-05' }),
+        ]);
+        expect(xml).toContain('<tns:DataSprzedazy>2026-02-01</tns:DataSprzedazy>');
+        expect((xml.match(/<tns:DataSprzedazy>/g) || []).length).toBe(1);
+        expect(validate(xml).ok).toBe(true);
+    });
+
+    it('DataWplywu comes from the KSeF acquisition instant in Polish time, only when it differs', () => {
+        // 2026-02-28T23:30Z is already 1 March in Warsaw (UTC+1).
+        const late = generateJpkV7M(firm, '2026-02', [purchase({ issue_date: '2026-02-27', ksef_acquisition_date: new Date('2026-02-28T23:30:00Z') })]);
+        expect(late).toContain('<tns:DataWplywu>2026-03-01</tns:DataWplywu>');
+        const same = generateJpkV7M(firm, '2026-02', [purchase({ issue_date: '2026-02-10', ksef_acquisition_date: new Date('2026-02-10T09:00:00Z') })]);
+        expect(same).not.toContain('DataWplywu');
+        expect(validate(late).ok).toBe(true);
+    });
+
+    it('margin-scheme rows carry SprzedazVAT_Marza / ZakupVAT_Marza; MR_T/MR_UZ without an amount is refused', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [
+            sale({ jpk_procedures: ['MR_UZ'], jpk_margin_gross: 1230.5 }),
+            purchase({ jpk_margin_gross: 800 }),
+        ]);
+        expect(xml).toContain('<tns:SprzedazVAT_Marza>1230.50</tns:SprzedazVAT_Marza>');
+        expect(xml).toContain('<tns:ZakupVAT_Marza>800.00</tns:ZakupVAT_Marza>');
+        expect(validate(xml).ok).toBe(true);
+        expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_procedures: ['MR_T'] })])).toThrow(/SprzedazVAT_Marza/);
+        expect(() => generateJpkV7M(firm, '2026-02', [sale({ jpk_margin_gross: 10 })])).toThrow(/bez oznaczenia/);
+    });
+});
+
+describe('sole-trader taxpayer needs identity data', () => {
+    it('is refused without name, surname or birth date', () => {
+        const bad = { ...firm, taxpayerType: 'individual' as const, firstName: 'Jan', lastName: '', birthDate: null };
+        expect(() => generateJpkV7M(bad, '2026-02', [])).toThrow(/imienia, nazwiska i daty urodzenia/);
+    });
+});
