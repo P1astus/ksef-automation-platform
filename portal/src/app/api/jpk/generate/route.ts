@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireActiveSubscription } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { generateJpkV7M } from '@/lib/jpk-generator';
+import { generateJpkV7M, JpkGenerationError } from '@/lib/jpk-generator';
+import { InvalidJpkMarkerError } from '@/lib/jpk-markers';
 import { logActivity } from '@/lib/activity';
 
 // Mirrors workflows/06-jpk-vat-preparation.json's "UPSERT JPK Preparation" node:
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
 
     // Verify client belongs to firm
     const clientRes = await query(
-        'SELECT id, nip, client_name FROM clients WHERE nip = $1 AND firm_id = $2',
+        'SELECT id, nip, client_name, tax_office_code, contact_email FROM clients WHERE nip = $1 AND firm_id = $2',
         [clientNip, session.firmId]
     );
     if (!clientRes.rows[0]) return NextResponse.json({ error: 'Klient nie znaleziony' }, { status: 404 });
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
         `SELECT id, invoice_number, issue_date, seller_name, seller_nip, buyer_name, buyer_nip,
                 net_amount, vat_amount, gross_amount, direction,
                 jpk_marker, jpk_period, jpk_correction_needed, ksef_number,
-                cost_category, invoice_lines, jpk_gtu, jpk_procedures
+                cost_category, invoice_lines, jpk_gtu, jpk_procedures, jpk_doc_type, jpk_import
          FROM invoices
          WHERE client_nip = $1 AND firm_id = $2
            AND (jpk_period = $3 OR (jpk_period IS NULL AND issue_date BETWEEN $4 AND $5))
@@ -64,11 +65,33 @@ export async function POST(request: Request) {
     const invoices = invRes.rows;
 
     // Generate XML
-    const xml = generateJpkV7M(
-        { nip: client.nip, name: client.client_name || firmName },
-        period,
-        invoices
-    );
+    // A file that can't be made valid (no tax office, an invoice with neither a
+    // KSeF number nor OFF/BFK/DI, ...) is refused with the full list, before
+    // anything is recorded or marked exported - never emitted half-right.
+    let xml: string;
+    try {
+        xml = generateJpkV7M(
+            {
+                nip: client.nip,
+                name: client.client_name || firmName,
+                taxOfficeCode: client.tax_office_code,
+                email: client.contact_email,
+            },
+            period,
+            invoices
+        );
+    } catch (err) {
+        if (err instanceof JpkGenerationError) {
+            return NextResponse.json(
+                { error: `Nie można wygenerować JPK_V7M: ${err.problems.join('; ')}`, problems: err.problems },
+                { status: 422 }
+            );
+        }
+        if (err instanceof InvalidJpkMarkerError) {
+            return NextResponse.json({ error: `Nie można wygenerować JPK_V7M: ${err.message}` }, { status: 422 });
+        }
+        throw err;
+    }
 
     // Save to jpk_preparations history. The XML itself was already generated
     // above and is the primary deliverable - a failure here is a real

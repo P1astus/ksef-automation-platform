@@ -42,7 +42,7 @@ describe('jpk/generate POST writes the computed status, not a hardcoded value', 
     it('inserts status=correction_needed when the fetched invoices include a BFK marker', async () => {
         vi.resetModules();
         const queryMock = vi.fn(async (sql: string, _params?: unknown[]) => {
-            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1234567890', client_name: 'Acme' }] };
+            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1234567890', client_name: 'Acme', tax_office_code: '1471', contact_email: 'acme@example.com' }] };
             if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
             if (sql.includes('FROM invoices')) {
                 return {
@@ -63,7 +63,7 @@ describe('jpk/generate POST writes the computed status, not a hardcoded value', 
         const { POST } = await import('@/app/api/jpk/generate/route');
         const res = await POST(new Request('http://localhost/api/jpk/generate', {
             method: 'POST',
-            body: JSON.stringify({ clientNip: '1234567890', period: '2026-01' }),
+            body: JSON.stringify({ clientNip: '1234567890', period: '2026-02' }),
         }));
         expect(res.status).toBe(200);
 

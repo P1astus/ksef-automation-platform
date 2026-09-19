@@ -21,10 +21,10 @@ vi.mock('@/lib/entitlements', () => ({
 const queryMock = vi.fn(async (..._args: any[]) => ({ rows: [] as any[] }));
 vi.mock('@/lib/db', () => ({ query: (...args: any[]) => queryMock(...args) }));
 
-const firm = { nip: '1234567890', name: 'Firm' };
+const firm = { nip: '1234567890', name: 'Firm', taxOfficeCode: '1471', email: 'klient@example.com' };
 const sale = (over: Partial<JpkInvoiceRow> = {}): JpkInvoiceRow => ({
     id: 1, invoice_number: 'S-1', issue_date: '2026-09-05', seller_name: 'Firm', buyer_name: 'B', buyer_nip: '1111111111',
-    net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', ...over,
+    net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', jpk_marker: 'OFF', ...over,
 });
 
 describe('normalizeJpkMarkers', () => {
@@ -67,7 +67,7 @@ describe('generateJpkV7M row markers', () => {
         expect((xml.match(/<tns:GTU_07>/g) || []).length).toBe(1);
     });
     it('never puts sales markers on purchase rows', () => {
-        const xml = generateJpkV7M(firm, '2026-09', [sale({ id: 3, direction: 'purchase', seller_nip: '2222222222', jpk_gtu: ['GTU_07'], jpk_procedures: ['TP'] })]);
+        const xml = generateJpkV7M(firm, '2026-09', [sale({ id: 3, direction: 'purchase', jpk_marker: 'OFF', seller_nip: '2222222222', jpk_gtu: ['GTU_07'], jpk_procedures: ['TP'] })]);
         expect(xml).not.toContain('<tns:GTU_07>');
         expect(xml).not.toContain('<tns:TP>');
     });
@@ -95,17 +95,38 @@ describe('PATCH /api/invoices/[id]/jpk-markers', () => {
         expect(queryMock.mock.calls[0][1]).toEqual(['7', 1]);
     });
     it('400s for a purchase invoice', async () => {
-        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'purchase' }] });
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'purchase', jpk_marker: 'OFF' }] });
         expect((await call({ gtu: ['GTU_01'] })).status).toBe(400);
         expect(queryMock).toHaveBeenCalledTimes(1);
     });
     it('updates a sales invoice, scoped by firm', async () => {
-        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] }).mockResolvedValueOnce({ rows: [] });
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales', jpk_marker: 'OFF' }] }).mockResolvedValueOnce({ rows: [] });
         const res = await call({ gtu: ['GTU_10'], procedures: ['TT_D'] });
         expect(res.status).toBe(200);
         const [sql, args] = queryMock.mock.calls[1];
-        expect(sql).toMatch(/UPDATE invoices SET jpk_gtu = \$1, jpk_procedures = \$2 WHERE id = \$3 AND firm_id = \$4/);
-        expect(args).toEqual([['GTU_10'], ['TT_D'], '7', 1]);
+        expect(sql).toMatch(/UPDATE invoices SET jpk_gtu = \$1, jpk_procedures = \$2, jpk_doc_type = \$3, jpk_import = \$4 WHERE id = \$5 AND firm_id = \$6/);
+        expect(args).toEqual([['GTU_10'], ['TT_D'], null, false, '7', 1]);
+    });
+    it('sets TypDokumentu on a sales invoice, and refuses a purchase-only code there', async () => {
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] }).mockResolvedValueOnce({ rows: [] });
+        expect((await call({ docType: 'FP' })).status).toBe(200);
+        expect(queryMock.mock.calls[1][1]).toEqual([[], [], 'FP', false, '7', 1]);
+        queryMock.mockClear();
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] });
+        expect((await call({ docType: 'MK' })).status).toBe(400);
+        expect(queryMock).toHaveBeenCalledTimes(1); // lookup only, no UPDATE
+    });
+    it('sets DokumentZakupu and IMP on a purchase invoice; refuses GTU/procedures and IMP on the wrong side', async () => {
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'purchase' }] }).mockResolvedValueOnce({ rows: [] });
+        expect((await call({ docType: 'VAT_RR', import: true })).status).toBe(200);
+        expect(queryMock.mock.calls[1][1]).toEqual([[], [], 'VAT_RR', true, '7', 1]);
+        queryMock.mockClear();
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'purchase' }] });
+        expect((await call({ gtu: ['GTU_01'] })).status).toBe(400);
+        queryMock.mockClear();
+        queryMock.mockResolvedValueOnce({ rows: [{ direction: 'sales' }] });
+        expect((await call({ import: true })).status).toBe(400);
+        expect(queryMock).toHaveBeenCalledTimes(1);
     });
 });
 

@@ -77,13 +77,13 @@ describe('jpk/generate POST marks included invoices exported_jpk, but never over
     it('updates sent/new/classified invoices but excludes a rejected one from the UPDATE', async () => {
         vi.resetModules();
         const queryMock = vi.fn(async (sql: string, _params?: unknown[]) => {
-            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1234567890', client_name: 'Acme' }] };
+            if (sql.includes('FROM clients')) return { rows: [{ id: 1, nip: '1234567890', client_name: 'Acme', tax_office_code: '1471', contact_email: 'acme@example.com' }] };
             if (sql.includes('FROM firms')) return { rows: [{ firm_name: 'Firm A' }] };
             if (sql.includes('FROM invoices')) {
                 return {
                     rows: [
-                        { id: 1, invoice_number: 'FV/1', issue_date: '2026-01-05', seller_name: 'S', buyer_name: 'B', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', jpk_marker: 'NrKSeF' },
-                        { id: 2, invoice_number: 'FV/2', issue_date: '2026-01-06', seller_name: 'S', buyer_name: 'B', net_amount: 50, vat_amount: 11.5, gross_amount: 61.5, direction: 'sales', jpk_marker: 'NrKSeF' },
+                        { id: 1, invoice_number: 'FV/1', issue_date: '2026-01-05', seller_name: 'S', buyer_name: 'B', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', jpk_marker: 'NrKSeF', ksef_number: '1234567890-20260205-ABCDEF-123456-7A' },
+                        { id: 2, invoice_number: 'FV/2', issue_date: '2026-01-06', seller_name: 'S', buyer_name: 'B', net_amount: 50, vat_amount: 11.5, gross_amount: 61.5, direction: 'sales', jpk_marker: 'NrKSeF', ksef_number: '1234567890-20260206-ABCDEF-123456-7B' },
                     ],
                 };
             }
@@ -99,7 +99,7 @@ describe('jpk/generate POST marks included invoices exported_jpk, but never over
         const { POST } = await import('@/app/api/jpk/generate/route');
         const res = await POST(new Request('http://localhost/api/jpk/generate', {
             method: 'POST',
-            body: JSON.stringify({ clientNip: '1234567890', period: '2026-01' }),
+            body: JSON.stringify({ clientNip: '1234567890', period: '2026-02' }),
         }));
         expect(res.status).toBe(200);
 

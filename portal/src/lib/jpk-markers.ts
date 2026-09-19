@@ -88,3 +88,34 @@ export function normalizeJpkMarkers(input: { gtu?: unknown; procedures?: unknown
         procedures: normalizeList(input.procedures, PROCEDURE_CODES, 'Oznaczenie procedury'),
     };
 }
+
+// Document-type marker: TypDokumentu on a sales row (RO/WEW/FP), DokumentZakupu
+// on a purchase row (MK/VAT_RR/WEW) - broszura JPK_V7M(3), both optional. WEW
+// is valid on both sides but means different things, so the set is chosen by
+// direction. The migration's CHECK holds the union; this is the real rule.
+export const SALES_DOC_TYPES = ['RO', 'WEW', 'FP'] as const;
+export const PURCHASE_DOC_TYPES = ['MK', 'VAT_RR', 'WEW'] as const;
+
+export const SALES_DOC_TYPE_LABELS: Record<(typeof SALES_DOC_TYPES)[number], string> = {
+    RO: 'Zbiorczy dowód sprzedaży z kas rejestrujących',
+    WEW: 'Dowód wewnętrzny',
+    FP: 'Faktura do paragonu (art. 106h ust. 1)',
+};
+
+export const PURCHASE_DOC_TYPE_LABELS: Record<(typeof PURCHASE_DOC_TYPES)[number], string> = {
+    MK: 'Faktura dostawcy rozliczającego metodą kasową',
+    VAT_RR: 'Faktura VAT RR (także korekta)',
+    WEW: 'Dowód wewnętrzny',
+};
+
+/** null/undefined/'' -> null (no marker); an unknown code for the direction throws. */
+export function normalizeJpkDocType(input: unknown, direction: 'sales' | 'purchase'): string | null {
+    if (input === undefined || input === null || input === '') return null;
+    const allowed: readonly string[] = direction === 'sales' ? SALES_DOC_TYPES : PURCHASE_DOC_TYPES;
+    if (typeof input !== 'string' || !allowed.includes(input)) {
+        throw new InvalidJpkMarkerError(
+            `Typ dokumentu: nieprawidłowy kod ${JSON.stringify(input)} dla faktury ${direction === 'sales' ? 'sprzedaży' : 'zakupu'}`
+        );
+    }
+    return input;
+}

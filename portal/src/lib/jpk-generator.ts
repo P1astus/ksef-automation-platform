@@ -1,11 +1,43 @@
 import { sumLinesByRate, type InvoiceLine, type VatRateCode } from './ksef-invoice-builder';
 import { mapVatColumns } from './vat-mapper';
-import { normalizeJpkMarkers } from './jpk-markers';
+import { normalizeJpkMarkers, normalizeJpkDocType } from './jpk-markers';
+import { isValidTaxOfficeCode } from './tax-office-codes';
+
+// Namespace and structure of JPK_V7M(3), schema v1-0E (mandatory from the
+// 2026-02 period). Taken from the official XSD, vendored in
+// schemas/jpk-v7m3/ - the generated file is validated against it in
+// jpk-generator-xsd.test.ts. Do not edit these from memory.
+const JPK_NAMESPACE = 'http://crd.gov.pl/wzor/2025/12/19/14090/';
+const ETD_NAMESPACE = 'http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/09/13/eD/DefinicjeTypy/';
+const FIRST_V7M3_PERIOD = '2026-02';
+
+// TNumerKSeF from the XSD, verbatim.
+const KSEF_NUMBER_RE = /^([1-9]((\d[1-9])|([1-9]\d))\d{7}|M\d{9}|[A-Z]{3}\d{7})-(20[2-9][0-9]|2[1-9][0-9]{2}|[3-9][0-9]{3})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])-([0-9A-F]{6})-?([0-9A-F]{6})-([0-9A-F]{2})$/;
+const EMAIL_RE = /^.+@.+$/; // TAdresEmail: (.)+@(.)+, 3-255 chars
+const NIP_RE = /^[1-9]((\d[1-9])|([1-9]\d))\d{7}$/;
+
+/**
+ * Raised when the data can't be turned into a valid JPK_V7M(3) file. The
+ * message lists every problem found, so a caller can show them all at once
+ * (jpk/generate answers 422 with it) rather than one regeneration at a time.
+ */
+export class JpkGenerationError extends Error {
+    constructor(public readonly problems: string[]) {
+        super(problems.join('; '));
+        this.name = 'JpkGenerationError';
+    }
+}
 
 export interface JpkFirmData {
     nip: string;
     name: string;
     fullName?: string;
+    // Naglowek/KodUrzedu - the tax office the declaration goes to. Required by
+    // the schema; there is no sensible default (clients.tax_office_code).
+    taxOfficeCode?: string | null;
+    // Podmiot1/Email - the taxpayer's e-mail; required by the schema
+    // (clients.contact_email).
+    email?: string | null;
 }
 
 export interface JpkInvoiceRow {
@@ -40,6 +72,10 @@ export interface JpkInvoiceRow {
     // Sales-side only: row-level GTU_xx / procedure markers (jpk-markers.ts).
     jpk_gtu?: string[] | null;
     jpk_procedures?: string[] | null;
+    // TypDokumentu (sales: RO/WEW/FP) or DokumentZakupu (purchase: MK/VAT_RR/WEW).
+    jpk_doc_type?: string | null;
+    // Purchase-side IMP flag (import of goods).
+    jpk_import?: boolean | null;
 }
 
 function esc(s: string | undefined | null): string {
@@ -122,9 +158,38 @@ function salesContribution(inv: JpkInvoiceRow): Partial<Record<string, number>> 
     return contrib;
 }
 
+// Contractor number: digits/letters only, "BRAK" when there is none (the
+// broszura's instruction for NrKontrahenta / NazwaKontrahenta).
+function contractorId(nip: string | undefined | null): string {
+    const cleaned = String(nip ?? '').replace(/[\s-]/g, '');
+    return cleaned || 'BRAK';
+}
+
+// Every register row must carry exactly one of NrKSeF / OFF / BFK / DI.
+// A KSeF number the invoice already has wins (NrKSeF is "filled when on the
+// filing date the invoice has a number"); otherwise the stored marker. An
+// invoice with neither is a problem the operator has to resolve - guessing a
+// marker would be a wrong VAT marker in a filed report.
+function ksefReference(inv: JpkInvoiceRow, problems: string[]): string {
+    const number = (inv.ksef_number || '').trim();
+    if (number) {
+        if (KSEF_NUMBER_RE.test(number)) return `<tns:NrKSeF>${number}</tns:NrKSeF>`;
+        problems.push(`faktura ${inv.invoice_number}: numer KSeF "${number}" nie ma prawidłowego formatu`);
+        return '';
+    }
+    if (inv.jpk_marker === 'OFF' || inv.jpk_marker === 'BFK' || inv.jpk_marker === 'DI') {
+        return `<tns:${inv.jpk_marker}>1</tns:${inv.jpk_marker}>`;
+    }
+    problems.push(`faktura ${inv.invoice_number}: brak numeru KSeF i oznaczenia OFF/BFK/DI`);
+    return '';
+}
+
 /**
- * Generates JPK_V7M XML (Polish SAF-T for monthly VAT reporting).
- * Spec: https://www.gov.pl/web/kas/struktury-jpk
+ * Generates JPK_V7M(3) XML (monthly VAT report with declaration), schema
+ * v1-0E, valid from the 2026-02 period. Structure and namespace come from the
+ * official XSD in schemas/jpk-v7m3/. Throws JpkGenerationError when the input
+ * can't produce a valid file (unknown tax office, malformed NIP, a row with no
+ * KSeF number or OFF/BFK/DI marker, ...).
  */
 export function generateJpkV7M(
     firm: JpkFirmData,
@@ -133,9 +198,19 @@ export function generateJpkV7M(
 ): string {
     const [year, month] = period.split('-');
     const periodStart = `${year}-${month}-01`;
-    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-    const periodEnd = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
     const now = new Date().toISOString();
+    const problems: string[] = [];
+
+    if (period < FIRST_V7M3_PERIOD) {
+        throw new JpkGenerationError([`JPK_V7M(3) obowiązuje od okresu ${FIRST_V7M3_PERIOD}; za ${period} obowiązuje wcześniejsza struktura`]);
+    }
+    if (!isValidTaxOfficeCode(firm.taxOfficeCode)) {
+        problems.push('brak prawidłowego kodu urzędu skarbowego klienta (4 cyfry z listy MF)');
+    }
+    if (!EMAIL_RE.test(firm.email ?? '')) {
+        problems.push('brak adresu e-mail podatnika (wymagany w Podmiot1) - uzupełnij e-mail kontaktowy klienta');
+    }
+    if (!NIP_RE.test(firm.nip)) problems.push(`nieprawidłowy NIP podatnika: ${firm.nip}`);
 
     const sales = invoices.filter(i => i.direction === 'sales');
     const purchases = invoices.filter(i => i.direction === 'purchase');
@@ -144,7 +219,6 @@ export function generateJpkV7M(
     const salesTotals: Record<string, number> = {};
     const salesRows = sales.map((inv, idx) => {
         const prefix = inv.jpk_correction_needed ? 'COR' : '';
-        const ksefRef = inv.ksef_number || inv.jpk_marker || '';
         const contrib = salesContribution(inv);
         for (const [field, amount] of Object.entries(contrib)) {
             salesTotals[field] = round2((salesTotals[field] || 0) + (amount || 0));
@@ -156,6 +230,7 @@ export function generateJpkV7M(
         const markersXml = [...markers.gtu, ...markers.procedures]
             .map(code => `            <tns:${code}>1</tns:${code}>`)
             .join('\n');
+        const docType = normalizeJpkDocType(inv.jpk_doc_type, 'sales');
         const kFieldsXml = SALES_FIELD_ORDER
             .filter(field => contrib[field] !== undefined)
             .map(field => `            <tns:${field}>${fmt2(contrib[field]!)}</tns:${field}>`)
@@ -163,12 +238,12 @@ export function generateJpkV7M(
         return `
         <tns:SprzedazWiersz>
             <tns:LpSprzedazy>${idx + 1}</tns:LpSprzedazy>
-            <tns:NrKontrahenta>${esc(inv.buyer_nip)}</tns:NrKontrahenta>
-            <tns:NazwaKontrahenta>${esc(inv.buyer_name)}</tns:NazwaKontrahenta>
+            <tns:NrKontrahenta>${esc(contractorId(inv.buyer_nip))}</tns:NrKontrahenta>
+            <tns:NazwaKontrahenta>${esc(inv.buyer_name) || 'BRAK'}</tns:NazwaKontrahenta>
             <tns:DowodSprzedazy>${esc(prefix + inv.invoice_number)}</tns:DowodSprzedazy>
             <tns:DataWystawienia>${fmtDate(inv.issue_date) || periodStart}</tns:DataWystawienia>
-            ${ksefRef ? `<tns:KodKSeF>${esc(ksefRef)}</tns:KodKSeF>` : ''}
-${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
+            ${ksefReference(inv, problems)}
+${docType ? `            <tns:TypDokumentu>${docType}</tns:TypDokumentu>\n` : ''}${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
         </tns:SprzedazWiersz>`;
     }).join('');
 
@@ -185,18 +260,21 @@ ${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
         const vat = num(inv.vat_amount);
         purchaseTotals[netField] = round2(purchaseTotals[netField] + net);
         purchaseTotals[vatField] = round2(purchaseTotals[vatField] + vat);
+        const docType = normalizeJpkDocType(inv.jpk_doc_type, 'purchase');
         return `
         <tns:ZakupWiersz>
             <tns:LpZakupu>${idx + 1}</tns:LpZakupu>
-            <tns:NrDostawcy>${esc(inv.seller_nip)}</tns:NrDostawcy>
-            <tns:NazwaDostawcy>${esc(inv.seller_name)}</tns:NazwaDostawcy>
+            <tns:NrDostawcy>${esc(contractorId(inv.seller_nip))}</tns:NrDostawcy>
+            <tns:NazwaDostawcy>${esc(inv.seller_name) || 'BRAK'}</tns:NazwaDostawcy>
             <tns:DowodZakupu>${esc(inv.invoice_number)}</tns:DowodZakupu>
             <tns:DataZakupu>${fmtDate(inv.issue_date) || periodStart}</tns:DataZakupu>
-            <tns:DataWplywu>${fmtDate(inv.issue_date) || periodStart}</tns:DataWplywu>
-            <tns:${netField}>${fmt2(net)}</tns:${netField}>
+            ${ksefReference(inv, problems)}
+${docType ? `            <tns:DokumentZakupu>${docType}</tns:DokumentZakupu>\n` : ''}${inv.jpk_import ? '            <tns:IMP>1</tns:IMP>\n' : ''}            <tns:${netField}>${fmt2(net)}</tns:${netField}>
             <tns:${vatField}>${fmt2(vat)}</tns:${vatField}>
         </tns:ZakupWiersz>`;
     }).join('');
+
+    if (problems.length > 0) throw new JpkGenerationError(problems);
 
     // SprzedazCtrl.PodatekNalezny = sum of K_16/K_18/K_20/K_24/K_26/K_28/
     // K_30/K_32/K_33/K_34 minus K_35/K_36 (broszura Tabela 9). This
@@ -208,43 +286,47 @@ ${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
     const zakupPodatekNaliczony = round2((purchaseTotals['K_41'] || 0) + (purchaseTotals['K_43'] || 0));
 
     // Declaration (P_xx) fields mirror the K_xx totals 1:1 (broszura
-    // Tabela 16/17: "wykazana w K_xx"). P_38 and P_51 are the only two
-    // fields the spec marks obowiązkowe (mandatory) - always "0.00" when
-    // there's nothing to report, never omitted. Every other field is
-    // opcjonalne ("pole pozostaje puste" when not applicable) and is
-    // omitted from the XML entirely rather than written as a misleading
-    // "0.00" - see declarationFields() below.
-    const p10 = salesTotals['K_10'] || 0;
-    const p13 = salesTotals['K_13'] || 0;
-    const p15 = salesTotals['K_15'] || 0;
-    const p16 = salesTotals['K_16'] || 0;
-    const p17 = salesTotals['K_17'] || 0;
-    const p18 = salesTotals['K_18'] || 0;
-    const p19 = salesTotals['K_19'] || 0;
-    const p20 = salesTotals['K_20'] || 0;
-    const p21 = salesTotals['K_21'] || 0;
-    const p22 = salesTotals['K_22'] || 0;
+    // Tabela 16/17: "wykazana w K_xx"), but in WHOLE złoty: the schema types
+    // them etd:TKwotaC (xsd:integer), so "123.45" is invalid. Each field is
+    // rounded on its own and the sums (P_37/P_38/P_48/P_51/P_53) are built from
+    // the rounded components, so the declaration adds up exactly as filed.
+    // P_38 and P_51 are the only two fields the spec marks obowiązkowe
+    // (mandatory) - always "0" when there's nothing to report, never omitted.
+    // Every other field is opcjonalne ("pole pozostaje puste" when not
+    // applicable) and is omitted from the XML entirely rather than written as
+    // a misleading "0" - see declarationFields() below.
+    const zl = (n: number | undefined): number => Math.round(n || 0);
+    const p10 = zl(salesTotals['K_10']);
+    const p13 = zl(salesTotals['K_13']);
+    const p15 = zl(salesTotals['K_15']);
+    const p16 = zl(salesTotals['K_16']);
+    const p17 = zl(salesTotals['K_17']);
+    const p18 = zl(salesTotals['K_18']);
+    const p19 = zl(salesTotals['K_19']);
+    const p20 = zl(salesTotals['K_20']);
+    const p21 = zl(salesTotals['K_21']);
+    const p22 = zl(salesTotals['K_22']);
 
     // P_37 = sum(P_10,P_11,P_13,P_15,P_17,P_19,P_21,P_22,P_23,P_25,P_27,P_29,P_31)
     // - P_31 is always 0 here since no VatRateCode routes to K_31 anymore.
-    const p37 = round2(p10 + p13 + p15 + p17 + p19 + p21 + p22);
+    const p37 = p10 + p13 + p15 + p17 + p19 + p21 + p22;
     // P_38 = sum(P_16,P_18,P_20,P_24,P_26,P_28,P_30,P_32,P_33,P_34) - P_35 - P_36 (mandatory)
-    const p38 = round2(p16 + p18 + p20);
+    const p38 = p16 + p18 + p20;
 
-    const p40 = purchaseTotals['K_40'] || 0;
-    const p41 = purchaseTotals['K_41'] || 0;
-    const p42 = purchaseTotals['K_42'] || 0;
-    const p43 = purchaseTotals['K_43'] || 0;
+    const p40 = zl(purchaseTotals['K_40']);
+    const p41 = zl(purchaseTotals['K_41']);
+    const p42 = zl(purchaseTotals['K_42']);
+    const p43 = zl(purchaseTotals['K_43']);
     // P_48 = sum(P_39,P_41,P_43,P_44,P_45,P_46,P_47) - only P_41/P_43 are ever nonzero here
-    const p48 = round2(p41 + p43);
+    const p48 = p41 + p43;
 
     // P_51 = wysokość podatku podlegająca wpłacie (mandatory); P_53 =
     // nadwyżka podatku naliczonego nad należnym. No refund-election
     // workflow exists (P_54-P_61), so a surplus defaults to P_62 (carried
     // forward to the next period) rather than a bank refund - the
     // standard behaviour when a taxpayer doesn't explicitly request one.
-    const p51 = round2(Math.max(0, p38 - p48));
-    const p53 = round2(Math.max(0, p48 - p38));
+    const p51 = Math.max(0, p38 - p48);
+    const p53 = Math.max(0, p48 - p38);
 
     const declarationFields: Array<[string, number | null]> = [
         ['P_10', p10 || null],
@@ -302,30 +384,43 @@ ${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
 
     const declarationXml = declarationFields
         .filter((entry): entry is [string, number] => entry[1] !== null)
-        .map(([name, value]) => `            <tns:${name}>${fmt2(value)}</tns:${name}>`)
+        .map(([name, value]) => `            <tns:${name}>${value}</tns:${name}>`)
         .join('\n');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<tns:JPK xmlns:tns="http://jpk.mf.gov.pl/wzor/2022/02/17/02171/"
-         xmlns:etd="http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/DefinicjeTypy/"
+<tns:JPK xmlns:tns="${JPK_NAMESPACE}"
+         xmlns:etd="${ETD_NAMESPACE}"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
     <tns:Naglowek>
-        <tns:KodFormularza kodSystemowy="JPK_VAT (3)" wersjaSchemy="1-2">JPK_VAT</tns:KodFormularza>
+        <tns:KodFormularza kodSystemowy="JPK_V7M (3)" wersjaSchemy="1-0E">JPK_VAT</tns:KodFormularza>
         <tns:WariantFormularza>3</tns:WariantFormularza>
         <tns:DataWytworzeniaJPK>${now}</tns:DataWytworzeniaJPK>
         <tns:NazwaSystemu>KSeF Auto v1.0</tns:NazwaSystemu>
         <tns:CelZlozenia poz="P_7">1</tns:CelZlozenia>
-        <tns:DataOd>${periodStart}</tns:DataOd>
-        <tns:DataDo>${periodEnd}</tns:DataDo>
-        <tns:DomyslnyKodWaluty>PLN</tns:DomyslnyKodWaluty>
-        <tns:KodUrzedu>0000</tns:KodUrzedu>
+        <tns:KodUrzedu>${firm.taxOfficeCode}</tns:KodUrzedu>
+        <tns:Rok>${year}</tns:Rok>
+        <tns:Miesiac>${parseInt(month)}</tns:Miesiac>
     </tns:Naglowek>
 
-    <tns:Podmiot1>
-        <tns:NIP>${esc(firm.nip)}</tns:NIP>
-        <tns:PelnaNazwa>${esc(firm.fullName || firm.name)}</tns:PelnaNazwa>
+    <tns:Podmiot1 rola="Podatnik">
+        <tns:OsobaNiefizyczna>
+            <tns:NIP>${firm.nip}</tns:NIP>
+            <tns:PelnaNazwa>${esc(firm.fullName || firm.name)}</tns:PelnaNazwa>
+            <tns:Email>${esc(firm.email)}</tns:Email>
+        </tns:OsobaNiefizyczna>
     </tns:Podmiot1>
+
+    <tns:Deklaracja>
+        <tns:Naglowek>
+            <tns:KodFormularzaDekl kodSystemowy="VAT-7 (23)" kodPodatku="VAT" rodzajZobowiazania="Z" wersjaSchemy="1-0E">VAT-7</tns:KodFormularzaDekl>
+            <tns:WariantFormularzaDekl>23</tns:WariantFormularzaDekl>
+        </tns:Naglowek>
+        <tns:PozycjeSzczegolowe>
+${declarationXml}
+        </tns:PozycjeSzczegolowe>
+        <tns:Pouczenia>1</tns:Pouczenia>
+    </tns:Deklaracja>
 
     <tns:Ewidencja>
         ${salesRows}
@@ -339,14 +434,6 @@ ${markersXml ? markersXml + '\n' : ''}${kFieldsXml}
             <tns:PodatekNaliczony>${fmt2(zakupPodatekNaliczony)}</tns:PodatekNaliczony>
         </tns:ZakupCtrl>
     </tns:Ewidencja>
-
-    <tns:Deklaracja>
-        <tns:Miesiac>${parseInt(month)}</tns:Miesiac>
-        <tns:Rok>${year}</tns:Rok>
-        <tns:PozycjeSzczegolowe>
-${declarationXml}
-        </tns:PozycjeSzczegolowe>
-    </tns:Deklaracja>
 
 </tns:JPK>`;
 }

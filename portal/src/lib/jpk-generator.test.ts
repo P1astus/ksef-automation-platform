@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { generateJpkV7M, type JpkInvoiceRow } from './jpk-generator';
 import type { InvoiceLine } from './ksef-invoice-builder';
 
-const firm = { nip: '1234567890', name: 'Test Firm' };
+const firm = { nip: '1234567890', name: 'Test Firm', taxOfficeCode: '1471', email: 'klient@example.com' };
 
 function extractAll(xml: string, tag: string): string[] {
     const re = new RegExp(`<tns:${tag}>([^<]*)</tns:${tag}>`, 'g');
@@ -16,13 +16,13 @@ function extractOne(xml: string, tag: string): number | undefined {
 
 describe('generateJpkV7M invoice/total reconciliation', () => {
     const invoices: JpkInvoiceRow[] = [
-        { id: 1, invoice_number: 'S-1', issue_date: '2026-01-05', seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales' },
-        { id: 2, invoice_number: 'S-2', issue_date: '2026-01-12', seller_name: 'Firm', buyer_name: 'Buyer B', buyer_nip: '2222222222', net_amount: 200, vat_amount: 16, gross_amount: 216, direction: 'sales' },
-        { id: 3, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 50, vat_amount: 11.5, gross_amount: 61.5, direction: 'purchase', cost_category: 'usługi_IT' },
+        { id: 1, invoice_number: 'S-1', issue_date: '2026-01-05', seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', jpk_marker: 'OFF' },
+        { id: 2, invoice_number: 'S-2', issue_date: '2026-01-12', seller_name: 'Firm', buyer_name: 'Buyer B', buyer_nip: '2222222222', net_amount: 200, vat_amount: 16, gross_amount: 216, direction: 'sales', jpk_marker: 'OFF' },
+        { id: 3, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 50, vat_amount: 11.5, gross_amount: 61.5, direction: 'purchase', jpk_marker: 'OFF', cost_category: 'usługi_IT' },
     ];
 
     it('every invoice in the period appears in the output', () => {
-        const xml = generateJpkV7M(firm, '2026-01', invoices);
+        const xml = generateJpkV7M(firm, '2026-02', invoices);
         expect(xml).toContain('S-1');
         expect(xml).toContain('S-2');
         expect(xml).toContain('P-1');
@@ -31,7 +31,7 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
     });
 
     it('sales without line-level rate data fall back to the standard-rate (K_19/K_20) bucket', () => {
-        const xml = generateJpkV7M(firm, '2026-01', invoices);
+        const xml = generateJpkV7M(firm, '2026-02', invoices);
         const k19s = extractAll(xml, 'K_19').map(Number);
         const k20s = extractAll(xml, 'K_20').map(Number);
         const salesNetSum = k19s.reduce((a, b) => a + b, 0);
@@ -56,7 +56,7 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
     it('routes an ordinary purchase to K_42/K_43, never the fixed-asset K_40/K_41 fields', () => {
         // Regression guard for the bug where every purchase was reported to
         // the tax office as a środki trwałe (fixed-asset) acquisition.
-        const xml = generateJpkV7M(firm, '2026-01', invoices);
+        const xml = generateJpkV7M(firm, '2026-02', invoices);
         expect(xml).not.toContain('<tns:K_40>');
         expect(xml).not.toContain('<tns:K_41>');
         expect(xml).not.toContain('<tns:P_40>');
@@ -73,14 +73,15 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         expect(extractOne(xml, 'LiczbaWierszyZakupow')).toBe(1);
         expect(extractOne(xml, 'PodatekNaliczony')).toBeCloseTo(11.5);
         expect(extractOne(xml, 'P_42')).toBeCloseTo(50);
-        expect(extractOne(xml, 'P_43')).toBeCloseTo(11.5);
-        expect(extractOne(xml, 'P_48')).toBeCloseTo(11.5); // sum(P_39,P_41,P_43,...) = P_43 here
+        expect(extractOne(xml, 'P_43')).toBe(12); // whole zł: 11.50 rounds to 12 (etd:TKwotaC is an integer)
+        expect(extractOne(xml, 'K_43')).toBeCloseTo(11.5); // the ewidencja keeps grosze
+        expect(extractOne(xml, 'P_48')).toBe(12); // sum(P_39,P_41,P_43,...) = P_43 here
     });
 
     it('VAT payable reconciles as total output VAT minus total input VAT', () => {
-        const xml = generateJpkV7M(firm, '2026-01', invoices);
-        // salesVat (39) - purchVat (11.5) = 27.5 payable, no surplus
-        expect(extractOne(xml, 'P_51')).toBeCloseTo(27.5);
+        const xml = generateJpkV7M(firm, '2026-02', invoices);
+        // salesVat 39 - purchVat 11.5 (12 whole zł in the declaration) = 27 payable, no surplus
+        expect(extractOne(xml, 'P_51')).toBe(27);
         expect(xml).not.toContain('<tns:P_53>');
         expect(xml).not.toContain('<tns:P_62>');
     });
@@ -90,17 +91,17 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         // zaliczenia na poczet przyszłych zobowiązań") are refund-election
         // flags this platform never sets - a numeric VAT amount there was
         // the old bug, and this asserts the fields are omitted, not zeroed.
-        const xml = generateJpkV7M(firm, '2026-01', invoices);
+        const xml = generateJpkV7M(firm, '2026-02', invoices);
         expect(xml).not.toContain('<tns:P_58>');
         expect(xml).not.toContain('<tns:P_60>');
     });
 
     it('an input-VAT surplus carries forward via P_53/P_62, not a bank-refund field', () => {
         const surplusInvoices: JpkInvoiceRow[] = [
-            { id: 1, invoice_number: 'S-1', issue_date: '2026-01-05', seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 10, gross_amount: 110, direction: 'sales' },
-            { id: 2, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 500, vat_amount: 100, gross_amount: 600, direction: 'purchase', cost_category: 'sprzęt_IT' },
+            { id: 1, invoice_number: 'S-1', issue_date: '2026-01-05', seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 10, gross_amount: 110, direction: 'sales', jpk_marker: 'OFF' },
+            { id: 2, invoice_number: 'P-1', issue_date: '2026-01-20', seller_name: 'Seller A', seller_nip: '3333333333', buyer_name: 'Firm', net_amount: 500, vat_amount: 100, gross_amount: 600, direction: 'purchase', jpk_marker: 'OFF', cost_category: 'sprzęt_IT' },
         ];
-        const xml = generateJpkV7M(firm, '2026-01', surplusInvoices);
+        const xml = generateJpkV7M(firm, '2026-02', surplusInvoices);
         expect(extractOne(xml, 'P_51')).toBeCloseTo(0); // nothing payable
         expect(extractOne(xml, 'P_53')).toBeCloseTo(90); // 100 input - 10 output
         expect(extractOne(xml, 'P_62')).toBeCloseTo(90);
@@ -118,10 +119,10 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         const mixedInvoice: JpkInvoiceRow[] = [{
             id: 1, invoice_number: 'S-MIX', issue_date: '2026-01-05', seller_name: 'Firm',
             buyer_name: 'Buyer A', buyer_nip: '1111111111',
-            net_amount: 680, vat_amount: 27, gross_amount: 707, direction: 'sales',
+            net_amount: 680, vat_amount: 27, gross_amount: 707, direction: 'sales', jpk_marker: 'OFF',
             invoice_lines: lines,
         }];
-        const xml = generateJpkV7M(firm, '2026-01', mixedInvoice);
+        const xml = generateJpkV7M(firm, '2026-02', mixedInvoice);
 
         expect(extractOne(xml, 'K_19')).toBeCloseTo(100); // 23%
         expect(extractOne(xml, 'K_20')).toBeCloseTo(23);
@@ -144,7 +145,7 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
     });
 
     it('an empty invoice list produces a valid, zeroed-out declaration rather than throwing', () => {
-        const xml = generateJpkV7M(firm, '2026-01', []);
+        const xml = generateJpkV7M(firm, '2026-02', []);
         expect(() => xml).not.toThrow();
         expect(xml).toContain('<tns:LiczbaWierszySprzedazy>0</tns:LiczbaWierszySprzedazy>');
         expect(xml).toContain('<tns:LiczbaWierszyZakupow>0</tns:LiczbaWierszyZakupow>');
@@ -159,10 +160,10 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
     // - this is the shape that would have caught it.
     it('accepts a real Date object for issue_date, not just a string', () => {
         const dateInvoices: JpkInvoiceRow[] = [
-            { id: 1, invoice_number: 'S-1', issue_date: new Date(2026, 0, 5), seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales' },
+            { id: 1, invoice_number: 'S-1', issue_date: new Date(2026, 0, 5), seller_name: 'Firm', buyer_name: 'Buyer A', buyer_nip: '1111111111', net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', jpk_marker: 'OFF' },
         ];
-        expect(() => generateJpkV7M(firm, '2026-01', dateInvoices)).not.toThrow();
-        const xml = generateJpkV7M(firm, '2026-01', dateInvoices);
+        expect(() => generateJpkV7M(firm, '2026-02', dateInvoices)).not.toThrow();
+        const xml = generateJpkV7M(firm, '2026-02', dateInvoices);
         expect(xml).toContain('<tns:DataWystawienia>2026-01-05</tns:DataWystawienia>');
     });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { requireActiveSubscription } from '@/lib/entitlements';
+import { isValidTaxOfficeCode } from '@/lib/tax-office-codes';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
@@ -57,8 +58,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         await query('UPDATE clients SET sync_enabled = $1 WHERE id = $2', [body.sync_enabled, id]);
     }
 
+    // Tax office (Naglowek/KodUrzedu of the JPK_V7M(3) file): only a code from
+    // the official MF list is stored; empty clears it.
+    if ('tax_office_code' in body) {
+        const code = body.tax_office_code === '' ? null : body.tax_office_code;
+        if (code !== null && !isValidTaxOfficeCode(code)) {
+            return NextResponse.json({ error: 'Nieprawidłowy kod urzędu skarbowego (4 cyfry z listy MF)' }, { status: 400 });
+        }
+        body.tax_office_code = code;
+    }
+
     // CRM + address fields update
-    const crmFields = ['contact_person', 'contact_email', 'contact_phone', 'notes', 'tags', 'street', 'city', 'postal_code'] as const;
+    const crmFields = ['contact_person', 'contact_email', 'contact_phone', 'notes', 'tags', 'street', 'city', 'postal_code', 'tax_office_code'] as const;
     const crmUpdates = crmFields.filter(f => f in body);
     if (crmUpdates.length > 0) {
         const sets = crmUpdates.map((f, i) => `${f} = $${i + 1}`).join(', ');

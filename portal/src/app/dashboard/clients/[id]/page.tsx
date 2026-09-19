@@ -33,6 +33,7 @@ interface Client {
     street: string | null;
     city: string | null;
     postal_code: string | null;
+    tax_office_code: string | null;
 }
 
 interface Invoice {
@@ -58,7 +59,7 @@ export default function ClientDetailPage() {
     const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string; planError?: boolean } | null>(null);
     const [togglingSync, setTogglingSync] = useState(false);
-    const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '', street: '', city: '', postal_code: '' });
+    const [crm, setCrm] = useState({ contact_person: '', contact_email: '', contact_phone: '', notes: '', tags: '', street: '', city: '', postal_code: '', tax_office_code: '' });
     const [crmSaving, setCrmSaving] = useState(false);
     const [crmSaved, setCrmSaved] = useState(false);
     const [requestingDocs, setRequestingDocs] = useState(false);
@@ -81,6 +82,7 @@ export default function ClientDetailPage() {
                 street: data.client.street || '',
                 city: data.client.city || '',
                 postal_code: data.client.postal_code || '',
+                tax_office_code: data.client.tax_office_code || '',
             });
         } finally {
             setLoading(false);
@@ -339,6 +341,11 @@ export default function ClientDetailPage() {
                         <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Miasto</label>
                         <input value={crm.city} onChange={e => setCrm(prev => ({ ...prev, city: e.target.value }))} placeholder="Warszawa" style={{ width: '100%', boxSizing: 'border-box' }} />
                     </div>
+                </div>
+                <div style={{ marginTop: 12, maxWidth: 260 }}>
+                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kod urzędu skarbowego (JPK_V7M)</label>
+                    <input value={crm.tax_office_code} onChange={e => setCrm(prev => ({ ...prev, tax_office_code: e.target.value.trim() }))} placeholder="np. 1471" inputMode="numeric" maxLength={4} style={{ width: '100%', boxSizing: 'border-box' }} />
+                    {!crm.tax_office_code && <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 5 }}>Wymagany do wygenerowania pliku JPK_V7M. Podaj kod urzędu, do którego klient składa deklarację VAT.</div>}
                 </div>
             </div>
 

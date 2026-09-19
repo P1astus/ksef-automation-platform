@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, CheckCircle, XCircle, FileCode, AlertCircle, FileDown, FileEdit } from 'lucide-react';
 import { parseFa3Lines } from '@/lib/parse-fa3-lines';
 import JpkMarkersFields from '../../JpkMarkersFields';
-import type { GtuCode, ProcedureCode } from '@/lib/jpk-markers';
+import { SALES_DOC_TYPES, PURCHASE_DOC_TYPES, SALES_DOC_TYPE_LABELS, PURCHASE_DOC_TYPE_LABELS, type GtuCode, type ProcedureCode } from '@/lib/jpk-markers';
 
 interface InvoiceData {
     id: number;
@@ -29,6 +29,8 @@ interface InvoiceData {
     ksef_rejection_reason: string | null;
     jpk_gtu?: GtuCode[] | null;
     jpk_procedures?: ProcedureCode[] | null;
+    jpk_doc_type?: string | null;
+    jpk_import?: boolean | null;
 }
 
 // Parse simple XML key-value fields for display
@@ -55,9 +57,17 @@ function parseXmlLines(xml: string) {
 
 // Row-level JPK_V7M markers for a sales invoice - saved on their own, not
 // tied to the status buttons, since they can be corrected after a JPK run.
-function JpkMarkersPanel({ invoiceId, initialGtu, initialProcedures }: { invoiceId: string; initialGtu: GtuCode[]; initialProcedures: ProcedureCode[] }) {
+function JpkMarkersPanel({ invoiceId, direction, initialGtu, initialProcedures, initialDocType, initialImport }: {
+    invoiceId: string; direction: 'sales' | 'purchase'; initialGtu: GtuCode[]; initialProcedures: ProcedureCode[];
+    initialDocType: string; initialImport: boolean;
+}) {
+    const isSales = direction === 'sales';
     const [gtu, setGtu] = useState<GtuCode[]>(initialGtu);
     const [procedures, setProcedures] = useState<ProcedureCode[]>(initialProcedures);
+    const [docType, setDocType] = useState<string>(initialDocType);
+    const [isImport, setIsImport] = useState<boolean>(initialImport);
+    const docTypes: readonly string[] = isSales ? SALES_DOC_TYPES : PURCHASE_DOC_TYPES;
+    const docLabels: Record<string, string> = isSales ? SALES_DOC_TYPE_LABELS : PURCHASE_DOC_TYPE_LABELS;
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -68,7 +78,7 @@ function JpkMarkersPanel({ invoiceId, initialGtu, initialProcedures }: { invoice
             const res = await fetch(`/api/invoices/${invoiceId}/jpk-markers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gtu, procedures }),
+                body: JSON.stringify(isSales ? { gtu, procedures, docType } : { docType, import: isImport }),
             });
             const d = await res.json().catch(() => ({}));
             setMessage(res.ok ? { ok: true, text: 'Zapisano. Wygeneruj JPK ponownie, aby uwzględnić zmiany.' } : { ok: false, text: d.error || 'Błąd zapisu' });
@@ -81,8 +91,23 @@ function JpkMarkersPanel({ invoiceId, initialGtu, initialProcedures }: { invoice
 
     return (
         <div style={{ background: 'var(--bg-surface)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Oznaczenia JPK_V7M (GTU, procedury)</div>
-            <JpkMarkersFields gtu={gtu} procedures={procedures} onChange={n => { setGtu(n.gtu); setProcedures(n.procedures); }} disabled={saving} />
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>{isSales ? 'Oznaczenia JPK_V7M (GTU, procedury, typ dokumentu)' : 'Oznaczenia JPK_V7M (dokument zakupu, import)'}</div>
+            {isSales && <JpkMarkersFields gtu={gtu} procedures={procedures} onChange={n => { setGtu(n.gtu); setProcedures(n.procedures); }} disabled={saving} />}
+            <div style={{ marginTop: isSales ? 16 : 0, display: 'grid', gap: 10 }}>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                    <span>{isSales ? 'TypDokumentu' : 'DokumentZakupu'}</span>
+                    <select value={docType} disabled={saving} onChange={e => setDocType(e.target.value)}>
+                        <option value="">- brak -</option>
+                        {docTypes.map(c => <option key={c} value={c}>{c} - {docLabels[c]}</option>)}
+                    </select>
+                </label>
+                {!isSales && (
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>
+                        <input type="checkbox" checked={isImport} disabled={saving} onChange={e => setIsImport(e.target.checked)} />
+                        <span><span className="mono" style={{ color: 'var(--text)' }}>IMP</span> - podatek naliczony z tytułu importu towarów</span>
+                    </label>
+                )}
+            </div>
             <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <button onClick={save} disabled={saving} className="btn-primary" style={{ fontSize: 13 }}>{saving ? 'Zapisywanie...' : 'Zapisz oznaczenia'}</button>
                 {message && <span style={{ fontSize: 12.5, color: message.ok ? 'var(--success)' : 'var(--error)' }}>{message.text}</span>}
@@ -287,8 +312,15 @@ export default function InvoicePreviewPage() {
                 </div>
             </div>
 
-            {invoice.direction === 'sales' && (
-                <JpkMarkersPanel invoiceId={id} initialGtu={invoice.jpk_gtu ?? []} initialProcedures={invoice.jpk_procedures ?? []} />
+            {(invoice.direction === 'sales' || invoice.direction === 'purchase') && (
+                <JpkMarkersPanel
+                    invoiceId={id}
+                    direction={invoice.direction}
+                    initialGtu={invoice.jpk_gtu ?? []}
+                    initialProcedures={invoice.jpk_procedures ?? []}
+                    initialDocType={invoice.jpk_doc_type ?? ''}
+                    initialImport={!!invoice.jpk_import}
+                />
             )}
 
             {/* Line items (if parsed from XML) */}
