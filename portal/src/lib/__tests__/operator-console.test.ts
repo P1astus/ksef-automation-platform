@@ -18,7 +18,7 @@ vi.mock('next/headers', () => ({
         get: (n: string) => (cookieJar.has(n) ? { value: cookieJar.get(n) } : undefined),
         set: (n: string, v: string) => { cookieJar.set(n, v); },
     }),
-    headers: async () => ({ get: (n: string) => (n === 'x-forwarded-for' ? '203.0.113.9, 10.0.0.1' : null) }),
+    headers: async () => ({ get: (n: string) => (n === 'x-real-ip' ? '203.0.113.9' : n === 'x-forwarded-for' ? '198.51.100.8, 10.0.0.1' : null) }),
 }));
 vi.mock('next/navigation', () => ({ redirect: (to: string) => { throw new Error(`REDIRECT:${to}`); } }));
 const queryMock = vi.fn(async (..._a: any[]) => ({ rows: [] as any[] }));
@@ -87,15 +87,22 @@ describe('verifyOperatorLogin', () => {
         queryMock.mockResolvedValueOnce({ rows });
         expect(await op.verifyOperatorLogin('o@x.pl', pw)).toEqual({ ok: false, reason: 'invalid' });
     });
-    it('throttles after 5 failures, even for the correct password - and a different IP cannot evade it', async () => {
+    it('throttles after 5 failures, even for the correct password', async () => {
         for (let i = 0; i < 5; i++) {
             queryMock.mockResolvedValueOnce({ rows: [{ id: 3, password_hash: hash, is_active: true }] });
             await op.verifyOperatorLogin('o@x.pl', 'bad');
         }
         expect(await op.verifyOperatorLogin('o@x.pl', 'correct horse battery')).toEqual({ ok: false, reason: 'throttled' });
-        // another operator is unaffected
+        // another operator from a different peer is unaffected
         queryMock.mockResolvedValueOnce({ rows: [{ id: 4, password_hash: hash, is_active: true }] });
-        expect((await op.verifyOperatorLogin('other@x.pl', 'correct horse battery')).ok).toBe(true);
+        expect((await op.verifyOperatorLogin('other@x.pl', 'correct horse battery', '192.0.2.11')).ok).toBe(true);
+    });
+    it('applies a shared IP limit across addresses, so changing the target email cannot evade it', async () => {
+        for (let i = 0; i < 5; i++) {
+            queryMock.mockResolvedValueOnce({ rows: [] });
+            await op.verifyOperatorLogin(`operator${i}@x.pl`, 'bad', '192.0.2.10');
+        }
+        expect(await op.verifyOperatorLogin('fresh@x.pl', 'correct horse battery', '192.0.2.10')).toEqual({ ok: false, reason: 'throttled' });
     });
     it('failures expire after the window', () => {
         const t0 = 1_000_000;
@@ -187,6 +194,12 @@ describe('admin-data against the real schema', () => {
     it('fleet totals aggregate across firms', async () => {
         const { fleetTotals } = await import('../admin-data');
         expect(await fleetTotals()).toMatchObject({ firms: 2, active_firms: 2, clients: 2, offline_overdue: 1 });
+    });
+    it('lists the newest operator-audit metadata without exposing tenant data', async () => {
+        await db.query(`INSERT INTO operator_audit_log (operator_email, action, firm_id, ip, details) VALUES ('o@x.pl', 'view_firm', $1, '192.0.2.1', '{"source":"console"}')`, [a]);
+        const { listOperatorAudit } = await import('../admin-data');
+        const entries = await listOperatorAudit();
+        expect(entries[0]).toMatchObject({ operator_email: 'o@x.pl', action: 'view_firm', firm_id: a, ip: '192.0.2.1' });
     });
     it('firm detail is scoped to the requested firm and null for an unknown id', async () => {
         const { getFirmDetail } = await import('../admin-data');

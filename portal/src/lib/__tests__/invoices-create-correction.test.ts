@@ -189,6 +189,15 @@ describe('invoices/create/route.ts — address validation', () => {
         const insertCall = queryMock.mock.calls.find((c: any[]) => String(c[0]).includes('INSERT INTO invoices'));
         expect(insertCall![1]).toEqual(expect.arrayContaining(['ul. Nabywcza 1', 'Krakow', '30-001']));
     });
+
+    it('stores the supplied delivery date, defaulting it to the issue date', async () => {
+        const { POST } = await import('@/app/api/invoices/create/route');
+        const res = await POST(req({ ...baseBody, deliveryDate: '2026-09-19' }));
+        expect(res.status).toBe(200);
+        const insertCall = queryMock.mock.calls.find((c: any[]) => String(c[0]).includes('INSERT INTO invoices'));
+        expect(insertCall![0]).toMatch(/issue_date, delivery_date, due_date/);
+        expect(insertCall![1]).toEqual(expect.arrayContaining(['2026-09-20', '2026-09-19']));
+    });
 });
 
 // Round 6: FA(3)'s Zwolnienie annotation requires a cited legal basis

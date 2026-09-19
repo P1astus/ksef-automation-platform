@@ -86,6 +86,7 @@ export default function NewInvoicePage() {
     const [sellerClientId, setSellerClientId] = useState('');
     const [invoiceNumber, setInvoiceNumber] = useState('');
     const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+    const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [dueDate, setDueDate] = useState('');
     const [lines, setLines] = useState<InvoiceLine[]>([{ ...DEFAULT_LINE }]);
     const [sending, setSending] = useState(false);
@@ -175,6 +176,7 @@ export default function NewInvoicePage() {
                     clientId: parseInt(sellerClientId),
                     invoiceNumber,
                     issueDate,
+                    deliveryDate,
                     dueDate,
                     buyerNip,
                     buyerName,
@@ -399,7 +401,7 @@ export default function NewInvoicePage() {
                 {/* Invoice details */}
                 <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-subtle)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dane faktury</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
                         <div>
                             <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Numer faktury*</label>
                             <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="FV/2025/001" style={{ width: '100%' }} required />
@@ -407,6 +409,10 @@ export default function NewInvoicePage() {
                         <div>
                             <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Data wystawienia*</label>
                             <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} style={{ width: '100%' }} required />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Data sprzedaży / dostawy*</label>
+                            <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} style={{ width: '100%' }} required />
                         </div>
                         <div>
                             <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>Termin płatności</label>

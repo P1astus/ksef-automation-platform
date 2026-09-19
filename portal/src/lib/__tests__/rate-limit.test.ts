@@ -19,8 +19,10 @@ describe('database rate limits', () => {
         expect(rateLimitResponse(result).status).toBe(429);
     });
 
-    it('prefers the nginx-provided real IP', () => {
+    it('uses only nginx-provided X-Real-IP, never a spoofable X-Forwarded-For entry', () => {
         const request = new Request('http://x', { headers: { 'x-real-ip': '192.0.2.4', 'x-forwarded-for': '198.51.100.2, 10.0.0.1' } });
         expect(requestIp(request)).toBe('192.0.2.4');
+        const spoofedOnly = new Request('http://x', { headers: { 'x-forwarded-for': '198.51.100.2, 10.0.0.1' } });
+        expect(requestIp(spoofedOnly)).toBe('unknown');
     });
 });

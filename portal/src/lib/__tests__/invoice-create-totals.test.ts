@@ -80,11 +80,11 @@ describe('invoices/create/route.ts — server-side totals (round 11 fix)', () =>
 
         const insertCall = queryMock.mock.calls.find((c: any[]) => String(c[0]).includes('INSERT INTO invoices'));
         const params = insertCall![1] as any[];
-        // net_amount, vat_amount, gross_amount are params[9], [10], [11] per
+        // net_amount, vat_amount, gross_amount are params[10], [11], [12] per
         // the INSERT's column list in invoices/create/route.ts.
-        expect(params[9]).toBe(100);
-        expect(params[10]).toBe(23);
-        expect(params[11]).toBe(123);
+        expect(params[10]).toBe(100);
+        expect(params[11]).toBe(23);
+        expect(params[12]).toBe(123);
     });
 
     it('computes totals correctly even with no totals field sent at all', async () => {
@@ -97,8 +97,8 @@ describe('invoices/create/route.ts — server-side totals (round 11 fix)', () =>
 
         const insertCall = queryMock.mock.calls.find((c: any[]) => String(c[0]).includes('INSERT INTO invoices'));
         const params = insertCall![1] as any[];
-        expect(params[9]).toBe(100);   // 50 * 2
-        expect(params[10]).toBe(8);    // 8% of 100
-        expect(params[11]).toBe(108);
+        expect(params[10]).toBe(100);  // 50 * 2
+        expect(params[11]).toBe(8);    // 8% of 100
+        expect(params[12]).toBe(108);
     });
 });

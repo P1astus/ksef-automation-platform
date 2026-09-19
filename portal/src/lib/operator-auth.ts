@@ -91,11 +91,12 @@ export async function requireOperator(): Promise<OperatorSession> {
     return session;
 }
 
-// Informational only (audit log): client-supplied when it comes via
-// X-Forwarded-For, so never use it for a security decision.
+// nginx overwrites X-Real-IP with the TCP peer address. X-Forwarded-For is an
+// append-only chain and may begin with a client-supplied value, so do not use
+// it even for audit attribution.
 export async function clientIp(): Promise<string | null> {
     const h = await headers();
-    return h.get('x-forwarded-for')?.split(',')[0].trim() || h.get('x-real-ip') || null;
+    return h.get('x-real-ip')?.trim() || null;
 }
 
 export async function auditOperator(
@@ -112,11 +113,9 @@ export async function auditOperator(
 }
 
 // --- login throttling -------------------------------------------------------
-// In-process (single portal container), keyed by EMAIL ONLY. Not by IP: nginx
-// here does not set X-Forwarded-For, so the header is client-controlled and an
-// IP-keyed limit could be evaded by rotating it. The trade-off is that someone
-// can briefly lock out a known operator email (15 min) - acceptable for a
-// handful of operators, and the alternative is unthrottled guessing.
+// In-process (single portal container), keyed by both email and the trusted
+// nginx-provided peer IP. The email key limits distributed guesses against a
+// known account; the IP key limits broad guessing from one source.
 const MAX_FAILURES = 5;
 const WINDOW_MS = 15 * 60 * 1000;
 const failures = new Map<string, number[]>();
@@ -147,19 +146,22 @@ export type OperatorLoginResult =
     | { ok: true; operatorId: number; email: string }
     | { ok: false; reason: 'invalid' | 'throttled' };
 
-export async function verifyOperatorLogin(emailInput: string, password: string): Promise<OperatorLoginResult> {
+export async function verifyOperatorLogin(emailInput: string, password: string, ip = 'unknown'): Promise<OperatorLoginResult> {
     const email = emailInput.trim().toLowerCase();
-    const k = email;
-    if (isThrottled(k)) return { ok: false, reason: 'throttled' };
+    const emailKey = `email:${email}`;
+    const ipKey = `ip:${ip.trim() || 'unknown'}`;
+    if (isThrottled(emailKey) || isThrottled(ipKey)) return { ok: false, reason: 'throttled' };
 
     const res = await query('SELECT id, password_hash, is_active FROM operators WHERE email = $1', [email]);
     const row = res.rows[0];
     const valid = await bcrypt.compare(password, row?.password_hash ?? DUMMY_HASH);
     if (!row || !row.is_active || !valid) {
-        recordFailure(k);
+        recordFailure(emailKey);
+        recordFailure(ipKey);
         return { ok: false, reason: 'invalid' };
     }
-    clearFailures(k);
+    clearFailures(emailKey);
+    clearFailures(ipKey);
     await query('UPDATE operators SET last_login_at = NOW() WHERE id = $1', [row.id]);
     return { ok: true, operatorId: row.id, email };
 }

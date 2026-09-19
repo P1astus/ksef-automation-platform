@@ -54,9 +54,9 @@ export async function POST(request: Request) {
 
     const invRes = await query(
         `SELECT i.id, i.invoice_number, i.issue_date, i.seller_name, i.seller_nip, i.buyer_name, i.buyer_nip,
-                net_amount, vat_amount, gross_amount, direction,
-                jpk_marker, jpk_period, jpk_correction_needed, ksef_number,
-                cost_category, invoice_lines, jpk_gtu, jpk_procedures, jpk_doc_type, jpk_import,
+                i.net_amount, i.vat_amount, i.gross_amount, i.direction,
+                i.jpk_marker, i.jpk_period, i.jpk_correction_needed, i.ksef_number,
+                i.cost_category, i.invoice_lines, i.jpk_gtu, i.jpk_procedures, i.jpk_doc_type, i.jpk_import,
                 i.delivery_date, i.ksef_acquisition_date, i.jpk_counterparty_country, i.jpk_margin_gross,
                 original.invoice_lines AS corrected_original_lines
          FROM invoices i

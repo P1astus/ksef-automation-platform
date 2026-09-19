@@ -59,6 +59,29 @@ export async function fleetTotals(): Promise<FleetTotals> {
     return res.rows[0];
 }
 
+export interface OperatorAuditEntry {
+    id: number;
+    operator_email: string | null;
+    action: string;
+    firm_id: number | null;
+    ip: string | null;
+    details: unknown;
+    created_at: string;
+}
+
+// A bounded, append-only audit feed for operators. This deliberately exposes
+// only the metadata already written by auditOperator(), never tenant records.
+export async function listOperatorAudit(limit = 250): Promise<OperatorAuditEntry[]> {
+    const res = await query(
+        `SELECT id, operator_email, action, firm_id, ip, details, created_at
+         FROM operator_audit_log
+         ORDER BY created_at DESC, id DESC
+         LIMIT $1`,
+        [limit]
+    );
+    return res.rows;
+}
+
 export interface FirmDetail {
     firm: FirmSummary;
     clients: Array<{ id: number; client_name: string | null; nip: string; auth_method: string | null; sync_enabled: boolean; last_sync_success: string | null; last_sync_error: string | null; anonymized_at: string | null }>;

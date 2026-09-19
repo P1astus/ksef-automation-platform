@@ -10,7 +10,10 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
     return (
         <div style={{ maxWidth: 1180, margin: '0 auto', padding: '24px 16px' }}>
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 8 }}>
-                <Link href="/admin" style={{ fontWeight: 800, fontSize: 16, color: 'var(--text)' }}>Konsola operatora</Link>
+                <nav style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <Link href="/admin" style={{ fontWeight: 800, fontSize: 16, color: 'var(--text)' }}>Konsola operatora</Link>
+                    <Link href="/admin/audit" style={{ fontSize: 13, color: 'var(--accent-hover)' }}>Dziennik audytu</Link>
+                </nav>
                 <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
                     {session.email} · <a href="/admin/logout" style={{ color: 'var(--accent-hover)' }}>Wyloguj</a>
                 </span>

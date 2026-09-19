@@ -12,9 +12,10 @@ function subjectHash(scope: string, subject: string): string {
 }
 
 export function requestIp(request: Request): string {
-    return request.headers.get('x-real-ip')
-        || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-        || 'unknown';
+    // X-Real-IP is overwritten by our nginx proxy with $remote_addr. Never
+    // use X-Forwarded-For as a fallback: it is an append-only chain and its
+    // left-most entry can be supplied by the client.
+    return request.headers.get('x-real-ip')?.trim() || 'unknown';
 }
 
 export async function consumeRateLimit(scope: string, subject: string, limit: number, windowMs: number): Promise<RateLimitResult> {

@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const {
-        clientId, invoiceNumber, issueDate, dueDate, buyerNip, buyerName,
+        clientId, invoiceNumber, issueDate, deliveryDate, dueDate, buyerNip, buyerName,
         buyerStreet, buyerCity, buyerPostalCode, buyerCountryCode,
         lines, offlineMode, correctingInvoiceId, correctionReason, exemptionBasis,
         jpkGtu, jpkProcedures,
@@ -163,10 +163,10 @@ export async function POST(request: Request) {
         `INSERT INTO invoices
          (firm_id, client_nip, invoice_number, seller_name, seller_nip, buyer_name, buyer_nip,
           buyer_street, buyer_city, buyer_postal_code,
-          net_amount, vat_amount, gross_amount, issue_date, due_date,
+          net_amount, vat_amount, gross_amount, issue_date, delivery_date, due_date,
           direction, processing_status, invoice_lines, raw_xml,
           corrects_invoice_id, correction_reason, jpk_gtu, jpk_procedures)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'sales','new',$16,$17,$18,$19,$20,$21)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'sales','new',$17,$18,$19,$20,$21,$22)
          RETURNING id`,
         [
             session.firmId,
@@ -183,6 +183,7 @@ export async function POST(request: Request) {
             totals.totalVat,
             totals.totalGross,
             issueDate,
+            deliveryDate || issueDate,
             dueDate || null,
             JSON.stringify(lines),
             xml,
