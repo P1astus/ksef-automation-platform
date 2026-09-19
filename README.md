@@ -88,5 +88,3 @@ sidecar has its own JUnit suite (`mvn test`).
 ## Further reading
 
 - `INSTALL.md` - deployment and operations.
-- `CLAUDE.md` / `HANDOVER.md` - engineering notes and history of the project (developed with AI coding agents;
-  these files are the working log they used).
