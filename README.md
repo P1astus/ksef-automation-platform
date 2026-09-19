@@ -88,3 +88,7 @@ sidecar has its own JUnit suite (`mvn test`).
 ## Further reading
 
 - `INSTALL.md` - deployment and operations.
+
+## License
+
+Copyright (c) 2026 Antek Potrykowski. All rights reserved. Shared for review only - see `LICENSE`.
