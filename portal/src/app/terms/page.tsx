@@ -62,7 +62,6 @@ Okres próbny: 14 dni od rejestracji (bez karty płatniczej). Po upływie okresu
         {
             title: '7. Odpowiedzialność i gwarancje',
             content: `Usługodawca:
-• Gwarantuje dostępność Platformy na poziomie 99,5% (SLA miesięczne), z wyłączeniem planowanych przerw serwisowych i awarii leżących po stronie MF/KSeF
 • Nie ponosi odpowiedzialności za niedostępność API KSeF po stronie Ministerstwa Finansów
 • Nie ponosi odpowiedzialności za straty wynikające z błędów w danych pobranych z KSeF
 • Nie ponosi odpowiedzialności za szkody pośrednie, utracone korzyści ani szkody wynikające z przerwy w działalności

@@ -1,14 +1,13 @@
 import Link from 'next/link';
 import PricingSection from './PricingSection';
 import {
-    Zap, Lock, Server, Shield, Building2,
+    Zap, Lock, Shield, Building2,
     RefreshCw, FileBarChart2, Users, Bell, Database, Link2,
     CheckCircle, ArrowRight,
 } from 'lucide-react';
 
 const trustBadges = [
     { Icon: Lock,      text: 'Certyfikat SSL' },
-    { Icon: Server,    text: 'Serwery w Polsce' },
     { Icon: Shield,    text: 'Zgodny z RODO' },
     { Icon: Building2, text: 'Integracja z KSeF MF' },
 ];
@@ -69,7 +68,7 @@ const testimonials = [
 
 const faqs = [
     { q: 'Czy muszę podawać kartę kredytową przy rejestracji?', a: 'Nie. Okres próbny przez 14 dni jest całkowicie bezpłatny i nie wymaga karty kredytowej. Płatność jest wymagana dopiero po zakończeniu okresu próbnego.' },
-    { q: 'Jak bezpieczne są dane moich klientów?', a: 'Dane przechowywane są na serwerach w Polsce (zgodnie z RODO). Tokeny KSeF są szyfrowane w bazie danych. Komunikacja z KSeF odbywa się przez szyfrowane połączenie HTTPS z podpisem kryptograficznym XAdES-BES.' },
+    { q: 'Jak bezpieczne są dane moich klientów?', a: 'Dane przetwarzane są zgodnie z RODO. Tokeny KSeF są szyfrowane w bazie danych. Komunikacja z KSeF odbywa się przez szyfrowane połączenie HTTPS z podpisem kryptograficznym XAdES-BES.' },
     { q: 'Co to jest KSeF i czy muszę go używać?', a: 'KSeF (Krajowy System e-Faktur) to obowiązkowy od 2026 roku system e-fakturowania MF. Każda firma w Polsce będzie zobligowana do wystawiania i odbierania faktur przez KSeF. Nasze biuro rachunkowe powinno być gotowe już teraz.' },
     { q: 'Jak długo trwa konfiguracja nowego klienta?', a: 'Dodanie klienta zajmuje mniej niż 5 minut. Wystarczy podać NIP firmy i token autoryzacyjny (lub certyfikat PKCS12). System automatycznie zacznie pobierać faktury w ciągu godziny.' },
     { q: 'Czy mogę eksportować dane do Optimy lub Symfonii?', a: 'Tak. Platforma obsługuje eksport do formatów Optima FK, Symfonia FK oraz Insert FK. Eksport CSV/Excel dostępny jest od planu Biznes.' },
@@ -198,16 +197,15 @@ export default function LandingPage() {
 
             {/* ── STATS BAND ── */}
             <section style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
-                <div style={{ maxWidth: 1000, margin: '0 auto', padding: '36px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
+                <div style={{ maxWidth: 1000, margin: '0 auto', padding: '36px 24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0 }}>
                     {[
-                        { value: '10 000+', label: 'Faktur pobranych miesięcznie' },
                         { value: '< 5 min', label: 'Czas konfiguracji klienta' },
                         { value: '14 dni', label: 'Bezpłatnego okresu próbnego' },
                         { value: '0 zł',    label: 'Opłata za wdrożenie' },
                     ].map((s, i) => (
                         <div key={i} style={{
                             textAlign: 'center', padding: '16px 24px',
-                            borderRight: i < 3 ? '1px solid var(--border)' : 'none',
+                            borderRight: i < 2 ? '1px solid var(--border)' : 'none',
                         }}>
                             <div style={{ fontSize: 30, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em' }}>{s.value}</div>
                             <div style={{ fontSize: 12.5, color: 'var(--text-subtle)', marginTop: 4, fontWeight: 500 }}>{s.label}</div>
