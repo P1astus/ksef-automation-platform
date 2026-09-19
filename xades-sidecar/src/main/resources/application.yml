@@ -19,3 +19,8 @@ ksef:
 
 sidecar:
   api-key: ${SIDECAR_API_KEY:}
+  # XAdES-BES signing of the MF JPK gateway's InitUpload metadata. Unset = the
+  # /sign-xades-bes endpoint answers 503. The key is server-side only.
+  jpk-signing:
+    keystore-path: ${JPK_SIGNING_KEYSTORE_PATH:}
+    keystore-password: ${JPK_SIGNING_KEYSTORE_PASSWORD:}

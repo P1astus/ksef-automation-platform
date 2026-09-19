@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
 import { createDecipheriv, createHash } from 'crypto';
 import {
-    zipSingleFile, prepareJpkUpload, buildAuthDataXml, submitToTestGateway, JpkGatewayError, JPK_GATEWAY_TEST_URL,
+    zipSingleFile, prepareJpkUpload, buildAuthDataXml, submitToTestGateway, signInitUploadWithSidecar, JpkGatewayError, JPK_GATEWAY_TEST_URL,
 } from '../jpk-gateway';
 
 // The MF gateway protocol (spec "Interfejsy usług JPK" 5.2/5.6), tested offline.
@@ -147,5 +147,42 @@ describe('submitToTestGateway (mocked transport)', () => {
         const st = () => new Response(JSON.stringify({ Code: 401, Description: 'Weryfikacja negatywna – dokument niezgodny ze schematem XSD' }), { status: 200 });
         const r = await submitToTestGateway(prepared, { fetchImpl: fakeFetch([], { '/Status/': st }), pollDelayMs: 0 });
         expect(r.status.code).toBe(401);
+    });
+});
+
+describe('signInitUploadWithSidecar', () => {
+    it('posts the metadata with the API key header and returns the signed document', async () => {
+        let seen: { url: string; init?: RequestInit } | undefined;
+        const f = (async (url: any, init?: RequestInit) => {
+            seen = { url: String(url), init };
+            return new Response(JSON.stringify({ success: true, signedXml: '<signed/>' }), { status: 200 });
+        }) as typeof fetch;
+        const out = await signInitUploadWithSidecar('<InitUpload/>', { sidecarUrl: 'http://xades-sidecar:8090/', apiKey: 'k', fetchImpl: f });
+        expect(out).toBe('<signed/>');
+        expect(seen!.url).toBe('http://xades-sidecar:8090/sign-xades-bes');
+        expect((seen!.init!.headers as Record<string, string>)['X-Sidecar-Api-Key']).toBe('k');
+        expect(JSON.parse(String(seen!.init!.body))).toEqual({ xml: '<InitUpload/>' });
+    });
+
+    it('fails loudly when the sidecar has no signing key (503) or no API key is set - never returns unsigned XML', async () => {
+        const f503 = (async () => new Response(JSON.stringify({ success: false, error: 'JPK signing key is not configured on the sidecar' }), { status: 503 })) as typeof fetch;
+        await expect(signInitUploadWithSidecar('<x/>', { apiKey: 'k', fetchImpl: f503 })).rejects.toThrow(/not configured on the sidecar/);
+        const prev = process.env.SIDECAR_API_KEY;
+        delete process.env.SIDECAR_API_KEY;
+        try {
+            await expect(signInitUploadWithSidecar('<x/>', { fetchImpl: f503 })).rejects.toThrow(/SIDECAR_API_KEY/);
+        } finally {
+            if (prev !== undefined) process.env.SIDECAR_API_KEY = prev;
+        }
+    });
+
+    it('uses the hyphenated default service name (Tomcat rejects underscores in Host)', async () => {
+        let url = '';
+        const f = (async (u: any) => { url = String(u); return new Response(JSON.stringify({ signedXml: '<s/>' }), { status: 200 }); }) as typeof fetch;
+        const prev = process.env.XADES_SIDECAR_URL;
+        delete process.env.XADES_SIDECAR_URL;
+        try { await signInitUploadWithSidecar('<x/>', { apiKey: 'k', fetchImpl: f }); } finally { if (prev !== undefined) process.env.XADES_SIDECAR_URL = prev; }
+        expect(url).toBe('http://xades-sidecar:8090/sign-xades-bes');
+        expect(url).not.toContain('_');
     });
 });

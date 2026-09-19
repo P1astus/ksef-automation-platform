@@ -156,6 +156,11 @@ services:
       # except /actuator/** (see SidecarApiKeyFilter). Refuses to start
       # without it, same as the portal's JWT_SECRET requirement above.
       - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
+      # XAdES-BES signing of the MF JPK gateway's InitUpload metadata
+      # (/sign-xades-bes). Server-side only - never accepted in a request.
+      # Empty = the endpoint answers 503. Path is inside the container.
+      - "JPK_SIGNING_KEYSTORE_PATH=${JPK_SIGNING_KEYSTORE_PATH:-}"
+      - "JPK_SIGNING_KEYSTORE_PASSWORD=${JPK_SIGNING_KEYSTORE_PASSWORD:-}"
     ports:
       - "8090:8090"
     volumes:

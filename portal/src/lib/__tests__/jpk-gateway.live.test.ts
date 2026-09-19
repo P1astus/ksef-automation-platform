@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { prepareJpkUpload, submitToTestGateway } from '../jpk-gateway';
+import { prepareJpkUpload, submitToTestGateway, signInitUploadWithSidecar } from '../jpk-gateway';
 
 // LIVE test against the Ministry of Finance TEST gateway (test-e-dokumenty.mf.gov.pl).
 // Skipped unless JPK_LIVE=1: it needs the network and creates a (test) session at
@@ -41,6 +41,26 @@ describe.skipIf(process.env.JPK_LIVE !== '1')('MF test gateway round trip', () =
         console.log('LIVE RESULT', JSON.stringify(result.status));
         // The transport always worked if we got here (Init, Put Blob, Finish, Status).
         // A 2xx additionally means the test mock accepted the authorisation data.
+        expect(PACKAGING_FAILURES.has(result.status.code)).toBe(false);
+        if (result.status.code >= 200 && result.status.code < 300) expect(result.status.upo).toBeTruthy();
+    }, 180000);
+});
+
+// Signed-metadata mode (companies, and anyone without authorisation data): the
+// InitUpload is XAdES-BES-signed by the sidecar with a self-signed TEST key,
+// which the ministry's test environment accepts. Needs the sidecar running with
+// JPK_SIGNING_KEYSTORE_PATH set, XADES_SIDECAR_URL (e.g. http://localhost:8090)
+// and SIDECAR_API_KEY in the environment.
+//   JPK_LIVE=1 JPK_LIVE_SIGN=1 XADES_SIDECAR_URL=http://localhost:8090 SIDECAR_API_KEY=... npx vitest run <this file>
+describe.skipIf(process.env.JPK_LIVE !== '1' || process.env.JPK_LIVE_SIGN !== '1')('MF test gateway round trip, signed metadata', () => {
+    it('gets a company JPK_V7M(3) through the pipeline with XAdES-BES metadata and reports the verdict', async () => {
+        const pem = readFileSync(join(GATEWAY_DIR, 'TEST-23090b332d381c2e5d84ea33e8fce7e7.cer'));
+        const xml = readFileSync(process.env.JPK_LIVE_XML || join(GATEWAY_DIR, 'sample-jpk_v7m-3-organization.xml'), 'utf8');
+        const prepared = prepareJpkUpload({ xml, fileName: `JPK_V7M_${nip10(xml)}_sig${Date.now() % 100000}.xml`, certificate: pem });
+        const signed = await signInitUploadWithSidecar(prepared.initUploadXml);
+        expect(signed).toContain('<ds:Signature');
+        const result = await submitToTestGateway(prepared, { signedInitUploadXml: signed, pollAttempts: 15, pollDelayMs: 4000 });
+        console.log('LIVE SIGNED RESULT', JSON.stringify(result.status));
         expect(PACKAGING_FAILURES.has(result.status.code)).toBe(false);
         if (result.status.code >= 200 && result.status.code < 300) expect(result.status.upo).toBeTruthy();
     }, 180000);

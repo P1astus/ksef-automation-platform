@@ -203,6 +203,35 @@ ${parts.map((p, i) => `        <FileSignature>
     return { initUploadXml, parts };
 }
 
+// ---- Signing (XAdES-BES via the sidecar) ---------------------------------------
+
+/**
+ * Signs the InitUpload metadata with the sidecar's XAdES-BES endpoint - the
+ * alternative to AuthData when the taxpayer is a company (AuthData is only
+ * accepted for natural persons). The signing key lives in the sidecar and is
+ * never sent anywhere. Uses the same env names as ksef-client.ts.
+ */
+export async function signInitUploadWithSidecar(
+    initUploadXml: string,
+    opts: { sidecarUrl?: string; apiKey?: string; fetchImpl?: FetchFn } = {}
+): Promise<string> {
+    const f = opts.fetchImpl ?? fetch;
+    // Hyphenated service name, never the underscored container name (Tomcat 400s on '_').
+    const url = (opts.sidecarUrl ?? process.env.XADES_SIDECAR_URL ?? 'http://xades-sidecar:8090').replace(/\/$/, '');
+    const apiKey = opts.apiKey ?? process.env.SIDECAR_API_KEY;
+    if (!apiKey) throw new JpkGatewayError('SIDECAR_API_KEY is not set - cannot call the signing sidecar');
+    const res = await f(`${url}/sign-xades-bes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Sidecar-Api-Key': apiKey },
+        body: JSON.stringify({ xml: initUploadXml }),
+    });
+    const body = await readJson(res);
+    if (!res.ok || !body.signedXml) {
+        throw new JpkGatewayError(`sidecar signing failed (${res.status}): ${body.error ?? JSON.stringify(body)}`, body);
+    }
+    return String(body.signedXml);
+}
+
 // ---- Transport -------------------------------------------------------------
 
 type FetchFn = typeof fetch;
