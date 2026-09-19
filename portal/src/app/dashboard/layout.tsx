@@ -17,6 +17,7 @@ import {
     Zap,
     HelpCircle,
     FileCheck,
+    Landmark,
     UsersRound,
 } from 'lucide-react';
 
@@ -68,6 +69,7 @@ export default async function DashboardLayout({
         { href: '/dashboard/clients',       label: 'Klienci',      Icon: Users },
         { href: '/dashboard/invoices',      label: 'Faktury',      Icon: FileText },
         { href: '/dashboard/jpk',           label: 'JPK V7M',      Icon: FileCheck },
+        { href: '/dashboard/zus',           label: 'ZUS DRA/RCA',  Icon: Landmark },
         { href: '/dashboard/billing',       label: 'Rozliczenia',  Icon: CreditCard },
         { href: '/dashboard/settings',         label: 'Ustawienia',   Icon: Settings },
         { href: '/dashboard/settings/team',    label: 'Zespół',       Icon: UsersRound },
