@@ -478,6 +478,7 @@ export default function NewInvoicePage() {
                                 <select value={marginVatRate} onChange={e => setMarginVatRate(e.target.value as '23' | '8' | '5')}><option value="23">23%</option><option value="8">8%</option><option value="5">5%</option></select>
                                 <select value={marginMethod} onChange={e => setMarginMethod(e.target.value as 'individual' | 'sum')}><option value="individual">Marża jednostkowa</option><option value="sum">Suma marż (WEW)</option></select>
                                 <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#f59e0b' }}>Wewnętrzna marża brutto nie jest przekazywana nabywcy ani do FA(3)/PDF; służy wyłącznie rozliczeniu JPK.</div>
+                                <div style={{ gridColumn: '1 / -1', fontSize: 12, fontWeight: 700, color: '#f59e0b' }}>Księgowy odpowiada za potwierdzenie, że procedura VAT-marża ma zastosowanie do tej sprzedaży oraz za poprawność marży, stawki i metody rozliczenia przed wysyłką do KSeF lub złożeniem JPK.</div>
                             </div>}
                         </div>
                     )}
