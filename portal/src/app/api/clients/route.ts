@@ -60,7 +60,12 @@ export async function POST(request: Request) {
         }
 
         const result = await query(
-            'SELECT * FROM clients WHERE firm_id = $1 AND nip = $2',
+            `SELECT id, client_name, nip, auth_method, certificate_id, certificate_expiry,
+                permission_level, hwm_sales, hwm_purchases, last_sync_success, last_sync_error,
+                sync_enabled, contact_email, contact_phone, monthly_invoice_volume,
+                preferred_session_mode, created_at, updated_at, street, city, postal_code,
+                tax_office_code, taxpayer_type, first_name, last_name, birth_date, anonymized_at
+             FROM clients WHERE firm_id = $1 AND nip = $2`,
             [session.firmId, cleanNip]
         );
 
