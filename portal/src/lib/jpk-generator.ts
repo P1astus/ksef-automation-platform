@@ -81,6 +81,9 @@ export interface JpkInvoiceRow {
     // have no line-level data, so their rate is unknown - see
     // salesContribution()'s fallback below.
     invoice_lines?: InvoiceLine[] | null;
+    // For a correction, the route supplies the original line set so the
+    // register can report corrected minus original values by VAT rate.
+    corrected_original_lines?: InvoiceLine[] | null;
     // Sales-side only: row-level GTU_xx / procedure markers (jpk-markers.ts).
     jpk_gtu?: string[] | null;
     jpk_procedures?: string[] | null;
@@ -186,11 +189,19 @@ function salesContribution(inv: JpkInvoiceRow): Partial<Record<string, number>> 
     const lines = Array.isArray(inv.invoice_lines) ? inv.invoice_lines : null;
     if (lines && lines.length > 0) {
         const byRate = sumLinesByRate(lines);
-        for (const rate of Object.keys(byRate) as VatRateCode[]) {
-            const bucket = byRate[rate]!;
+        const originalByRate = Array.isArray(inv.corrected_original_lines)
+            ? sumLinesByRate(inv.corrected_original_lines)
+            : {};
+        const rates = new Set<VatRateCode>([
+            ...(Object.keys(byRate) as VatRateCode[]),
+            ...(Object.keys(originalByRate) as VatRateCode[]),
+        ]);
+        for (const rate of rates) {
+            const corrected = byRate[rate] || { net: 0, vat: 0 };
+            const original = originalByRate[rate] || { net: 0, vat: 0 };
             const field = SALES_RATE_FIELD[rate];
-            contrib[field.net] = round2((contrib[field.net] || 0) + bucket.net);
-            if (field.vat) contrib[field.vat] = round2((contrib[field.vat] || 0) + bucket.vat);
+            contrib[field.net] = round2((contrib[field.net] || 0) + corrected.net - original.net);
+            if (field.vat) contrib[field.vat] = round2((contrib[field.vat] || 0) + corrected.vat - original.vat);
         }
     } else {
         contrib['K_19'] = num(inv.net_amount);
@@ -259,10 +270,6 @@ export function generateJpkV7M(
     const salesTotals: Record<string, number> = {};
     const salesRows = sales.map((inv, idx) => {
         const prefix = inv.jpk_correction_needed ? 'COR' : '';
-        const contrib = salesContribution(inv);
-        for (const [field, amount] of Object.entries(contrib)) {
-            salesTotals[field] = round2((salesTotals[field] || 0) + (amount || 0));
-        }
         // Throws on an unknown code rather than emitting a marker the schema
         // doesn't define - a filed JPK with a bogus element is worse than a
         // failed generation.
@@ -271,6 +278,15 @@ export function generateJpkV7M(
             .map(code => `            <tns:${code}>1</tns:${code}>`)
             .join('\n');
         const docType = normalizeJpkDocType(inv.jpk_doc_type, 'sales');
+        // FP rows are listed at full value but must not increase sales or VAT
+        // totals; the fiscal receipt already accounts for that transaction.
+        if (docType !== 'FP') {
+            const contrib = salesContribution(inv);
+            for (const [field, amount] of Object.entries(contrib)) {
+                salesTotals[field] = round2((salesTotals[field] || 0) + (amount || 0));
+            }
+        }
+        const contrib = salesContribution(inv);
         const tin = contractorTin(inv.buyer_nip, inv.jpk_counterparty_country);
         if (inv.jpk_counterparty_country && !isValidCountryCode(inv.jpk_counterparty_country)) {
             problems.push(`faktura ${inv.invoice_number}: nieznany kod kraju ${inv.jpk_counterparty_country}`);

@@ -10,7 +10,14 @@ export async function GET() {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const result = await query(`
-        SELECT c.*,
+        SELECT c.id, c.client_name, c.nip, c.auth_method, c.certificate_id,
+            c.certificate_expiry, c.permission_level, c.hwm_sales,
+            c.hwm_purchases, c.last_sync_success, c.last_sync_error,
+            c.sync_enabled, c.contact_email, c.contact_phone,
+            c.monthly_invoice_volume, c.preferred_session_mode, c.created_at,
+            c.updated_at, c.street, c.city, c.postal_code, c.tax_office_code,
+            c.taxpayer_type, c.first_name, c.last_name, c.birth_date,
+            c.anonymized_at,
             (SELECT COUNT(*) FROM invoices i WHERE i.client_nip = c.nip AND i.firm_id = c.firm_id) as invoice_count
         FROM clients c
         WHERE c.firm_id = $1

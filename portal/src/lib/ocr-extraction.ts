@@ -74,10 +74,9 @@ export function extractInvoiceFields(text: string): ExtractedInvoiceFields {
 }
 
 export function needsManualReview(fields: ExtractedInvoiceFields): boolean {
-    return (
-        !fields.nipMatched ||
-        fields.invoiceNumber === null ||
-        fields.grossAmount === 0 ||
-        Math.abs(fields.netAmount + fields.vatAmount - fields.grossAmount) > 0.01
-    );
+    // Amounts are currently inferred from the largest figure and a guessed
+    // 23% rate. They are useful review hints, never reliable booking data:
+    // auto-promoting an 8% invoice silently changed its VAT and issue date.
+    void fields;
+    return true;
 }

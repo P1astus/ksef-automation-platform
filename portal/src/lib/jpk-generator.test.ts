@@ -144,6 +144,30 @@ describe('generateJpkV7M invoice/total reconciliation', () => {
         expect(extractOne(xml, 'PodatekNalezny')).toBeCloseTo(27);
     });
 
+    it('reports a correction as its VAT-rate delta, not the corrected invoice state', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [{
+            id: 1, invoice_number: 'KOR-1', issue_date: '2026-02-05', seller_name: 'Firm', buyer_name: 'Buyer', buyer_nip: '1111111111',
+            net_amount: -20, vat_amount: -4.6, gross_amount: -24.6, direction: 'sales', jpk_marker: 'OFF',
+            invoice_lines: [{ name: 'Service', qty: 1, unit: 'szt', netPrice: 80, vatRate: '23' }],
+            corrected_original_lines: [{ name: 'Service', qty: 1, unit: 'szt', netPrice: 100, vatRate: '23' }],
+        }]);
+        expect(extractOne(xml, 'K_19')).toBe(-20);
+        expect(extractOne(xml, 'K_20')).toBeCloseTo(-4.6);
+        expect(extractOne(xml, 'P_19')).toBe(-20);
+        expect(extractOne(xml, 'P_20')).toBe(-5); // declaration values are whole zł
+    });
+
+    it('lists an FP row but excludes it from sales and VAT totals', () => {
+        const xml = generateJpkV7M(firm, '2026-02', [{
+            id: 1, invoice_number: 'FP-1', issue_date: '2026-02-05', seller_name: 'Firm', buyer_name: 'Buyer', buyer_nip: '1111111111',
+            net_amount: 100, vat_amount: 23, gross_amount: 123, direction: 'sales', jpk_marker: 'OFF', jpk_doc_type: 'FP',
+        }]);
+        expect(xml).toContain('<tns:TypDokumentu>FP</tns:TypDokumentu>');
+        expect(extractOne(xml, 'PodatekNalezny')).toBe(0);
+        expect(extractOne(xml, 'P_38')).toBe(0);
+        expect(xml).not.toContain('<tns:P_19>');
+    });
+
     it('an empty invoice list produces a valid, zeroed-out declaration rather than throwing', () => {
         const xml = generateJpkV7M(firm, '2026-02', []);
         expect(() => xml).not.toThrow();

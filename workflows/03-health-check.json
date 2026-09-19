@@ -387,14 +387,14 @@
       "main": [
         [
           {
-            "node": "Log Health Status",
+            "node": "Send Health Alert",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Send Health Alert",
+            "node": "Log Health Status",
             "type": "main",
             "index": 0
           }
@@ -861,14 +861,14 @@
         "main": [
           [
             {
-              "node": "Log Health Status",
+              "node": "Send Health Alert",
               "type": "main",
               "index": 0
             }
           ],
           [
             {
-              "node": "Send Health Alert",
+              "node": "Log Health Status",
               "type": "main",
               "index": 0
             }

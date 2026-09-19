@@ -33,9 +33,19 @@ describe('getSession — firms.is_active enforcement', () => {
     afterEach(() => vi.useRealTimers());
 
     it('returns the session for an active firm', async () => {
-        queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'biznes' }] });
+        queryMock.mockImplementation((sql: string) => Promise.resolve({ rows: /FROM firm_users/.test(sql)
+            ? [{ id: 7, role: 'member' }]
+            : [{ is_active: true, subscription_tier: 'biznes' }] }));
         const { getSession } = await import('@/lib/auth');
         expect((await getSession())?.firmId).toBe(1);
+    });
+
+    it('rejects a member immediately after their team row is removed', async () => {
+        queryMock.mockImplementation((sql: string) => Promise.resolve({ rows: /FROM firm_users/.test(sql)
+            ? []
+            : [{ is_active: true, subscription_tier: 'biznes' }] }));
+        const { getSession } = await import('@/lib/auth');
+        expect(await getSession()).toBeNull();
     });
 
     it('returns null for a deactivated firm', async () => {
@@ -54,11 +64,13 @@ describe('getSession — firms.is_active enforcement', () => {
         queryMock.mockResolvedValue({ rows: [{ is_active: true, subscription_tier: 'biznes' }] });
         const { getSession } = await import('@/lib/auth');
         await getSession(); await getSession();
-        expect(queryMock).toHaveBeenCalledTimes(1);
+        // Firm access stays cached; a live member row is intentionally
+        // checked on every request so removal takes effect immediately.
+        expect(queryMock).toHaveBeenCalledTimes(3);
         vi.advanceTimersByTime(31_000);
         queryMock.mockResolvedValue({ rows: [{ is_active: false, subscription_tier: 'biznes' }] });
         expect(await getSession()).toBeNull();
-        expect(queryMock).toHaveBeenCalledTimes(2);
+        expect(queryMock).toHaveBeenCalledTimes(4);
     });
 
     it('invalidateFirmActiveCache makes deactivation take effect immediately', async () => {

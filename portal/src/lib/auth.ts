@@ -156,6 +156,20 @@ export async function getSession() {
     // Shares the 30 s cache above, so a webhook-driven downgrade lags by at
     // most the TTL - settings/billing code should call invalidateFirmActiveCache().
     if (session.userId != null && !tierHasFeature(access.tier, 'team')) return null;
+    // A member's JWT is deliberately only a session credential, not an
+    // authority record. Team removal must take effect immediately: otherwise
+    // updateSession() keeps sliding a deleted member's cookie indefinitely.
+    // Do not cache this lookup; removal is a security boundary and it also
+    // picks up a role change without waiting for the firm-access TTL.
+    if (session.userId != null) {
+        const { query } = await import('./db');
+        const member = await query(
+            'SELECT id, role FROM firm_users WHERE id = $1 AND firm_id = $2 AND is_active = true',
+            [session.userId, session.firmId]
+        );
+        if (!member.rows[0]) return null;
+        session.role = member.rows[0].role;
+    }
     return session;
 }
 

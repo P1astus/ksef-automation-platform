@@ -33,7 +33,7 @@
         },
         "options": { "timeout": 15000 }
       },
-      "onError": "continueRegularOutput"
+      "onError": "stopWorkflow"
     },
     {
       "id": "b2c3d4e5-0003-4000-a000-000000000003",
@@ -67,7 +67,7 @@
         },
         "options": { "timeout": 15000 }
       },
-      "onError": "continueRegularOutput"
+      "onError": "stopWorkflow"
     },
     {
       "id": "b2c3d4e5-0005-4000-a000-000000000005",
@@ -123,7 +123,7 @@
       "parameters": {
         "width": 700,
         "height": 140,
-        "content": "## Error handling\n\nAs with every other workflow here, an Error Trigger node alone does nothing — n8n only invokes it once Settings -> Error Workflow points at this workflow's id. That's a one-time per-environment step (fresh ids on every import), documented in INSTALL.md alongside the same step for 04-ksef-invoice-retrieval.json.\n\nBoth HTTP Request nodes use onError: continueRegularOutput so one route failing (e.g. Resend not configured yet) doesn't block the other."
+        "content": "## Error handling\n\nAs with every other workflow here, an Error Trigger node alone does nothing — n8n only invokes it once Settings -> Error Workflow points at this workflow's id. That's a one-time per-environment step (fresh ids on every import), documented in INSTALL.md alongside the same step for 04-ksef-invoice-retrieval.json.\n\nBoth HTTP Request nodes stop the workflow on delivery failure so the failure is visible and can trigger the configured error workflow."
       }
     }
   ],

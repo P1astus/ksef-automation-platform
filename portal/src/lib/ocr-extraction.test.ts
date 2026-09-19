@@ -8,7 +8,9 @@ describe('extractInvoiceFields / needsManualReview', () => {
         expect(fields.nipMatched).toBe(true);
         expect(fields.invoiceNumber).toBe('FV/1/2026');
         expect(fields.grossAmount).toBe(123);
-        expect(needsManualReview(fields)).toBe(false);
+        // OCR currently infers amounts from the largest figure and a guessed
+        // VAT rate, so even a clean extraction requires human confirmation.
+        expect(needsManualReview(fields)).toBe(true);
     });
 
     it('flags for review when no NIP is found', () => {

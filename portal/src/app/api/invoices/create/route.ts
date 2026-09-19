@@ -87,6 +87,17 @@ export async function POST(request: Request) {
         }, { status: 400 });
     }
 
+    // Validate the calendar lookup before creating the invoice. If the
+    // business-day calendar has not been extended, an offline invoice must
+    // fail as a whole rather than leave an unmonitored invoice behind.
+    if (offlineMode) {
+        try {
+            await query('SELECT next_business_day($1::date)', [issueDate]);
+        } catch {
+            return NextResponse.json({ error: 'Nie można wyznaczyć terminu offline — kalendarz dni roboczych wymaga aktualizacji' }, { status: 503 });
+        }
+    }
+
     // Also get firm data for seller info
     const firmRes = await query('SELECT firm_name FROM firms WHERE id = $1', [session.firmId]);
     const firmName = firmRes.rows[0]?.firm_name || '';
@@ -150,18 +161,19 @@ export async function POST(request: Request) {
     // Insert invoice record
     const insertRes = await query(
         `INSERT INTO invoices
-         (firm_id, client_nip, invoice_number, seller_name, buyer_name, buyer_nip,
+         (firm_id, client_nip, invoice_number, seller_name, seller_nip, buyer_name, buyer_nip,
           buyer_street, buyer_city, buyer_postal_code,
           net_amount, vat_amount, gross_amount, issue_date, due_date,
           direction, processing_status, invoice_lines, raw_xml,
           corrects_invoice_id, correction_reason, jpk_gtu, jpk_procedures)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'sales','new',$15,$16,$17,$18,$19,$20)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'sales','new',$16,$17,$18,$19,$20,$21)
          RETURNING id`,
         [
             session.firmId,
             client.nip,
             invoiceNumber,
             client.client_name || firmName,
+            client.nip,
             buyerName,
             normalizedBuyerNip,
             buyerStreet.trim(),

@@ -29,26 +29,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }, { status: 400 });
     }
 
-    // Try to trigger n8n webhook if configured
+    // The portal does not itself retrieve invoices. Refuse to claim a sync
+    // was queued unless the workflow webhook is configured and accepts it.
     const n8nWebhookUrl = process.env.N8N_SYNC_WEBHOOK_URL;
-    if (n8nWebhookUrl) {
-        try {
-            await fetch(n8nWebhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ client_id: client.id, nip: client.nip }),
-                signal: AbortSignal.timeout(5000),
-            });
-        } catch {
-            // n8n unreachable — still return success (sync is async)
-        }
+    if (!n8nWebhookUrl) {
+        return NextResponse.json({ error: 'Synchronizacja KSeF nie jest skonfigurowana na serwerze' }, { status: 503 });
     }
-
-    // Record sync attempt
-    await query(
-        'UPDATE clients SET last_sync_at = NOW() WHERE id = $1',
-        [id]
-    );
+    try {
+        const webhook = await fetch(n8nWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: client.id, nip: client.nip }),
+            signal: AbortSignal.timeout(5000),
+        });
+        if (!webhook.ok) throw new Error(`Webhook synchronizacji zwrócił ${webhook.status}`);
+    } catch (err) {
+        console.error('KSeF sync webhook failed:', err);
+        return NextResponse.json({ error: 'Nie udało się zlecić synchronizacji KSeF' }, { status: 502 });
+    }
 
     await logActivity(session.firmId, 'sync_triggered', `Synchronizacja KSeF: ${client.client_name}`);
 

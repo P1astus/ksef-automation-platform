@@ -54,6 +54,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             return NextResponse.json({ error: 'Ten wpis został już przetworzony' }, { status: 409 });
         }
 
+        const net = Number(netAmount);
+        const vat = Number(vatAmount);
+        const gross = Number(grossAmount);
+        if (![net, vat, gross].every(Number.isFinite) || net < 0 || vat < 0 || gross < 0 || Math.abs(net + vat - gross) > 0.01) {
+            await query(`UPDATE ocr_queue SET ocr_status = 'manual_review' WHERE id = $1`, [id]);
+            return NextResponse.json({ error: 'Kwoty faktury muszą być nieujemne i spełniać netto + VAT = brutto' }, { status: 400 });
+        }
+
         try {
             await createClientWithinPlan(session.firmId, {
                 nip,
@@ -62,21 +70,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
             const firmRes = await query('SELECT firm_nip, firm_name FROM firms WHERE id = $1', [session.firmId]);
             const firm = firmRes.rows[0];
-            const ksefNumber = `REVIEWED-${Math.random().toString(36).substr(2, 10).toUpperCase()}`;
-
             await query(
                 `INSERT INTO invoices (
-                    firm_id, invoice_number, ksef_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
+                    firm_id, invoice_number, client_nip, seller_nip, seller_name, buyer_nip, buyer_name,
                     issue_date, net_amount, vat_amount, gross_amount, currency, direction
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, 'PLN', $12)`,
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9, $10, 'PLN', $11)`,
                 [
-                    session.firmId, invoiceNumber.trim(), ksefNumber, nip, nip, 'Zweryfikowany dokument',
+                    session.firmId, invoiceNumber.trim(), nip, nip, 'Zweryfikowany dokument',
                     firm?.firm_nip || null, firm?.firm_name || 'My Firm',
-                    Number(netAmount) || 0, Number(vatAmount) || 0, Number(grossAmount) || 0, dir,
+                    net, vat, gross, dir,
                 ]
             );
 
-            await query(`UPDATE ocr_queue SET ocr_status = 'completed', matched_ksef_number = $1, processed_at = NOW() WHERE id = $2`, [ksefNumber, id]);
+            await query(`UPDATE ocr_queue SET ocr_status = 'completed', processed_at = NOW() WHERE id = $1`, [id]);
             await logActivity(session.firmId, 'ocr_approved', `Zatwierdzono zeskanowany dokument #${id} jako fakturę ${invoiceNumber}`);
 
             return NextResponse.json({ ok: true });

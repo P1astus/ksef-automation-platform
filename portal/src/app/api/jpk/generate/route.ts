@@ -53,15 +53,17 @@ export async function POST(request: Request) {
     const periodEnd = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
 
     const invRes = await query(
-        `SELECT id, invoice_number, issue_date, seller_name, seller_nip, buyer_name, buyer_nip,
+        `SELECT i.id, i.invoice_number, i.issue_date, i.seller_name, i.seller_nip, i.buyer_name, i.buyer_nip,
                 net_amount, vat_amount, gross_amount, direction,
                 jpk_marker, jpk_period, jpk_correction_needed, ksef_number,
                 cost_category, invoice_lines, jpk_gtu, jpk_procedures, jpk_doc_type, jpk_import,
-                delivery_date, ksef_acquisition_date, jpk_counterparty_country, jpk_margin_gross
-         FROM invoices
-         WHERE client_nip = $1 AND firm_id = $2
-           AND (jpk_period = $3 OR (jpk_period IS NULL AND issue_date BETWEEN $4 AND $5))
-         ORDER BY issue_date ASC, id ASC`,
+                i.delivery_date, i.ksef_acquisition_date, i.jpk_counterparty_country, i.jpk_margin_gross,
+                original.invoice_lines AS corrected_original_lines
+         FROM invoices i
+         LEFT JOIN invoices original ON original.id = i.corrects_invoice_id AND original.firm_id = i.firm_id
+         WHERE i.client_nip = $1 AND i.firm_id = $2
+           AND (i.jpk_period = $3 OR (i.jpk_period IS NULL AND i.issue_date BETWEEN $4 AND $5))
+         ORDER BY i.issue_date ASC, i.id ASC`,
         [clientNip, session.firmId, period, periodStart, periodEnd]
     );
 
