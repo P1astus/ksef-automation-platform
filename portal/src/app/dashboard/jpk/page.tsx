@@ -34,6 +34,25 @@ function getPrevMonth(): string {
     return d.toISOString().slice(0, 7);
 }
 
+function PouczeniaNotice() {
+    return (
+        <div
+            role="note"
+            style={{ background: 'rgba(245,158,11,0.14)', border: '2px solid #f59e0b', borderRadius: 10, padding: '14px 16px', color: 'var(--text)', fontSize: 14, lineHeight: 1.5 }}
+        >
+            <strong style={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                ⚠ Pouczenia (Pouczenia = 1) — wstawione automatycznie, wymaga potwierdzenia księgowego
+            </strong>
+            <div style={{ marginTop: 6 }}>
+                <strong>To jest jedynie propozycja naszego oprogramowania.</strong> Plik zawiera potwierdzenie
+                zapoznania się z pouczeniem o odpowiedzialności karnej skarbowej za podanie nieprawdy lub zatajenie
+                prawdy. Oprogramowanie wstawia je samo — <strong>księgowy musi je przeczytać i potwierdzić przed
+                złożeniem pliku w urzędzie</strong>. Nie składaj pliku bez sprawdzenia danych i tego oświadczenia.
+            </div>
+        </div>
+    );
+}
+
 export default function JpkPage() {
     const [clients, setClients] = useState<Client[]>([]);
     const [selectedNip, setSelectedNip] = useState('');
@@ -117,6 +136,8 @@ export default function JpkPage() {
                 </p>
             </div>
 
+            <div style={{ marginBottom: 24 }}><PouczeniaNotice /></div>
+
             {/* Generator panel */}
             <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 16, alignItems: 'flex-end' }}>
@@ -169,6 +190,9 @@ export default function JpkPage() {
             </div>
 
             {/* Stats + download */}
+            {stats && (
+                <div style={{ marginBottom: 24 }}><PouczeniaNotice /></div>
+            )}
             {stats && (
                 <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
