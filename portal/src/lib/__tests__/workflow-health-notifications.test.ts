@@ -5,6 +5,18 @@ import { join } from 'path';
 const root = join(__dirname, '..', '..', '..', '..');
 
 describe('health and notification workflow failure handling', () => {
+    it('binds all health status and JSON detail values in both serialized copies', () => {
+        const workflow = JSON.parse(readFileSync(join(root, 'workflows', '03-health-check.json'), 'utf8'));
+        for (const nodes of [workflow.nodes, workflow.activeVersion.nodes]) {
+            const logHealth = nodes.find((node: { name: string }) => node.name === 'Log Health Status');
+            expect(logHealth.parameters.query).toContain("('ksef_api', $1, $2, NOW())");
+            expect(logHealth.parameters.query).toContain("('java_sidecar', $3, $4, NOW())");
+            expect(logHealth.parameters.query).toContain("('app_database', $5, $6, NOW())");
+            expect(logHealth.parameters.query).not.toContain('{{');
+            expect(logHealth.parameters.options.queryReplacement).toContain('JSON.stringify');
+        }
+    });
+
     it('routes an unhealthy health-check result to the alert branch in both serialized copies', () => {
         const workflow = JSON.parse(readFileSync(join(root, 'workflows', '03-health-check.json'), 'utf8'));
         for (const graph of [workflow.connections, workflow.activeVersion.connections]) {

@@ -113,8 +113,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO system_health (check_type, status, details, checked_at) VALUES ('ksef_api', '{{ $('Aggregate Health').first().json.services[0].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[0].details) }}', NOW()), ('java_sidecar', '{{ $('Aggregate Health').first().json.services[1].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[1].details) }}', NOW()), ('app_database', '{{ $('Aggregate Health').first().json.services[2].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[2].details) }}', NOW())",
-        "options": {}
+        "query": "=INSERT INTO system_health (check_type, status, details, checked_at) VALUES ('ksef_api', $1, $2, NOW()), ('java_sidecar', $3, $4, NOW()), ('app_database', $5, $6, NOW())",
+        "options": {
+          "queryReplacement": "={{ $('Aggregate Health').first().json.services[0].status }}, {{ JSON.stringify($('Aggregate Health').first().json.services[0].details) }}, {{ $('Aggregate Health').first().json.services[1].status }}, {{ JSON.stringify($('Aggregate Health').first().json.services[1].details) }}, {{ $('Aggregate Health').first().json.services[2].status }}, {{ JSON.stringify($('Aggregate Health').first().json.services[2].details) }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -587,8 +589,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=INSERT INTO system_health (check_type, status, details, checked_at) VALUES ('ksef_api', '{{ $('Aggregate Health').first().json.services[0].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[0].details) }}', NOW()), ('java_sidecar', '{{ $('Aggregate Health').first().json.services[1].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[1].details) }}', NOW()), ('app_database', '{{ $('Aggregate Health').first().json.services[2].status }}', '{{ JSON.stringify($('Aggregate Health').first().json.services[2].details) }}', NOW())",
-          "options": {}
+          "query": "=INSERT INTO system_health (check_type, status, details, checked_at) VALUES ('ksef_api', $1, $2, NOW()), ('java_sidecar', $3, $4, NOW()), ('app_database', $5, $6, NOW())",
+          "options": {
+            "queryReplacement": "={{ $('Aggregate Health').first().json.services[0].status }}, {{ JSON.stringify($('Aggregate Health').first().json.services[0].details) }}, {{ $('Aggregate Health').first().json.services[1].status }}, {{ JSON.stringify($('Aggregate Health').first().json.services[1].details) }}, {{ $('Aggregate Health').first().json.services[2].status }}, {{ JSON.stringify($('Aggregate Health').first().json.services[2].details) }}"
+          }
         },
         "credentials": {
           "postgres": {
