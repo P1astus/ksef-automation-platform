@@ -622,6 +622,19 @@ echo "N8N_ENCRYPTION_KEY is in .env — save it in your password manager NOW"
 
 ## 13. Maintenance and Operations
 
+### VAT-marża migration
+
+Before using VAT-marża invoice creation or JPK margin-base generation on an existing database, apply the
+additive migration and rebuild the portal:
+
+```bash
+docker exec -i ksef_db psql -v ON_ERROR_STOP=1 -U ksef_app -d ksef_platform < migrations/2026-09-19-jpk-margin-taxable-base.sql
+docker compose up -d --build portal nginx
+docker restart ksef_nginx
+```
+
+The new taxable-margin amount is internal accounting input; it is deliberately excluded from FA(3) and PDFs.
+
 ### 13.1 Backups
 
 **Daily automated backup** — `scripts/backup-ksef.sh` (add to the host's crontab):
