@@ -162,7 +162,9 @@ the container at all. Adding a new `process.env.X` to the portal means adding `X
 
 **Upload size:** nginx accepts request bodies up to 12 MB (`client_max_body_size` in `nginx/nginx.conf`,
 default was 1 MB, which rejected real scanned invoices with a 413); the portal itself caps a document at
-10 MB. Apply an nginx change with `docker exec ksef_nginx nginx -s reload`.
+10 MB. nginx also overwrites `X-Real-IP` with the TCP peer address and sends `X-Forwarded-For`; portal rate
+limits deliberately trust only `X-Real-IP`, never a client-supplied forwarding chain. Apply an nginx change with
+`docker exec ksef_nginx nginx -s reload`.
 
 ### Security
 
@@ -746,7 +748,8 @@ OPERATOR_PASSWORD='<12+ characters>' node scripts/create-operator.mjs you@exampl
 Re-running for the same email resets its password. Disable an operator with
 `UPDATE operators SET is_active = false WHERE email = '...'` (takes effect on their next request). Logins and
 every view of tenant data are recorded in `operator_audit_log`. Put `/admin` behind an IP allowlist or VPN at
-nginx for production - the app's own throttle is per-email only.
+nginx for production. The console's read-only audit feed is at `/admin/audit`; login is throttled by both e-mail
+and nginx-provided client IP.
 
 ## Architecture Overview
 
