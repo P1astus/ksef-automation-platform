@@ -839,6 +839,8 @@ calls the gateway yet. Sidecar tests: `docker run --rm -v "$PWD/xades-sidecar":/
    columns). JPK generation refuses for a client with no tax-office code (client page) or no contact e-mail.
    Then apply `migrations/2026-09-19-jpk-remaining-fields.sql` (sole-trader identity, foreign-contractor country, margin
    value; widens `buyer_nip`/`seller_nip`). A sole-trader client needs first name, surname and date of birth on its page.
+   Also apply `migrations/2026-09-19-zus-declarations.sql` (round 19: `zus_declarations` + `zus_declaration_events`, the ZUS DRA/RCA
+   import register at `/dashboard/zus`; storage/export only, no ZUS submission).
 4. Re-encrypt existing rows (one-off; the legacy format must be stated because unprefixed rows are ambiguous):
    ```bash
    cd portal
