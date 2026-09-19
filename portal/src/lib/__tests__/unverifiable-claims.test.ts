@@ -17,4 +17,9 @@ describe('unverifiable claims stay removed', () => {
         expect(l).not.toMatch(/10 000\+/);
         expect(l).not.toMatch(/[Ss]erwer\w* w Polsce/);
     });
+    it('landing page makes no TLS or setup-time claim (nginx has no TLS yet; setup time never measured)', () => {
+        const l = read('page.tsx');
+        expect(l).not.toMatch(/Certyfikat SSL/);
+        expect(l).not.toMatch(/< 5 min/);
+    });
 });

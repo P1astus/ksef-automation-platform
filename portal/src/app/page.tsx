@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import PricingSection from './PricingSection';
 import {
-    Zap, Lock, Shield, Building2,
+    Zap, Shield, Building2,
     RefreshCw, FileBarChart2, Users, Bell, Database, Link2,
     CheckCircle, ArrowRight,
 } from 'lucide-react';
 
 const trustBadges = [
-    { Icon: Lock,      text: 'Certyfikat SSL' },
     { Icon: Shield,    text: 'Zgodny z RODO' },
     { Icon: Building2, text: 'Integracja z KSeF MF' },
 ];
@@ -199,7 +198,7 @@ export default function LandingPage() {
             <section style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
                 <div style={{ maxWidth: 1000, margin: '0 auto', padding: '36px 24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0 }}>
                     {[
-                        { value: '< 5 min', label: 'Czas konfiguracji klienta' },
+                        { value: 'JPK_V7M(3)', label: 'Pliki sprawdzane ze schematem MF' },
                         { value: '14 dni', label: 'Bezpłatnego okresu próbnego' },
                         { value: '0 zł',    label: 'Opłata za wdrożenie' },
                     ].map((s, i) => (
