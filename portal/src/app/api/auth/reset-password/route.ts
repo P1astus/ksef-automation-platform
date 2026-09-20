@@ -3,33 +3,9 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { query } from '@/lib/db';
 import { appUrl } from '@/lib/app-url';
+import { sendPasswordReset } from '@/lib/email';
+import { assertMailTransportConfigured } from '@/lib/mail-transport';
 import { consumeRateLimit, rateLimitResponse, requestIp } from '@/lib/rate-limit';
-
-async function sendResetEmail(email: string, resetUrl: string, resendKey: string) {
-    const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${resendKey}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            from: process.env.RESEND_FROM_EMAIL || 'KSeF Auto <noreply@ksef.auto>',
-            to: email,
-            subject: 'Reset hasła — KSeF Auto',
-            html: `
-                <h2>Reset hasła</h2>
-                <p>Kliknij poniższy link, aby ustawić nowe hasło. Link jest ważny przez 1 godzinę.</p>
-                <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
-                    Ustaw nowe hasło →
-                </a>
-                <p style="margin-top:24px;color:#94a3b8;font-size:13px;">
-                    Jeśli nie prosiłeś o reset hasła, zignoruj tę wiadomość.
-                </p>
-            `,
-        }),
-    });
-    if (!response.ok) throw new Error(`Resend HTTP ${response.status}`);
-}
 
 export async function POST(request: Request) {
     try {
@@ -50,8 +26,13 @@ export async function POST(request: Request) {
 
             const allowDevUrl = process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_RESET_URL === 'true';
             const base = appUrl() || (allowDevUrl ? 'http://localhost:3000' : '');
-            const resendKey = process.env.RESEND_API_KEY || '';
-            if ((!resendKey || !base) && !allowDevUrl) {
+            let emailConfigured = true;
+            try {
+                assertMailTransportConfigured();
+            } catch {
+                emailConfigured = false;
+            }
+            if ((!emailConfigured || !base) && !allowDevUrl) {
                 return NextResponse.json(
                     { error: 'Wysyłka e-mail nie jest skonfigurowana. Skontaktuj się z administratorem.' },
                     { status: 503 }
@@ -79,7 +60,7 @@ export async function POST(request: Request) {
                     }
                     const resetUrl = `${base}/reset-password/${token}`;
                     resetUrls.push(resetUrl);
-                    if (resendKey) await sendResetEmail(normalizedEmail, resetUrl, resendKey);
+                    if (emailConfigured) await sendPasswordReset(normalizedEmail, resetUrl);
                 }
             } catch (error) {
                 console.error('Reset email delivery failed:', error);

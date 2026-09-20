@@ -4,6 +4,7 @@ import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { appUrl } from '@/lib/app-url';
+import { sendTeamInvite } from '@/lib/email';
 
 // Ensure tables exist (idempotent)
 async function ensureTables() {
@@ -73,6 +74,10 @@ export async function POST(request: Request) {
     if (!['admin', 'member', 'readonly'].includes(role)) {
         return NextResponse.json({ error: 'Nieprawidłowa rola' }, { status: 400 });
     }
+    const base = appUrl();
+    if (!base) {
+        return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL nie jest skonfigurowany' }, { status: 503 });
+    }
 
     // Delete old expired or unaccepted invite for same email
     await query(
@@ -95,8 +100,8 @@ export async function POST(request: Request) {
     const firmName = firmRes.rows[0]?.firm_name || 'KSeF Auto';
 
     // Send invite email (non-critical)
-    const inviteUrl = `${appUrl()}/invite/accept?token=${token}`;
-    const emailSent = await sendInviteEmail(email, firmName, inviteUrl).then(() => true).catch(() => false);
+    const inviteUrl = `${base}/invite/accept?token=${token}`;
+    const emailSent = await sendTeamInvite(email, firmName, inviteUrl).then(() => true).catch(() => false);
 
     await logActivity(session.firmId, 'team_invite', `Zaproszenie wysłano do ${email} (rola: ${role})`);
 
@@ -121,28 +126,4 @@ export async function DELETE(request: Request) {
     }
 
     return NextResponse.json({ ok: true });
-}
-
-async function sendInviteEmail(email: string, firmName: string, inviteUrl: string) {
-    const key = process.env.RESEND_API_KEY;
-    // Throws (caller reports emailSent: false) rather than silently returning:
-    // with no provider or no public URL the invite email cannot be delivered.
-    if (!key || !appUrl()) throw new Error('email not configured');
-    const FROM = process.env.RESEND_FROM_EMAIL || 'KSeF Auto <noreply@ksef.auto>';
-    const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            from: FROM,
-            to: email,
-            subject: `Zaproszenie do ${firmName} w KSeF Auto`,
-            html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
-                <h1 style="color:#6366f1;font-size:22px">Zaproszenie do zespołu</h1>
-                <p style="color:#555;font-size:15px">Zostałeś zaproszony do biura <strong>${firmName}</strong> w KSeF Auto.</p>
-                <a href="${inviteUrl}" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Dołącz do zespołu →</a>
-                <p style="color:#999;font-size:12px;margin-top:24px">Link ważny 7 dni. KSeF Auto</p>
-            </div>`,
-        }),
-    });
-    if (!res.ok) throw new Error(`Resend responded ${res.status}`);
 }

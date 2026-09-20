@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), hash: vi.fn(async () => 'new-hash') }));
+const mocks = vi.hoisted(() => ({
+    query: vi.fn(),
+    hash: vi.fn(async () => 'new-hash'),
+    sendPasswordReset: vi.fn(async () => undefined),
+}));
 vi.mock('@/lib/db', () => ({ query: mocks.query }));
+vi.mock('@/lib/email', () => ({ sendPasswordReset: mocks.sendPasswordReset }));
+vi.mock('@/lib/mail-transport', () => ({ assertMailTransportConfigured: () => undefined }));
 vi.mock('@/lib/rate-limit', () => ({
     requestIp: () => '192.0.2.1',
     consumeRateLimit: async () => ({ allowed: true, retryAfterSeconds: 1 }),
@@ -18,7 +24,10 @@ const request = (body: object) => new Request('http://x/api/auth/reset-password'
 });
 
 describe('team-member password reset and dev URL safety', () => {
-    beforeEach(() => mocks.query.mockReset());
+    beforeEach(() => {
+        mocks.query.mockReset();
+        mocks.sendPasswordReset.mockClear();
+    });
     afterEach(() => vi.unstubAllEnvs());
 
     it('resets a firm_users password when the token belongs to a member', async () => {
@@ -46,6 +55,23 @@ describe('team-member password reset and dev URL safety', () => {
         expect(mocks.query).toHaveBeenLastCalledWith(
             expect.stringContaining('UPDATE firm_users SET reset_token'),
             expect.arrayContaining([expect.stringMatching(/^[0-9a-f]{64}$/), expect.any(Date), 44])
+        );
+    });
+
+    it('uses the shared mail transport for a configured SMTP deployment', async () => {
+        vi.stubEnv('NODE_ENV', 'production');
+        vi.stubEnv('EMAIL_TRANSPORT', 'smtp');
+        vi.stubEnv('RESEND_API_KEY', '');
+        vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://portal.example');
+        mocks.query.mockResolvedValueOnce({ rows: [{ account_type: 'owner', id: 7 }] });
+        mocks.query.mockResolvedValueOnce({ rows: [] });
+
+        const response = await POST(request({ action: 'request', email: 'owner@example.pl' }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.sendPasswordReset).toHaveBeenCalledWith(
+            'owner@example.pl',
+            expect.stringMatching(/^https:\/\/portal\.example\/reset-password\/[0-9a-f]{64}$/)
         );
     });
 });
