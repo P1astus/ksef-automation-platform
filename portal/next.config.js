@@ -1,6 +1,30 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
+    async headers() {
+        return [{
+            source: '/:path*',
+            headers: [{
+                key: 'Content-Security-Policy',
+                value: [
+                    "default-src 'self'",
+                    "base-uri 'self'",
+                    "connect-src 'self'",
+                    "font-src 'self'",
+                    "form-action 'self'",
+                    "frame-ancestors 'none'",
+                    "frame-src 'none'",
+                    "img-src 'self' data: blob:",
+                    "manifest-src 'self'",
+                    "media-src 'self'",
+                    "object-src 'none'",
+                    "script-src 'self' 'unsafe-inline'",
+                    "style-src 'self' 'unsafe-inline'",
+                    "worker-src 'self' blob:",
+                ].join('; '),
+            }],
+        }];
+    },
     // Next.js 16 no longer reads `eslint` here (it now warns "Unrecognized
     // key(s): 'eslint'" and no-ops) - ESLint is decoupled from `next build`
     // and runs only via the separate `next lint` command now.
