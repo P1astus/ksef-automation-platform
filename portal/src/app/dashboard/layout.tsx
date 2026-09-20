@@ -22,6 +22,10 @@ import {
     UsersRound,
 } from 'lucide-react';
 
+// Reads deployment capabilities at request time. Without this, a production
+// build can bake the hosted navigation/paywall decision into the local image.
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({
     children,
 }: {

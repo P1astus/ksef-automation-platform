@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUnchecked, updateSession } from '@/lib/auth';
+import { capabilities } from '@/lib/deployment';
 
 // Add paths that require authentication here
 const protectedPaths = ['/dashboard'];
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
+
+    // Local registration is the one-time installer flow. Keep the hosted
+    // registration page and all its trial/plan behaviour completely unchanged.
+    if (pathname === '/register' && capabilities().mode === 'local') {
+        return NextResponse.redirect(new URL('/setup', request.url));
+    }
 
     // Check if path is protected
     const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path));
