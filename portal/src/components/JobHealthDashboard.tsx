@@ -11,6 +11,7 @@ export default async function JobHealthDashboard({ firmId }: { firmId: number | 
     const data = await loadJobHealth({ query }, firmId);
     const jobs = buildJobs(process.env);
     const canRunGlobal = firmId === null || !resolveDeployment(process.env).operatorConsole;
+    const mode = (name: string) => (process.env.JOBS_ENABLED ?? '').split(',').map(s => s.trim()).includes(name) ? 'aktywny' : (process.env.JOBS_SHADOW ?? '').split(',').map(s => s.trim()).includes(name) ? 'shadow' : 'wylaczony';
     const newest = data.occurrences[0]?.scheduled_for ? new Date(data.occurrences[0].scheduled_for).getTime() : 0;
     const workerStale = !newest || Date.now() - newest > 30 * 60_000;
 
@@ -29,7 +30,7 @@ export default async function JobHealthDashboard({ firmId }: { firmId: number | 
                 <h2 style={{ fontSize: 16 }}>Uruchom zadanie</h2>
                 <div style={{ display: 'grid', gap: 8 }}>
                     {jobs.map(job => <div key={job.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px' }}>
-                        <code style={{ fontSize: 12 }}>{job.name}</code><RunJobButton jobName={job.name} />
+                        <code style={{ fontSize: 12 }}>{job.name} ({mode(job.name)})</code><RunJobButton jobName={job.name} />
                     </div>)}
                 </div>
             </section>}

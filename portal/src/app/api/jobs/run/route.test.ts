@@ -20,6 +20,8 @@ describe('POST /api/jobs/run', () => {
     afterEach(() => vi.unstubAllEnvs());
     beforeEach(() => {
         vi.stubEnv('DEPLOYMENT_MODE', 'local');
+        vi.stubEnv('JOBS_ENABLED', 'health-check');
+        vi.stubEnv('JOBS_SHADOW', '');
         vi.stubEnv('STRIPE_SECRET_KEY', '');
         mocks.getSession.mockReset().mockResolvedValue({ firmId: 1, role: 'owner' });
         mocks.getOperatorSession.mockReset().mockResolvedValue(null);

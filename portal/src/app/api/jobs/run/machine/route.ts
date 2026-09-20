@@ -17,6 +17,9 @@ export async function POST(request: Request) {
         const queued = await enqueueManual({ query }, body.jobName);
         return NextResponse.json(queued, { status: 202 });
     } catch (error) {
+        if (error instanceof Error && error.message.startsWith('Job unavailable:')) {
+            return NextResponse.json({ error: error.message }, { status: 503 });
+        }
         if (error instanceof Error && error.message.startsWith('Unknown job:')) {
             return NextResponse.json({ error: error.message }, { status: 404 });
         }

@@ -15,6 +15,8 @@ function req(secret: string) {
 describe('POST /api/jobs/run/machine', () => {
     beforeEach(() => {
         process.env.JOB_SECRET = 'correct-secret';
+        process.env.JOBS_ENABLED = 'health-check';
+        process.env.JOBS_SHADOW = '';
         mocks.enqueue.mockReset().mockResolvedValue(true);
         mocks.buildJobs.mockReset().mockReturnValue([{ name: 'health-check', maxAttempts: 3 }]);
     });
@@ -33,6 +35,21 @@ describe('POST /api/jobs/run/machine', () => {
         const response = await POST(req('wrong-secret'));
         expect(response.status).toBe(401);
         expect(mocks.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('refuses a disabled job instead of leaving a real occurrence stranded', async () => {
+        process.env.JOBS_ENABLED = '';
+        const { POST } = await import('./route');
+        expect((await POST(req('correct-secret'))).status).toBe(503);
+        expect(mocks.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('queues shadow when that is the configured execution mode', async () => {
+        process.env.JOBS_ENABLED = '';
+        process.env.JOBS_SHADOW = 'health-check';
+        const { POST } = await import('./route');
+        expect((await POST(req('correct-secret'))).status).toBe(202);
+        expect(mocks.enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ shadow: true }));
     });
 
     it('enqueues a manual occurrence with the correct JOB_SECRET', async () => {
