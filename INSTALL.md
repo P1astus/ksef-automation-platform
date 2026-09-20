@@ -928,3 +928,25 @@ Only the token's SHA-256 is stored; the raw value is shown once, so copy it now.
 unused token. It refuses once an account exists. The first firm is created as an active **Pro** firm with no trial clock. Two
 people submitting the token at once cannot both succeed; a used token cannot be replayed.
 
+### 13.13 Job worker (`ksef_worker`) - replacing n8n workflow by workflow
+
+`ksef_worker` runs the platform's scheduled work in-process, replacing n8n one workflow at a time. It uses the portal image
+(`node worker.js`) and is **inert by default**: with `JOBS_ENABLED` and `JOBS_SHADOW` empty it logs "idle" and runs nothing.
+A typo in either list stops it at start with exit code 78 instead of running a subset.
+
+| Variable | Meaning |
+|---|---|
+| `JOBS_ENABLED` | comma-separated jobs to run for real. Known jobs: `health-check` (replaces workflow 03) |
+| `JOBS_SHADOW` | jobs to run in shadow mode: they compute and record what they would do, and write nothing else (no samples, markers, alerts or mail) |
+| `ALERT_EMAIL` | where alerts are e-mailed. **No default.** Unset means alerts are still stored (`system_alerts`, `audit_log`) and the missing address is recorded on each alert |
+| `JOBS_TICK_SECONDS` / `JOBS_LEASE_SECONDS` | optional tuning (defaults 30 / 300) |
+
+**Never enable a job while the n8n workflow it replaces is still active** - both would do the work. The workflow exports in
+`workflows/` are inactive; keep the live copy inactive too. Recommended migration per job: run it in `JOBS_SHADOW` for a cycle and
+compare, then deactivate the workflow, then move the job to `JOBS_ENABLED`.
+
+Occurrences, retries and outcomes are in the `job_occurrences` table; alerts in `system_alerts`. A crashed or hung worker's
+occurrence is recovered automatically (its lease expires), retried with backoff, and after its last attempt fails permanently with
+a critical alert. At most one occurrence of a job runs at once (enforced by a database index), so two workers cannot double-run it.
+Schedules use an explicit timezone (Europe/Warsaw); a repeated DST hour runs once and a skipped one runs once at the next valid time.
+

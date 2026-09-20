@@ -1,6 +1,7 @@
 // The job worker: the process that replaces n8n's scheduler. Same image as the portal, different command
 // (`node worker.js`, bundled by esbuild - see the Dockerfile). Inert unless JOBS_ENABLED / JOBS_SHADOW name jobs.
 import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import pool from '@/lib/db';
 import { sendMail } from '@/lib/mail-transport';
 import { buildJobs, parseJobList } from '@/lib/jobs/registry';
@@ -20,7 +21,8 @@ async function main() {
     const enabled = parseJobList(process.env.JOBS_ENABLED);
     const shadow = parseJobList(process.env.JOBS_SHADOW);
     assertRunnerConfig(jobs, enabled, shadow); // a typo in JOBS_ENABLED stops the worker at start, loudly
-    const workerId = `${process.env.HOSTNAME || 'worker'}-${randomUUID().slice(0, 8)}`;
+    // os.hostname(), not $HOSTNAME: the Next.js image sets HOSTNAME=0.0.0.0 (its bind address), which would name every worker "0.0.0.0".
+    const workerId = `${hostname()}-${randomUUID().slice(0, 8)}`;
 
     log(`start ${workerId} tz=${process.env.TZ || 'unset'} enabled=[${enabled}] shadow=[${shadow}] tick=${TICK_MS / 1000}s`);
     if (enabled.length === 0 && shadow.length === 0) log('no jobs enabled: idle (set JOBS_ENABLED to run jobs)');
