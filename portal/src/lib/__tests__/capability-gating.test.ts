@@ -102,3 +102,18 @@ describe('hosted edition (default): the gates let everything through, behaviour 
         expect((await stripeWebhook(post())).status).not.toBe(404);
     });
 });
+
+describe('help page adapts to the edition (no dead billing links or paywall advice where there is no billing)', () => {
+    const help = read('app/dashboard/help/page.tsx');
+
+    it('renders per request, not at build time', () => {
+        expect(help).toMatch(/export const dynamic = 'force-dynamic'/);
+    });
+    it('never links to /dashboard/billing directly: only through BillingLink, which drops the link without Stripe', () => {
+        expect(help.match(/href="\/dashboard\/billing"/g)?.length).toBe(1); // the one inside BillingLink
+        expect(help).toMatch(/billingProvider === 'stripe' \? <Link href="\/dashboard\/billing">/);
+    });
+    it('hides the plans-and-payments section when billing is off', () => {
+        expect(help).toMatch(/billing \|\| section\.title !== 'Plany i płatności'/);
+    });
+});

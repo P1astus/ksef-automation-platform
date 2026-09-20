@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { PLANS, PLAN_FEATURES } from '@/lib/plans';
+import { capabilities } from '@/lib/deployment';
 
 // Static help/FAQ. Every statement here describes behaviour that exists in the
 // portal today - keep it that way (no "coming soon", no legal advice). Plan
@@ -7,6 +8,16 @@ import { PLANS, PLAN_FEATURES } from '@/lib/plans';
 
 const paidPlans = PLANS.filter(p => PLAN_FEATURES[p.id].length > 0).map(p => p.name).join(' i ');
 const startPlan = PLANS.find(p => p.id === 'start');
+
+// Runtime configuration, not build-time: without this Next prerenders the page once at build and bakes the hosted
+// edition's help (billing links, plans section) into every install.
+export const dynamic = 'force-dynamic';
+
+// Billing exists only where Stripe is the billing provider. A local install has no billing page, so a link to it
+// would be a dead 404 - render the words without the link.
+function BillingLink({ children }: { children: React.ReactNode }) {
+    return capabilities().billingProvider === 'stripe' ? <Link href="/dashboard/billing">{children}</Link> : <>{children}</>;
+}
 
 interface Item { q: string; a: React.ReactNode }
 interface Section { title: string; items: Item[] }
@@ -25,7 +36,7 @@ const SECTIONS: Section[] = [
             },
             {
                 q: 'Ile klientów mogę dodać?',
-                a: <>Limit zależy od planu i jest egzekwowany na serwerze — dotyczy też klientów tworzonych automatycznie (np. z rozpoznawania dokumentów lub poczty). Szczegóły w zakładce <Link href="/dashboard/billing">Rozliczenia</Link>.</>,
+                a: <>Limit zależy od planu i jest egzekwowany na serwerze — dotyczy też klientów tworzonych automatycznie (np. z rozpoznawania dokumentów lub poczty). Szczegóły w zakładce <BillingLink>Rozliczenia</BillingLink>.</>,
             },
         ],
     },
@@ -123,7 +134,7 @@ const SECTIONS: Section[] = [
         items: [
             {
                 q: 'Czym różnią się plany?',
-                a: <>Plan {startPlan?.name ?? 'Start'} jest planem monitorowania i raportowania (tylko odczyt). Wystawianie faktur, tryby offline, wysyłka do KSeF, eksporty, klasyfikacja AI oraz zaproszenia zespołu wymagają planu {paidPlans}. Aktualne ceny i limity klientów znajdziesz w <Link href="/dashboard/billing">Rozliczeniach</Link>.</>,
+                a: <>Plan {startPlan?.name ?? 'Start'} jest planem monitorowania i raportowania (tylko odczyt). Wystawianie faktur, tryby offline, wysyłka do KSeF, eksporty, klasyfikacja AI oraz zaproszenia zespołu wymagają planu {paidPlans}. Aktualne ceny i limity klientów znajdziesz w <BillingLink>Rozliczeniach</BillingLink>.</>,
             },
             {
                 q: 'Jak długi jest okres próbny?',
@@ -151,6 +162,9 @@ const SECTIONS: Section[] = [
 ];
 
 export default function HelpPage() {
+    // No plans, trial or payments in an install without billing: hide that whole section rather than describe a paywall.
+    const billing = capabilities().billingProvider === 'stripe';
+    const sections = SECTIONS.filter(section => billing || section.title !== 'Plany i płatności');
     return (
         <div style={{ maxWidth: 820, padding: '28px 0' }}>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>Pomoc</h1>
@@ -158,7 +172,7 @@ export default function HelpPage() {
                 Najczęstsze pytania o konfigurację, faktury, tryby offline, eksporty i plany. To opis działania systemu, nie porada prawna ani podatkowa.
             </p>
 
-            {SECTIONS.map(section => (
+            {sections.map(section => (
                 <section key={section.title} style={{ marginBottom: 28 }}>
                     <div className="label-caps" style={{ marginBottom: 10 }}>{section.title}</div>
                     <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
