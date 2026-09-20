@@ -34,15 +34,15 @@ describe('docker-compose applies the schema through the migration runner', () =>
         expect(compose).not.toMatch(/ksef-schema\.sql:\/docker-entrypoint/);
     });
 
-    it('builds portal and ksef_migrate from the repository root with the portal Dockerfile', () => {
+    it('builds portal, ksef_migrate and ksef_worker from the repository root with the portal Dockerfile', () => {
         expect(compose).toMatch(/x-portal-build:\s*&portal-build\s+context: \.\s+dockerfile: portal\/Dockerfile/);
-        expect(compose.match(/build: \*portal-build/g)?.length).toBe(2);
+        expect(compose.match(/build: \*portal-build/g)?.length).toBe(3);
     });
 
-    it('runs ksef_migrate as a one-shot and blocks the portal (and n8n) on its success', () => {
+    it('runs ksef_migrate as a one-shot and blocks the portal, n8n and the worker on its success', () => {
         expect(compose).toMatch(/ksef_migrate:[\s\S]*?restart: "no"[\s\S]*?command: \["node", "scripts\/migrate\.mjs"\]/);
         const conditions = compose.match(/ksef_migrate:\s+condition: service_completed_successfully/g) ?? [];
-        expect(conditions.length).toBe(2); // portal and n8n
+        expect(conditions.length).toBe(3); // portal, n8n and ksef_worker
     });
 
     it('never passes adoption confirmation by default (it must be an explicit, one-off decision)', () => {
@@ -62,5 +62,28 @@ describe('portal Dockerfile', () => {
         expect(dockerfile).not.toMatch(/COPY[^\n]*\bmigrations\b/);
         expect(dockerfile).not.toMatch(/COPY[^\n]*certificates/);
         expect(dockerfile).not.toMatch(/COPY[^\n]*\.env/);
+    });
+});
+
+describe('the job worker is packaged inert and self-contained', () => {
+    const compose = read('docker-compose.yml');
+    const dockerfile = read('portal/Dockerfile');
+    const worker = compose.slice(compose.indexOf('  ksef_worker:'), compose.indexOf('  # One-shot'));
+
+    it('bundles worker.js with esbuild and ships it in the runtime image', () => {
+        expect(dockerfile).toMatch(/npx esbuild src\/worker\/main\.ts --bundle --platform=node[^\r\n]*--outfile=worker\.js/);
+        expect(dockerfile).toMatch(/COPY --from=builder --chown=nextjs:nodejs \/app\/worker\.js \.\/worker\.js/);
+    });
+
+    it('runs `node worker.js` with no job enabled by default (an unconfigured worker must be inert)', () => {
+        expect(worker).toMatch(/command: \["node", "worker\.js"\]/);
+        expect(worker).toContain('JOBS_ENABLED=${JOBS_ENABLED:-}');
+        expect(worker).toContain('JOBS_SHADOW=${JOBS_SHADOW:-}');
+    });
+
+    it('runs in the Warsaw timezone and has no default alert recipient', () => {
+        expect(worker).toContain('TZ=Europe/Warsaw');
+        expect(worker).toContain('ALERT_EMAIL=${ALERT_EMAIL:-}');
+        expect(compose).not.toMatch(/ALERT_EMAIL=[^$\s"]/); // never a hardcoded address
     });
 });

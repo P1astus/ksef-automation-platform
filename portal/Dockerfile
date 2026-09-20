@@ -24,6 +24,10 @@ ENV NEXT_TELEMETRY_DISABLED 1
 
 RUN npm run build
 
+# The job worker (src/worker/main.ts): one self-contained file, so it needs neither the Next.js standalone trace nor
+# node_modules (croner is used only by the worker and would not be traced). pg-native is an optional pg addon.
+RUN npx esbuild src/worker/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=worker.js --external:pg-native
+
 # Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app
@@ -56,6 +60,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Migration runner + the schema it applies. Run by the one-shot ksef_migrate compose service; the portal
 # never applies migrations itself. Historical SQL under the repo's migrations/ is archive and is NOT copied.
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/worker.js ./worker.js
 COPY --chown=nextjs:nodejs db ./db
 
 # pdf-parse and tesseract.js both load part of their real functionality

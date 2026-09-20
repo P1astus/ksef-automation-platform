@@ -17,17 +17,26 @@ function walk(dir: string, out: string[] = []): string[] {
 
 describe('portal env vars reach the container', () => {
     // NODE_ENV is set by the Dockerfile; OCR_UPLOAD_DIR and NEXT_PUBLIC_BASE_URL
-    // are optional overrides with working defaults / a fallback in appUrl().
-    const EXEMPT = new Set(['NODE_ENV', 'NEXT_RUNTIME', 'OCR_UPLOAD_DIR', 'NEXT_PUBLIC_BASE_URL']);
+    // are optional overrides with working defaults / a fallback in appUrl(). HOSTNAME is set by Docker itself.
+    const EXEMPT = new Set(['NODE_ENV', 'NEXT_RUNTIME', 'OCR_UPLOAD_DIR', 'NEXT_PUBLIC_BASE_URL', 'HOSTNAME']);
 
     it('docker-compose passes through every process.env.X the portal source reads', () => {
         const compose = readFileSync(COMPOSE, 'utf8');
         const portalBlock = compose.slice(compose.indexOf('  portal:'), compose.indexOf('  nginx:'));
-        const used = new Set<string>();
+        // src/worker runs in the ksef_worker service (a different container with its own environment), so its
+        // env reads are checked against THAT block, not the portal's.
+        const workerBlock = compose.slice(compose.indexOf('  ksef_worker:'), compose.indexOf('  # One-shot'));
+        expect(workerBlock.length).toBeGreaterThan(100);
+        const isWorker = (f: string) => f.includes(`${join(SRC, 'worker')}`);
+        const usedBy = new Map<string, Set<string>>([['portal', new Set()], ['worker', new Set()]]);
         for (const f of walk(SRC)) {
-            for (const m of readFileSync(f, 'utf8').matchAll(/process\.env\.([A-Z][A-Z0-9_]+)/g)) used.add(m[1]);
+            for (const m of readFileSync(f, 'utf8').matchAll(/process\.env\.([A-Z][A-Z0-9_]+)/g)) usedBy.get(isWorker(f) ? 'worker' : 'portal')!.add(m[1]);
         }
-        const missing = [...used].filter(v => !EXEMPT.has(v) && !new RegExp(`[-"\\s]${v}=`).test(portalBlock));
+        const passed = (block: string) => (v: string) => new RegExp(`[-"\\s]${v}=`).test(block);
+        const missing = [
+            ...[...usedBy.get('portal')!].filter(v => !EXEMPT.has(v) && !passed(portalBlock)(v)),
+            ...[...usedBy.get('worker')!].filter(v => !EXEMPT.has(v) && !passed(workerBlock)(v)).map(v => `worker:${v}`),
+        ];
         expect(missing).toEqual([]);
     });
 });

@@ -125,6 +125,45 @@ services:
       timeout: 5s
       retries: 5
 
+  # The job worker: replaces n8n's scheduler, one job at a time as they are ported (see the plan). Same image as the
+  # portal, different command. INERT by default: JOBS_ENABLED and JOBS_SHADOW are empty, so it starts, logs "idle" and
+  # runs nothing. A typo in either stops it with exit 78 instead of running a subset. Never enable a job here while the
+  # n8n workflow it replaces is still active - they would both do the work.
+  ksef_worker:
+    build: *portal-build
+    image: ksef-portal:local
+    container_name: ksef_worker
+    restart: unless-stopped
+    command: ["node", "worker.js"]
+    environment:
+      - DATABASE_URL=postgresql://ksef_app:${KSEF_DB_PASSWORD}@ksef_db:5432/ksef_platform
+      # Deadline and schedule logic is Warsaw-local; the portal container has no TZ, the worker must.
+      - TZ=Europe/Warsaw
+      - "JOBS_ENABLED=${JOBS_ENABLED:-}"
+      - "JOBS_SHADOW=${JOBS_SHADOW:-}"
+      # Where alerts are e-mailed. No default: with it unset alerts are still stored and the gap is recorded on them.
+      - "ALERT_EMAIL=${ALERT_EMAIL:-}"
+      - "JOBS_TICK_SECONDS=${JOBS_TICK_SECONDS:-}"
+      - "JOBS_LEASE_SECONDS=${JOBS_LEASE_SECONDS:-}"
+      - "KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}"
+      - XADES_SIDECAR_URL=http://xades-sidecar:8090
+      - "DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-}"
+      - "EMAIL_TRANSPORT=${EMAIL_TRANSPORT:-}"
+      - "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}"
+      - "RESEND_API_KEY=${RESEND_API_KEY:-}"
+      - "RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-}"
+      - "SMTP_HOST=${SMTP_HOST:-}"
+      - "SMTP_PORT=${SMTP_PORT:-587}"
+      - "SMTP_SECURE=${SMTP_SECURE:-false}"
+      - "SMTP_USER=${SMTP_USER:-}"
+      - "SMTP_PASSWORD=${SMTP_PASSWORD:-}"
+      - "SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}"
+    depends_on:
+      ksef_db:
+        condition: service_healthy
+      ksef_migrate:
+        condition: service_completed_successfully
+
   # One-shot: applies db/baseline-2026-09-20.sql to an empty database, or audits-then-adopts an existing one,
   # then any post-cutover migrations. `docker compose run --rm ksef_migrate` runs it by hand. An existing
   # database needs MIGRATIONS_CONFIRM_ADOPTION=1 once, after a backup - see INSTALL.md.
