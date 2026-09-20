@@ -137,6 +137,20 @@ describe('offline24-monitor job (port of workflow 05)', () => {
         expect(await marker(other)).toBe('NrKSeF');
     });
 
+    it('does not match a different client copy or a purchase with the same invoice number', async () => {
+        const f = await firm('a');
+        await client(f, '1111111111'); await client(f, '2222222222');
+        const o = await offline(f, '1111111111', 'FV/1', at(Date.now() + 6 * H));
+        const other = await invoice(f, '2222222222', 'FV/1', '2222222222-20260921-AAAAAA-01');
+        await pg.query('UPDATE invoices SET buyer_nip = $1 WHERE id = $2', ['1111111111', other]);
+        await offline24MonitorJob().run(ctx());
+        expect((await off(o)).uploaded_to_ksef).toBe(false);
+        expect(await marker(other)).toBe('NrKSeF');
+        await pg.query("UPDATE invoices SET client_nip = $1, direction = 'purchase' WHERE id = $2", ['1111111111', other]);
+        await offline24MonitorJob().run(ctx());
+        expect((await off(o)).uploaded_to_ksef).toBe(false);
+    });
+
     it('completed by someone else between SELECT and write: the marker is not touched (single-statement guard)', async () => {
         const f = await firm('a'); await client(f, '1111111111');
         const o = await offline(f, '1111111111', 'FV/1', at(Date.now() - 6 * H));

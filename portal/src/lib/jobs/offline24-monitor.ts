@@ -76,7 +76,7 @@ export function offline24MonitorJob(): Job {
                 try {
                     const match = await ctx.db.query(
                         `SELECT id, ksef_number FROM invoices
-                          WHERE invoice_number = $1 AND firm_id = $2 AND (seller_nip = $3 OR buyer_nip = $3) AND ksef_number IS NOT NULL
+                          WHERE invoice_number = $1 AND firm_id = $2 AND client_nip = $3 AND seller_nip = $3 AND direction = 'sales' AND ksef_number IS NOT NULL
                           LIMIT 1`,
                         [row.invoice_number, row.firm_id, row.client_nip]
                     );
