@@ -81,11 +81,9 @@ ksef-platform/
 ├── docker-compose.yml          # Stack definition (4 services)
 ├── db/                         # Schema: baseline-2026-09-20.sql (+ Polish holiday calendar 2026-2028) and post-cutover migrations/
 ├── ksef-schema*.sql, migrations/  # ARCHIVE of the historical SQL - no longer run by anything (see 13.11)
-├── workflows/                  # 7 n8n workflow JSON files
+├── workflows/                  # legacy n8n workflow JSON files (02 and 04 are gone: see 13.14)
 │   ├── 01-send-alert.json
-│   ├── 02-ksef-authenticate.json
 │   ├── 03-health-check.json
-│   ├── 04-ksef-invoice-retrieval.json
 │   ├── 05-offline24-monitor.json
 │   ├── 06-jpk-vat-preparation.json
 │   └── 09-client-notifications.json
@@ -263,15 +261,16 @@ The platform consists of 7 workflows that must be imported in a specific order (
 
 ### Import Order
 
+Invoice retrieval and KSeF authentication (former workflows `04` and `02`) are **no longer n8n workflows**: they are the
+`invoice-retrieval` job of the worker (13.14). Only import the ones listed here.
+
 | Order | File | Workflow Name | Why This Order |
 |-------|------|---------------|----------------|
 | 1 | `01-send-alert.json` | KSeF - Send Alert v2 | Other workflows call its webhook |
-| 2 | `02-ksef-authenticate.json` | KSeF - Authenticate v2 | Invoice Retrieval calls this |
-| 3 | `03-health-check.json` | KSeF - Health Check | Independent |
-| 4 | `04-ksef-invoice-retrieval.json` | KSeF - Invoice Retrieval v2 | Depends on Authenticate |
-| 5 | `05-offline24-monitor.json` | KSeF - Offline24 Monitor | Uses Send Alert |
-| 6 | `06-jpk-vat-preparation.json` | KSeF - JPK_VAT Preparation | Uses Send Alert |
-| 7 | `09-client-notifications.json` | KSeF - Client Notifications | Calls the protected portal notification routes |
+| 2 | `03-health-check.json` | KSeF - Health Check | Independent |
+| 3 | `05-offline24-monitor.json` | KSeF - Offline24 Monitor | Uses Send Alert |
+| 4 | `06-jpk-vat-preparation.json` | KSeF - JPK_VAT Preparation | Uses Send Alert |
+| 5 | `09-client-notifications.json` | KSeF - Client Notifications | Calls the protected portal notification routes |
 
 ### How to Import Each Workflow
 
@@ -287,7 +286,7 @@ For each workflow file:
 
 ### Link Each Workflow's Error Path to Itself
 
-`04-ksef-invoice-retrieval.json` (and the other workflows with an `On Error` node) contain an Error
+`05-offline24-monitor.json` (and the other workflows with an `On Error` node) contain an Error
 Trigger node meant to catch unhandled failures and route them to an alert. n8n only invokes that
 node when the workflow's own **Settings → Error Workflow** field points at a workflow — it does
 nothing just by being present in the canvas (confirmed empirically: a disposable synthetic workflow
@@ -476,23 +475,11 @@ Expected: `ksef_api`, `java_sidecar`, `app_database` — all with status `health
 
 ### 10.2 Authentication Test
 
-Test the auth webhook with your client's NIP:
-
-```bash
-curl -s -X POST http://localhost:5678/webhook/ksef-auth \
-  -H "Content-Type: application/json" \
-  -d '{"client_nip":"YOUR_NIP_HERE"}'
-```
-
-Expected response:
-```json
-{
-  "success": true,
-  "accessToken": "eyJhbG...",
-  "refreshToken": "...",
-  "referenceNumber": "20260303-AU-..."
-}
-```
+There is no authentication webhook any more (workflow `02` minted live KSeF access tokens for anyone who could reach it and was
+deleted). Test a client's token with the portal's diagnostic `GET /api/ksef/test?clientId=<id>` (logged in; refused when `KSEF_ENVIRONMENT=prod`), or run the `invoice-retrieval`
+job in shadow (13.14) and read its result in `job_occurrences`. A KSeF answer such as "Uwierzytelnianie zakończone
+niepowodzeniem z powodu błędnego tokenu" means the platform reached KSeF and the token is wrong; a sidecar/network error means
+the platform did not get that far.
 
 ### 10.3 Alert System Test
 
@@ -594,7 +581,7 @@ The Send Alert v2 workflow may have test email addresses. Update the "To" field 
 
 For each new client:
 1. Insert the client with `sync_enabled = false`
-2. Test authentication: `curl POST /webhook/ksef-auth` with their NIP
+2. Test authentication (10.2): the client's KSeF token, through the portal or the job in shadow
 3. Verify auth succeeds, then set `sync_enabled = true`
 4. Wait for the next Invoice Retrieval cycle and verify invoices appear
 
@@ -857,8 +844,8 @@ question; filing with the tax office remains the accountant's responsibility.
 ### 13.8 Credential encryption key and legacy-row migration
 
 1. `openssl rand -base64 32` -> `KSEF_CREDENTIALS_KEY=` in the root `.env`; **back it up together with `.env`**.
-2. `docker compose up -d` (portal and n8n both receive it), then re-import/patch workflow `02-ksef-authenticate`
-   in n8n (its Code node decrypts) - never activate it without sign-off.
+2. `docker compose up -d` (the portal, the worker and n8n all receive it). The worker's `invoice-retrieval` job is the only
+   reader of stored tokens outside the portal (workflow `02`, which used to decrypt them in n8n, is gone).
 3. Schema: nothing to apply by hand any more - every table these features need (IMAP settings, rate limits, member
    password reset, JPK envelope fields, ZUS register, the TEST gateway table) is in the baseline applied by `ksef_migrate`
    (13.11). JPK generation still refuses for a client with no tax-office code (client page) or no contact e-mail, and a
@@ -1030,7 +1017,7 @@ A typo in either list stops it at start with exit code 78 instead of running a s
 
 | Variable | Meaning |
 |---|---|
-| `JOBS_ENABLED` | comma-separated jobs to run for real. Known jobs: `health-check` (replaces workflow 03) |
+| `JOBS_ENABLED` | comma-separated jobs to run for real. Known jobs: `health-check` (replaces workflow 03), `offline24-monitor` (workflow 05, see 13.14), `invoice-retrieval` (workflows 04 + 02, see 13.14) |
 | `JOBS_SHADOW` | jobs to run in shadow mode: they compute and record what they would do, and write nothing else (no samples, markers, alerts or mail) |
 | `ALERT_EMAIL` | where alerts are e-mailed. **No default.** Unset means alerts are still stored (`system_alerts`, `audit_log`) and the missing address is recorded on each alert |
 | `JOBS_TICK_SECONDS` / `JOBS_LEASE_SECONDS` | optional tuning (defaults 30 / 300) |
@@ -1043,3 +1030,34 @@ Occurrences, retries and outcomes are in the `job_occurrences` table; alerts in 
 occurrence is recovered automatically (its lease expires), retried with backoff, and after its last attempt fails permanently with
 a critical alert. At most one occurrence of a job runs at once (enforced by a database index), so two workers cannot double-run it.
 Schedules use an explicit timezone (Europe/Warsaw); a repeated DST hour runs once and a skipped one runs once at the next valid time.
+
+### 13.14 `offline24-monitor` and `invoice-retrieval` (workflows 05, and 04 + 02)
+
+**Both are the correctness-critical jobs. Follow the order: backup, migrate, shadow, compare, deactivate the workflow, enable.**
+
+| | `offline24-monitor` | `invoice-retrieval` |
+|---|---|---|
+| Replaces | workflow 05 (every 2 h) | workflows 04 (every 30 min) and 02 (KSeF authentication) |
+| Does | uploads/markers for offline24 invoices found in KSeF; internal alerts by deadline tier | pulls invoice metadata from KSeF for every `sync_enabled` client, sales and purchases separately |
+| Shadow | reads and classifies, writes nothing | **authenticates to KSeF and reads (read-only)**, reports what it would insert, writes nothing |
+| Needs | nothing extra | `SIDECAR_API_KEY` and `KSEF_CREDENTIALS_KEY` (the worker receives both from compose) |
+
+Before enabling: `docker compose run --rm ksef_migrate` applies `2026-09-21-invoices-unique-per-client` (adds
+`UNIQUE (firm_id, client_nip, ksef_number)`; **it stops and reports if duplicates exist - it never deduplicates**; resolve them by
+hand and re-run) and `2026-09-21-job-occurrence-payload`. Deactivate the n8n copies first: never run a job while the workflow it
+replaces is active. `invoice-retrieval` covers **token** clients only; a certificate client is reported as a failure each run.
+
+**How the retrieval high-water mark now works (the reason 04 could lose invoices).** Each direction has its own mark
+(`clients.hwm_sales`, `hwm_purchases`). A run reads `[mark, now]` in windows of at most 89 days (KSeF caps a query at 3 months),
+follows `hasMore` pages, and on `isTruncated` (10 000 records) narrows from the last record; if it cannot make progress the client
+FAILS and nothing moves. Rows and the new mark are written by ONE SQL statement (compare-and-set on the old mark), and the mark only
+ever moves to KSeF's own `permanentStorageHwmDate`, never to the wall clock. A client's first sync reads the last 7 days.
+
+**`Sync now` button (`POST /api/clients/[id]/sync`):** with `SCHEDULER_ENABLED=true` and `invoice-retrieval` in `JOBS_ENABLED`, it
+queues a client-scoped occurrence for the worker (a double-click within a minute coalesces); otherwise it falls back to
+`N8N_SYNC_WEBHOOK_URL`; with neither it answers 503. It never says "queued" unless one of them really was.
+
+**Cross-firm duplicates.** Until the *contract* step (`db/contract/2026-09-21-drop-global-ksef-number-unique.sql`, deliberately not in
+the manifest; its header lists what must hold first) the old global `UNIQUE (ksef_number)` remains, so a KSeF number that another
+firm already stores makes that client's retrieval FAIL loudly (unique violation) instead of vanishing. After the contract step, and
+only then, two firms that are buyer and seller can each hold their own copy.
