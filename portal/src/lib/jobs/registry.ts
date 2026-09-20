@@ -1,6 +1,8 @@
 import type { Job } from './types';
 import { healthCheckJob } from './health-check';
 import { offline24MonitorJob } from './offline24-monitor';
+import { clientNotificationsOffline24Job, clientNotificationsReceivablesJob } from './client-notifications';
+import { jpkPreparationJob } from './jpk-preparation';
 
 // Every job the worker knows how to run. Adding a port means adding it here; the ENV decides which ones actually run
 // (JOBS_ENABLED / JOBS_SHADOW), and an empty environment runs nothing.
@@ -15,6 +17,9 @@ export function buildJobs(env: Env): Job[] {
             sidecarUrl: env.XADES_SIDECAR_URL || 'http://xades-sidecar:8090',
         }),
         offline24MonitorJob(),
+        clientNotificationsOffline24Job,
+        clientNotificationsReceivablesJob,
+        jpkPreparationJob,
     ];
 }
 
