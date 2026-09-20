@@ -22,6 +22,8 @@ services:
       - "EMAIL_TRANSPORT=${EMAIL_TRANSPORT:-}"
       - "PUBLIC_UPLOAD_ENABLED=${PUBLIC_UPLOAD_ENABLED:-}"
       - "SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-}"
+      # Which jobs the worker runs for real. The portal reads it to know whether a manual client sync can be queued for the worker.
+      - "JOBS_ENABLED=${JOBS_ENABLED:-}"
       - "JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env - generate with: openssl rand -hex 32}"
       - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
       # Hyphenated hostname, not the underscored container_name below -

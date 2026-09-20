@@ -24,6 +24,8 @@ export interface Occurrence {
     attempts: number;
     max_attempts: number;
     shadow: boolean;
+    /** Per-occurrence input (a manual run for one client); null for scheduled runs. */
+    payload: unknown | null;
 }
 
 const iso = (d: Date) => d.toISOString();
@@ -35,14 +37,14 @@ export function backoffSeconds(attempt: number): number {
 
 export async function enqueue(
     db: Db,
-    o: { jobName: string; occurrenceKey: string; scheduledFor: Date; maxAttempts?: number; shadow?: boolean }
+    o: { jobName: string; occurrenceKey: string; scheduledFor: Date; maxAttempts?: number; shadow?: boolean; payload?: unknown }
 ): Promise<boolean> {
     const res = await db.query(
-        `INSERT INTO job_occurrences (job_name, occurrence_key, scheduled_for, run_after, max_attempts, shadow)
-         VALUES ($1, $2, $3, $3, $4, $5)
+        `INSERT INTO job_occurrences (job_name, occurrence_key, scheduled_for, run_after, max_attempts, shadow, payload)
+         VALUES ($1, $2, $3, $3, $4, $5, $6::jsonb)
          ON CONFLICT (job_name, occurrence_key) DO NOTHING
          RETURNING id`,
-        [o.jobName, o.occurrenceKey, iso(o.scheduledFor), o.maxAttempts ?? 3, o.shadow ?? false]
+        [o.jobName, o.occurrenceKey, iso(o.scheduledFor), o.maxAttempts ?? 3, o.shadow ?? false, o.payload === undefined ? null : JSON.stringify(o.payload)]
     );
     return res.rows.length > 0;
 }
@@ -92,7 +94,7 @@ export async function claim(
                     last_error = NULL
                FROM candidate
               WHERE j.id = candidate.id
-              RETURNING j.id, j.job_name, j.occurrence_key, j.scheduled_for, j.state, j.attempts, j.max_attempts, j.shadow`,
+              RETURNING j.id, j.job_name, j.occurrence_key, j.scheduled_for, j.state, j.attempts, j.max_attempts, j.shadow, j.payload`,
             [iso(o.now), o.leaseSeconds, o.jobNames, o.workerId]
         );
         return res.rows[0] ?? null;

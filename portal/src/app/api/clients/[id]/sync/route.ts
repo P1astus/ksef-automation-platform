@@ -5,6 +5,7 @@ import { logActivity } from '@/lib/activity';
 import { classifyInvoice } from '@/lib/classify';
 import { mapVatColumns } from '@/lib/vat-mapper';
 import { loadEntitlements, subscriptionInactiveResponse } from '@/lib/entitlements';
+import { clientSyncMode, enqueueClientSync } from '@/lib/jobs/manual-sync';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
@@ -29,22 +30,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }, { status: 400 });
     }
 
-    // The portal does not itself retrieve invoices. Refuse to claim a sync
-    // was queued unless the workflow webhook is configured and accepts it.
-    const n8nWebhookUrl = process.env.N8N_SYNC_WEBHOOK_URL;
-    if (!n8nWebhookUrl) {
+    // The portal does not itself retrieve invoices; something else does. Refuse to claim a sync was queued unless one of
+    // the two is really there: the embedded worker (invoice-retrieval job) or the legacy n8n webhook.
+    const mode = clientSyncMode();
+    if (mode === 'none') {
         return NextResponse.json({ error: 'Synchronizacja KSeF nie jest skonfigurowana na serwerze' }, { status: 503 });
     }
     try {
-        const webhook = await fetch(n8nWebhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ client_id: client.id, nip: client.nip }),
-            signal: AbortSignal.timeout(5000),
-        });
-        if (!webhook.ok) throw new Error(`Webhook synchronizacji zwrócił ${webhook.status}`);
+        if (mode === 'scheduler') {
+            await enqueueClientSync({ query }, { clientId: client.id, firmId: session.firmId });
+        } else {
+            const webhook = await fetch(process.env.N8N_SYNC_WEBHOOK_URL as string, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: client.id, nip: client.nip }),
+                signal: AbortSignal.timeout(5000),
+            });
+            if (!webhook.ok) throw new Error(`Webhook synchronizacji zwrócił ${webhook.status}`);
+        }
     } catch (err) {
-        console.error('KSeF sync webhook failed:', err);
+        console.error('KSeF sync could not be queued:', err);
         return NextResponse.json({ error: 'Nie udało się zlecić synchronizacji KSeF' }, { status: 502 });
     }
 

@@ -40,6 +40,8 @@ export interface JobContext {
      * preparation rows, no mail. Jobs MUST honour this; the alerts module already does.
      */
     shadow: boolean;
+    /** The occurrence's payload (e.g. which client a manual sync is for); null for scheduled runs. */
+    payload?: unknown;
     /** Aborted on timeout or when the lease is lost. Long jobs must check it and stop. */
     signal: AbortSignal;
     alerts: Alerts;

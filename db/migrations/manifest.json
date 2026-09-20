@@ -12,6 +12,10 @@
     {
       "version": "2026-09-21-invoices-unique-per-client",
       "file": "2026-09-21-invoices-unique-per-client.sql"
+    },
+    {
+      "version": "2026-09-21-job-occurrence-payload",
+      "file": "2026-09-21-job-occurrence-payload.sql"
     }
   ]
 }

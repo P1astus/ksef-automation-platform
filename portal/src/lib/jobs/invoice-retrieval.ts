@@ -313,7 +313,7 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
         maxAttempts: 2,
         lookbackMinutes: 60,
         async run(ctx): Promise<JobResult> {
-            const scope: RetrievalScope = (ctx as any).payload ?? {};
+            const scope: RetrievalScope = (ctx.payload as RetrievalScope | null) ?? {};
             const clients = await ctx.db.query(
                 `SELECT id, nip, firm_id, client_name, auth_method, ksef_token_encrypted, hwm_sales, hwm_purchases
                    FROM clients
