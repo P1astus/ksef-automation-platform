@@ -26,11 +26,11 @@ function loadNode(file: string, nodeName: string) {
 }
 
 describe('n8n RSA-OAEP nodes call the sidecar instead of duplicating crypto locally', () => {
-    it('all 7 workflow files are still valid JSON', () => {
+    it('all 7 retained workflow files are still valid JSON', () => {
         for (const file of [
             '01-send-alert.json', '02-ksef-authenticate.json', '03-health-check.json',
             '04-ksef-invoice-retrieval.json', '05-offline24-monitor.json',
-            '06-jpk-vat-preparation.json', '08-ksef-submit-test-invoice.json',
+            '06-jpk-vat-preparation.json', '09-client-notifications.json',
         ]) {
             expect(() => JSON.parse(readFileSync(join(ROOT, 'workflows', file), 'utf8'))).not.toThrow();
         }
@@ -60,26 +60,10 @@ describe('n8n RSA-OAEP nodes call the sidecar instead of duplicating crypto loca
         expect(code).toContain('ivHex');
     });
 
-    it('08: "Generate AES Key & Encrypt" calls /generate-session-key, no local crypto.randomBytes/publicEncrypt', () => {
-        const code = loadNode('08-ksef-submit-test-invoice.json', 'Generate AES Key & Encrypt');
-        expect(code).toContain('/generate-session-key');
-        expect(code).toContain('$helpers.httpRequest');
-        expect(code).not.toContain('crypto.randomBytes(');
-        expect(code).not.toContain('crypto.publicEncrypt(');
-        expect(code).not.toContain("require('crypto')");
-        // "Build & Encrypt FA(3) Invoice" still reads these exact field
-        // names to AES-CBC-encrypt the invoice body - left untouched, since
-        // that step wasn't part of the flagged RSA-OAEP duplication.
-        expect(code).toContain('access_token');
-        expect(code).toContain('aes_key_hex');
-        expect(code).toContain('iv_hex');
-    });
-
-    it('all three reference $env.XADES_SIDECAR_URL with the hyphenated fallback', () => {
+    it('both retained sidecar callers reference $env.XADES_SIDECAR_URL with the hyphenated fallback', () => {
         for (const [file, name] of [
             ['02-ksef-authenticate.json', 'Encrypt Token RSA-OAEP'],
             ['04-ksef-invoice-retrieval.json', 'Generate Session Keys'],
-            ['08-ksef-submit-test-invoice.json', 'Generate AES Key & Encrypt'],
         ] as const) {
             const code = loadNode(file, name);
             expect(code).toContain('$env.XADES_SIDECAR_URL');

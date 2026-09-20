@@ -59,7 +59,6 @@ describe('n8n workflows send the same header when calling the sidecar directly',
     it.each([
         ['02-ksef-authenticate.json', 'Encrypt Token RSA-OAEP'],
         ['04-ksef-invoice-retrieval.json', 'Generate Session Keys'],
-        ['08-ksef-submit-test-invoice.json', 'Generate AES Key & Encrypt'],
     ])('%s: "%s" sends X-Sidecar-Api-Key from $env.SIDECAR_API_KEY', (file, nodeName) => {
         const code = loadNodeCode(file, nodeName);
         expect(code).toContain("headers: { 'X-Sidecar-Api-Key': $env.SIDECAR_API_KEY }");
