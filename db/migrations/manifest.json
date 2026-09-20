@@ -4,6 +4,10 @@
     {
       "version": "2026-09-20-setup-token",
       "file": "2026-09-20-setup-token.sql"
+    },
+    {
+      "version": "2026-09-20-job-harness",
+      "file": "2026-09-20-job-harness.sql"
     }
   ]
 }
