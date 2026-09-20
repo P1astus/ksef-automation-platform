@@ -4,25 +4,13 @@ import { query } from '@/lib/db';
 import { createSession } from '@/lib/auth';
 import { sendWelcome } from '@/lib/email';
 import { PLAN_MAX_CLIENTS } from '@/lib/plans';
-
-function generateSlug(firmName: string): string {
-    const map: Record<string, string> = {
-        ą: 'a', ć: 'c', ę: 'e', ł: 'l', ń: 'n',
-        ó: 'o', ś: 's', ź: 'z', ż: 'z',
-    };
-    const base = firmName
-        .toLowerCase()
-        .replace(/[ąćęłńóśźż]/g, (c) => map[c] || c)
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40);
-    const suffix = Math.floor(1000 + Math.random() * 9000);
-    return `${base}-${suffix}`;
-}
+import pool from '@/lib/db';
+import { capabilities } from '@/lib/deployment';
+import { FirstRunClosedError, InvalidSetupTokenError, generateFirmSlug, registerFirstFirm } from '@/lib/first-run';
 
 export async function POST(request: Request) {
     try {
-        const { firm_name, firm_nip, admin_email, password, plan } = await request.json();
+        const { firm_name, firm_nip, admin_email, password, plan, setup_token } = await request.json();
 
         // Validate required fields
         if (!firm_name || !admin_email || !password) {
@@ -54,6 +42,42 @@ export async function POST(request: Request) {
             );
         }
 
+        // Local edition: registration is closed. The FIRST firm may only be created by the holder of the one-time setup
+        // token (printed by the installer), in one transaction with a "no firm yet" re-check. The hosted branch below
+        // is unchanged.
+        if (!capabilities().openRegistration) {
+            const token = typeof setup_token === 'string' ? setup_token.trim() : '';
+            if (!token) {
+                return NextResponse.json(
+                    { error: 'Rejestracja jest zamknięta. Podaj token instalacyjny.', code: 'SETUP_TOKEN_REQUIRED' },
+                    { status: 403 }
+                );
+            }
+            try {
+                const firmId = await registerFirstFirm(
+                    () => pool.connect(),
+                    token,
+                    {
+                        firmName: firm_name.trim(),
+                        firmNip: firm_nip ? firm_nip.replace(/[-\s]/g, '') : null,
+                        adminEmail: admin_email.toLowerCase(),
+                        passwordHash: await bcrypt.hash(password, 10),
+                        // Access policy decides ACTIVITY (active, no trial clock); the tier decides FEATURES, so a
+                        // local firm is a Pro firm and no tier check anywhere disagrees with a route.
+                        subscriptionTier: 'pro',
+                        maxClients: PLAN_MAX_CLIENTS.pro,
+                    }
+                );
+                await createSession(firmId, admin_email.toLowerCase());
+                return NextResponse.json({ success: true, redirectUrl: '/dashboard/onboarding' });
+            } catch (err) {
+                if (err instanceof FirstRunClosedError || err instanceof InvalidSetupTokenError) {
+                    return NextResponse.json({ error: err.message, code: err instanceof FirstRunClosedError ? 'FIRST_RUN_CLOSED' : 'SETUP_TOKEN_INVALID' }, { status: 403 });
+                }
+                throw err;
+            }
+        }
+
         // Check email uniqueness
         const existing = await query(
             'SELECT id FROM firms WHERE admin_email = $1',
@@ -73,7 +97,7 @@ export async function POST(request: Request) {
         // Try inserting with a unique slug (retry once on collision)
         let firm: { id: number } | null = null;
         for (let attempt = 0; attempt < 3; attempt++) {
-            const slug = generateSlug(firm_name);
+            const slug = generateFirmSlug(firm_name);
             try {
                 const result = await query(
                     `INSERT INTO firms
