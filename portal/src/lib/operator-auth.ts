@@ -1,7 +1,8 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { createHmac } from 'crypto';
 import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { redirect, notFound } from 'next/navigation';
+import { capabilities } from './deployment';
 import bcrypt from 'bcryptjs';
 import { query } from './db';
 import { MissingJwtSecretError } from './auth';
@@ -86,6 +87,8 @@ export async function getOperatorSession(): Promise<OperatorSession | null> {
 // render a layout and its page concurrently, so a layout-only guard would let
 // the page's queries run for an unauthenticated request.
 export async function requireOperator(): Promise<OperatorSession> {
+    // A local install has no vendor console at all: 404, never a redirect to a login page that would reveal it.
+    if (!capabilities().operatorConsole) notFound();
     const session = await getOperatorSession();
     if (!session) redirect('/admin/login');
     return session;

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
+import { capabilities } from '@/lib/deployment';
 import LogoutButton from './LogoutButton';
 import TrialBanner from './TrialBanner';
 import PaywallOverlay from './PaywallOverlay';
@@ -54,7 +55,9 @@ export default async function DashboardLayout({
     const isBillingPage = pathname.includes('/billing');
     const trialExpired = subscriptionStatus === 'trial' && daysLeft <= 0;
     const canceled = subscriptionStatus === 'canceled';
-    const showPaywall = (trialExpired || canceled) && !isBillingPage;
+    // Only where Stripe is the billing provider: a local install has no trial clock, paywall or billing page.
+    const billing = capabilities().billingProvider === 'stripe';
+    const showPaywall = billing && (trialExpired || canceled) && !isBillingPage;
     const paywallReason: 'expired' | 'canceled' = canceled ? 'canceled' : 'expired';
 
     const initials = firmName
@@ -75,7 +78,7 @@ export default async function DashboardLayout({
         { href: '/dashboard/settings/team',    label: 'Zespół',       Icon: UsersRound },
         { href: '/dashboard/settings/ksef',    label: 'Tokeny KSeF',  Icon: Zap },
         { href: '/dashboard/help',            label: 'Pomoc',        Icon: HelpCircle },
-    ];
+    ].filter(item => billing || item.href !== '/dashboard/billing');
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)' }}>
@@ -199,7 +202,7 @@ export default async function DashboardLayout({
                 </header>
 
                 {/* Trial banner */}
-                <TrialBanner daysLeft={daysLeft} tier={subscriptionTier} />
+                {billing && <TrialBanner daysLeft={daysLeft} tier={subscriptionTier} />}
 
                 {/* Paywall overlay */}
                 {showPaywall && <PaywallOverlay reason={paywallReason} />}

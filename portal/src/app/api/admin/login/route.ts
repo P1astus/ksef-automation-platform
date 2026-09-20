@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { verifyOperatorLogin, setOperatorCookie, auditOperator } from '@/lib/operator-auth';
 import { requestIp } from '@/lib/rate-limit';
+import { requireCapability } from '@/lib/capability-guard';
 
 export async function POST(request: Request) {
+    const off = requireCapability('operatorConsole');
+    if (off) return off;
     const body = await request.json().catch(() => ({}));
     const email = typeof body.email === 'string' ? body.email : '';
     const password = typeof body.password === 'string' ? body.password : '';

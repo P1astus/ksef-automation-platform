@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { PLAN_MAX_CLIENTS } from '@/lib/plans';
+import { requireBilling } from '@/lib/capability-guard';
 
 // Constructed lazily (on first actual use), not at module load: `next build`
 // statically imports every route module to collect page data, with no
@@ -25,6 +26,8 @@ export const PLAN_DETAILS = {
 } as const;
 
 export async function GET() {
+    const off = requireBilling();
+    if (off) return off;
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -62,6 +65,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+    const off = requireBilling();
+    if (off) return off;
     try {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

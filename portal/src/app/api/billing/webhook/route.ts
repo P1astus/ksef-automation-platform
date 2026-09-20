@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { query } from '@/lib/db';
 import { PLAN_MAX_CLIENTS, type PlanId } from '@/lib/plans';
 import { invalidateFirmActiveCache } from '@/lib/auth';
+import { requireBilling } from '@/lib/capability-guard';
 
 // Constructed lazily (on first actual use), not at module load - see
 // billing/route.ts for why.
@@ -40,6 +41,8 @@ export function subscriptionStatus(status: Stripe.Subscription.Status): 'active'
 }
 
 export async function POST(request: Request) {
+    const off = requireBilling();
+    if (off) return off;
     const body = await request.text();
     const sig = request.headers.get('stripe-signature');
 

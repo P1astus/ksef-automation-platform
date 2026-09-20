@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { capabilities } from '@/lib/deployment';
 import PricingSection from './PricingSection';
 import {
     Zap, Shield, Building2,
@@ -76,7 +78,13 @@ const faqs = [
     { q: 'Ile firm mogę obsługiwać na planie Start?', a: 'Plan Start umożliwia obsługę do 15 klientów (NIP). Jeśli potrzebujesz więcej, plan Biznes obsługuje do 50, a plan Pro — nieograniczoną liczbę klientów.' },
 ];
 
+// Runtime configuration, not build-time: without this Next prerenders the page once at build and bakes the hosted
+// edition's marketing page into every install.
+export const dynamic = 'force-dynamic';
+
 export default function LandingPage() {
+    // A local install has no marketing or pricing page; the front door is the login.
+    if (capabilities().mode === 'local') redirect('/login');
     return (
         <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
 
