@@ -909,3 +909,22 @@ The `business_days` calendar is seeded through **2028-12-31** and must be extend
 The historical SQL (`ksef-schema*.sql`, `migrations/*`, including the tenancy rollback) is archive material: it is not in the
 image and nothing executes it.
 
+### 13.12 Editions and first-run (local install)
+
+One build runs as the hosted SaaS or as a local install, chosen by `DEPLOYMENT_MODE` (empty = hosted, exactly as before).
+`DEPLOYMENT_MODE=local` means: registration is closed, there is no vendor console (`/admin`), no billing or paywall, mail goes
+through SMTP, and the landing page redirects to the login. `ACCESS_PROVIDER` (local only) is `unmetered` (default) or `licence`.
+`EMAIL_TRANSPORT`, `PUBLIC_UPLOAD_ENABLED` (default off locally: client document upload needs inbound internet) and
+`SCHEDULER_ENABLED` are optional overrides. An invalid value stops the app at first use, and **a Stripe key together with a
+non-Stripe access policy is refused at startup** (two sources of truth for account status).
+
+**Creating the first account (local).** Registration needs a one-time setup token:
+
+```bash
+docker compose run --rm ksef_migrate node scripts/setup-token.mjs   # prints the token once
+```
+
+Only the token's SHA-256 is stored; the raw value is shown once, so copy it now. Run the command again to replace a lost,
+unused token. It refuses once an account exists. The first firm is created as an active **Pro** firm with no trial clock. Two
+people submitting the token at once cannot both succeed; a used token cannot be replayed.
+
