@@ -1,4 +1,9 @@
 {
   "_comment": "Ordered list of migrations created AFTER baseline-2026-09-20. Hand-maintained, never a directory glob. Each entry: {\"version\": \"2026-10-01-example\", \"file\": \"2026-10-01-example.sql\", \"transactional\": true}. Set transactional=false ONLY for statements Postgres refuses inside a transaction (CREATE INDEX CONCURRENTLY); that choice must be deliberate.",
-  "migrations": []
+  "migrations": [
+    {
+      "version": "2026-09-20-setup-token",
+      "file": "2026-09-20-setup-token.sql"
+    }
+  ]
 }

@@ -62,10 +62,15 @@ const tableExists = async (db: PGlite, name: string) =>
 
 const quiet = { env: {} as Record<string, string>, log: () => {} };
 
+// The baseline tests use an isolated directory with an EMPTY manifest: they are about the baseline, and must not
+// change every time a post-cutover migration is added to the real manifest.
+const baselineOnly = () => workDir({ migrations: [] }, {});
+
 describe('baseline cutover: fresh database', () => {
     it('applies the baseline, records it, and a second run is a no-op', async () => {
         const db = new PGlite();
-        const a = await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, ...quiet });
+        const dir = baselineOnly();
+        const a = await runner.migrate(runner.fromPglite(db), { dbDir: dir, ...quiet });
         expect(a).toEqual({ path: 'fresh', applied: [] });
 
         const rec = await db.query<{ version: string; adopted: boolean }>('SELECT version, adopted FROM schema_migrations');
@@ -77,7 +82,7 @@ describe('baseline cutover: fresh database', () => {
         const days = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM business_days');
         expect(days.rows[0].n).toBe(1096);
 
-        const b = await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, ...quiet });
+        const b = await runner.migrate(runner.fromPglite(db), { dbDir: dir, ...quiet });
         expect(b).toEqual({ path: 'noop', applied: [] });
     });
 
@@ -90,7 +95,7 @@ describe('baseline cutover: fresh database', () => {
 
     it('the checked-in invariants are exactly what a fresh apply produces (they are derived, never hand-written)', async () => {
         const db = new PGlite();
-        await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, ...quiet });
+        await runner.migrate(runner.fromPglite(db), { dbDir: baselineOnly(), ...quiet });
         const live = runner.serializeSnapshot(await runner.snapshotSchema(runner.fromPglite(db)));
         expect(live).toBe(readFileSync(join(DB_DIR, 'baseline-2026-09-20.invariants.json'), 'utf8'));
     });
@@ -116,12 +121,13 @@ describe('baseline cutover: adopting an existing (legacy) database', () => {
     it('records the baseline as adopted when confirmed, applies nothing, and is then a no-op', async () => {
         const db = await legacyDatabase();
         const rowsBefore = (await db.query<{ n: number }>('SELECT count(*)::int AS n FROM business_days')).rows[0].n;
-        const r = await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, env: { MIGRATIONS_CONFIRM_ADOPTION: '1' }, log: () => {} });
+        const dir = baselineOnly();
+        const r = await runner.migrate(runner.fromPglite(db), { dbDir: dir, env: { MIGRATIONS_CONFIRM_ADOPTION: '1' }, log: () => {} });
         expect(r.path).toBe('adopted');
         const rec = await db.query<{ version: string; adopted: boolean }>('SELECT version, adopted FROM schema_migrations');
         expect(rec.rows).toEqual([{ version: 'baseline-2026-09-20', adopted: true }]);
         expect((await db.query<{ n: number }>('SELECT count(*)::int AS n FROM business_days')).rows[0].n).toBe(rowsBefore);
-        expect((await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, ...quiet })).path).toBe('noop');
+        expect((await runner.migrate(runner.fromPglite(db), { dbDir: dir, ...quiet })).path).toBe('noop');
     });
 
     // The deliberately-broken copies: each must produce a remediation report, never a repair attempt.
@@ -150,6 +156,38 @@ describe('baseline cutover: adopting an existing (legacy) database', () => {
         await db.exec('CREATE TABLE local_notes (id int)');
         const r = await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, env: { MIGRATIONS_CONFIRM_ADOPTION: '1' }, log: () => {} });
         expect(r.path).toBe('adopted');
+    });
+});
+
+describe('the real manifest (db/migrations/manifest.json)', () => {
+    const manifest: { version: string }[] = JSON.parse(readFileSync(join(DB_DIR, 'migrations', 'manifest.json'), 'utf8')).migrations;
+
+    it('a fresh install applies every listed migration after the baseline, and is then a no-op', async () => {
+        const db = new PGlite();
+        const a = await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, ...quiet });
+        expect(a.path).toBe('fresh');
+        expect(a.applied).toEqual(manifest.map(m => m.version));
+        expect(await tableExists(db, 'setup_token')).toBe(true);
+        expect((await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, ...quiet })).path).toBe('noop');
+    });
+
+    it('adopting a legacy database records the baseline, then applies the pending migrations in the same run', async () => {
+        const db = await legacyDatabase();
+        expect(await tableExists(db, 'setup_token')).toBe(false);
+        const r = await runner.migrate(runner.fromPglite(db), { dbDir: DB_DIR, env: { MIGRATIONS_CONFIRM_ADOPTION: '1' }, log: () => {} });
+        expect(r.path).toBe('adopted');
+        expect(r.applied).toEqual(manifest.map(m => m.version));
+        expect(await tableExists(db, 'setup_token')).toBe(true);
+        const v = await db.query<{ version: string; adopted: boolean }>('SELECT version, adopted FROM schema_migrations ORDER BY applied_at, version');
+        expect(v.rows[0]).toEqual({ version: 'baseline-2026-09-20', adopted: true });
+        expect(v.rows.slice(1).every(x => x.adopted === false)).toBe(true); // migrations were really applied, not adopted
+    });
+
+    it('every listed file exists, versions are unique, and none is a rollback', () => {
+        expect(() => runner.loadManifest(DB_DIR)).not.toThrow();
+        for (const m of runner.loadManifest(DB_DIR)) {
+            expect(() => readFileSync(join(DB_DIR, 'migrations', m.file), 'utf8'), m.file).not.toThrow();
+        }
     });
 });
 
