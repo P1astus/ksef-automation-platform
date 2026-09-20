@@ -68,7 +68,7 @@ export const jpkPreparationJob: Job = {
     schedule: { kind: 'cron', expr: '0 8 5 * *', timezone: 'Europe/Warsaw' },
     timeoutMs: 60 * 60_000,
     maxAttempts: 3,
-    lookbackMinutes: 7 * 24 * 60,
+    lookbackMinutes: 2880,
     // IDEMPOTENCY BOUNDARY: UNIQUE (firm_id, client_nip, period) makes the preparation an upsert. There is no mail
     // delivery marker in the current schema, so a crash after SMTP acceptance can repeat the attachment on retry.
     async run(ctx): Promise<JobResult> {

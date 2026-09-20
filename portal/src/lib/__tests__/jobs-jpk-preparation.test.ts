@@ -45,6 +45,7 @@ describe('jpk-preparation job', () => {
     it('runs at 08:00 Warsaw on the fifth and prepares the previous month', async () => {
         const { jpkPreparationJob } = await import('../jobs/jpk-preparation');
         expect(jpkPreparationJob.schedule).toEqual({ kind: 'cron', expr: '0 8 5 * *', timezone: 'Europe/Warsaw' });
+        expect(jpkPreparationJob.lookbackMinutes).toBeLessThanOrEqual(2880);
         const ctx = context();
         await jpkPreparationJob.run(ctx);
         expect(ctx.query.mock.calls[0][1]).toEqual(['2026-08', '2026-08-01', '2026-08-31']);

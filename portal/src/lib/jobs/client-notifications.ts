@@ -17,7 +17,7 @@ export const clientNotificationsReceivablesJob: Job = {
     schedule: { kind: 'cron', expr: '0 8 * * 1', timezone: 'Europe/Warsaw' },
     timeoutMs: 30 * 60_000,
     maxAttempts: 3,
-    lookbackMinutes: 8 * 24 * 60,
+    lookbackMinutes: 2880,
     // IDEMPOTENCY BOUNDARY: one durable occurrence per Warsaw week; retries may repeat mail after a crash during send.
     run: notifyReceivables,
 };

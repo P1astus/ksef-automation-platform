@@ -28,6 +28,7 @@ describe('client notification jobs', () => {
         const { clientNotificationsOffline24Job, clientNotificationsReceivablesJob } = await import('../jobs/client-notifications');
         expect(clientNotificationsOffline24Job.schedule).toEqual({ kind: 'cron', expr: '0 */2 * * *', timezone: 'Europe/Warsaw' });
         expect(clientNotificationsReceivablesJob.schedule).toEqual({ kind: 'cron', expr: '0 8 * * 1', timezone: 'Europe/Warsaw' });
+        expect(clientNotificationsReceivablesJob.lookbackMinutes).toBeLessThanOrEqual(2880);
     });
 
     it('uses client_notified_* as the offline warning idempotency boundary', async () => {
