@@ -30,8 +30,6 @@ const MAX_WINDOW_MS = 89 * 24 * 3_600_000;
 const PAGE_SIZE = 250;
 /** First sync of a client (no mark yet): same default as the workflow. */
 const FIRST_SYNC_LOOKBACK_MS = 7 * 24 * 3_600_000;
-/** Used only if KSeF omits permanentStorageHwmDate: stay behind `to` so late-visible invoices are re-read (dedup absorbs). */
-const MISSING_HWM_OVERLAP_MS = 10 * 60_000;
 const MAX_PAGES_PER_WINDOW = 400; // 400 x 250 = 100 000 records; a runaway loop is a bug, not something to iterate through
 
 export type Direction = 'sales' | 'purchase';
@@ -188,8 +186,11 @@ async function readWindow(ksef: KsefPort, token: string, subject: 'Subject1' | '
         }
         if (page.permanentStorageHwmDate) serverHwm = page.permanentStorageHwmDate;
 
-        if (!page.hasMore) break;
-        if (!page.isTruncated) { offset += 1; continue; }
+        if (!page.isTruncated) {
+            if (!page.hasMore) break;
+            offset += 1;
+            continue;
+        }
 
         // Truncated: narrow the range to start at the last record's date and restart paging.
         const last = page.invoices[page.invoices.length - 1];
@@ -203,13 +204,10 @@ async function readWindow(ksef: KsefPort, token: string, subject: 'Subject1' | '
     }
 
     // Where the mark may move: KSeF's own watermark, never past the window's end, never backwards.
-    let hwm = toMs_ - MISSING_HWM_OVERLAP_MS;
-    if (serverHwm) {
-        const s = toMs(serverHwm);
-        if (Number.isFinite(s)) hwm = Math.min(s, toMs_);
-    } else {
-        log('KSeF did not return permanentStorageHwmDate; advancing to the window end minus a safety overlap');
+    if (!serverHwm || !Number.isFinite(toMs(serverHwm))) {
+        throw new RetrievalError('KSeF returned no valid permanentStorageHwmDate; nothing was stored or advanced');
     }
+    const hwm = Math.min(toMs(serverHwm), toMs_);
     return { invoices: [...byNumber.values()], hwmMs: Math.max(hwm, fromMs) };
 }
 
@@ -228,6 +226,7 @@ export async function syncDirection(
     while (from < windowEnd) {
         const to = Math.min(from + MAX_WINDOW_MS, windowEnd);
         const read = await readWindow(deps.ksef, token, SUBJECT[direction], from, to, ctx.signal, ctx.log);
+        if (ctx.signal.aborted) throw new RetrievalError('aborted before committing KSeF rows');
         const rows = read.invoices.map(mapInvoice);
         out.windows++;
         out.fetched += rows.length;
@@ -335,6 +334,7 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
                     if (!ctx.shadow) await recordStatus(ctx.db, client, null);
                     processed++;
                 } catch (err: any) {
+                    if (ctx.signal.aborted) throw err;
                     if (err instanceof RetrievalConfigError || err?.name === 'MissingCredentialKeyError') throw err;
                     const text = message(err);
                     failures.push({ subject: `client ${client.client_name} (${client.nip})`, error: text, firmId: client.firm_id, clientNip: client.nip });

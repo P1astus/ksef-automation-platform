@@ -39,7 +39,7 @@ const meta = (ksef: string, storage: string, over: any = {}) => ({
     netAmount: 100, vatAmount: 23, grossAmount: 123, currency: 'PLN', ...over,
 });
 const num = (n: number, nip = '1111111111') => `${nip}-20260915-${n.toString(16).toUpperCase().padStart(6, '0')}-AB`;
-const page = (invoices: any[], over: Partial<MetadataPage> = {}): MetadataPage => ({ invoices, hasMore: false, isTruncated: false, ...over });
+const page = (invoices: any[], over: Partial<MetadataPage> = {}): MetadataPage => ({ invoices, hasMore: false, isTruncated: false, permanentStorageHwmDate: T(NOW.getTime() - 60_000), ...over });
 
 const ctx = (over: Partial<JobContext> = {}): JobContext => ({
     db, now: () => NOW, shadow: false, signal: new AbortController().signal,
@@ -121,11 +121,36 @@ describe('invoice-retrieval: what is stored', () => {
         expect(calls[0].from).toBe(T(NOW.getTime() - 7 * D));
     });
 
-    it('missing permanentStorageHwmDate: the mark stays safely behind the window end', async () => {
+    it.each([undefined, 'not-a-date'])('refuses an absent or invalid server watermark (%s)', async (watermark) => {
         const f = await firm('a'); const id = await client(f, '1111111111');
-        const { port } = fakeKsef(() => page([]));
-        await job(port).run(ctx());
-        expect(ms((await marks(id)).hwm_sales)).toBe(NOW.getTime() - 10 * 60_000);
+        const before = await marks(id);
+        const { port } = fakeKsef(() => page([meta(num(1), T(NOW.getTime() - 3600_000))], { permanentStorageHwmDate: watermark }));
+        const result = await job(port).run(ctx());
+        expect(result.failures).toHaveLength(1);
+        expect((await marks(id)).hwm_sales).toEqual(before.hwm_sales);
+        expect(await invoices()).toEqual([]);
+    });
+
+    it('does not treat hasMore=false as complete when isTruncated=true', async () => {
+        const f = await firm('a'); const id = await client(f, '1111111111');
+        const before = await marks(id);
+        const { port } = fakeKsef(() => page([], { hasMore: false, isTruncated: true }));
+        const result = await job(port).run(ctx());
+        expect(result.failures).toHaveLength(1);
+        expect((await marks(id)).hwm_sales).toEqual(before.hwm_sales);
+    });
+
+    it('does not commit when the lease is lost during the final network read', async () => {
+        const f = await firm('a'); const id = await client(f, '1111111111');
+        const before = await marks(id);
+        const controller = new AbortController();
+        const { port } = fakeKsef(() => {
+            controller.abort();
+            return page([meta(num(1), T(NOW.getTime() - 3600_000))]);
+        });
+        await job(port).run(ctx({ signal: controller.signal })).catch(() => {});
+        expect((await marks(id)).hwm_sales).toEqual(before.hwm_sales);
+        expect(await invoices()).toEqual([]);
     });
 });
 
