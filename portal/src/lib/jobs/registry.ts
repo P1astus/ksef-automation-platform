@@ -1,5 +1,6 @@
 import type { Job } from './types';
 import { healthCheckJob } from './health-check';
+import { offline24MonitorJob } from './offline24-monitor';
 
 // Every job the worker knows how to run. Adding a port means adding it here; the ENV decides which ones actually run
 // (JOBS_ENABLED / JOBS_SHADOW), and an empty environment runs nothing.
@@ -13,6 +14,7 @@ export function buildJobs(env: Env): Job[] {
             ksefBaseUrl: env.KSEF_ENVIRONMENT === 'prod' ? 'https://api.ksef.mf.gov.pl/v2' : 'https://api-test.ksef.mf.gov.pl/v2',
             sidecarUrl: env.XADES_SIDECAR_URL || 'http://xades-sidecar:8090',
         }),
+        offline24MonitorJob(),
     ];
 }
 
