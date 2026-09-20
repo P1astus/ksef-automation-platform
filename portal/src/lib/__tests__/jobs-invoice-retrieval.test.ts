@@ -320,9 +320,32 @@ describe('invoice-retrieval: clients, credentials and shadow', () => {
         const r = await job(port).run(ctx());
         expect(r.failures!.map(x => x.error)).toEqual([
             'no KSeF token is configured for this client',
-            'client authenticates with a certificate; the retrieval job supports KSeF tokens only',
         ]);
         expect(r.processed).toBe(1);
+    });
+
+    it('certificate credentials are a persistent visible status, never a token or repeated alert', async () => {
+        const f = await firm('a'); const id = await client(f, '1111111111', { auth: 'certificate', token: 'encrypted-pkcs12' });
+        const { port } = fakeKsef(() => page([]));
+        const queries: string[] = [];
+        const recording: Db = { query: async (sql, params) => { queries.push(sql); return db.query(sql, params); } };
+        for (let i = 0; i < 2; i++) {
+            const result = await job(port).run(ctx({ db: recording }));
+            expect(result).toMatchObject({ processed: 0, skipped: 1, failures: [] });
+        }
+        expect(port.authenticate).not.toHaveBeenCalled();
+        expect((await marks(id)).last_sync_error).toContain('certificate');
+        expect((await marks(id)).last_sync_success).toBeNull();
+        expect(queries.filter(sql => sql.includes('UPDATE clients'))).toHaveLength(1);
+    });
+
+    it('certificate status is not written in shadow', async () => {
+        const f = await firm('a'); const id = await client(f, '1111111111', { auth: 'certificate' });
+        const { port } = fakeKsef(() => page([]));
+        const result = await job(port).run(ctx({ shadow: true }));
+        expect(result).toMatchObject({ skipped: 1, failures: [] });
+        expect((await marks(id)).last_sync_error).toBeNull();
+        expect(port.authenticate).not.toHaveBeenCalled();
     });
 
     it('an authentication failure is a per-client failure that names the client, recorded on the client', async () => {

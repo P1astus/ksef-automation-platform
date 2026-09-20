@@ -50,6 +50,13 @@ describe('POST /api/clients/[id]/sync', () => {
         expect(JSON.parse(insert[1][5])).toEqual({ clientId: 9, firmId: 5 });   // the firm comes from the session, never the body
     });
 
+    it('does not queue a certificate bundle as a token', async () => {
+        process.env.SCHEDULER_ENABLED = 'true'; process.env.JOBS_ENABLED = 'invoice-retrieval';
+        queryMock.mockResolvedValue({ rows: [{ ...CLIENT, auth_method: 'certificate' }] });
+        expect((await call()).status).toBe(400);
+        expect(queryMock.mock.calls.some(c => String(c[0]).includes('INSERT INTO job_occurrences'))).toBe(false);
+    });
+
     it('scheduler not running the job: falls back to the webhook', async () => {
         process.env.SCHEDULER_ENABLED = 'true'; process.env.JOBS_ENABLED = 'health-check';
         process.env.N8N_SYNC_WEBHOOK_URL = 'http://n8n.invalid/hook';

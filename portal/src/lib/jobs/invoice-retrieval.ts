@@ -62,6 +62,7 @@ export interface ClientRow {
     client_name: string;
     auth_method: string;
     ksef_token_encrypted: string | null;
+    last_sync_error?: string | null;
     hwm_sales: Date | string | null;
     hwm_purchases: Date | string | null;
 }
@@ -73,6 +74,8 @@ export interface DirectionOutcome {
     windows: number;
     hwm: string | null;
 }
+
+export const CERTIFICATE_SYNC_UNSUPPORTED = 'KSeF certificate authentication is not supported by this worker: the sidecar only has a server JPK signing key. Configure a KSeF token for invoice retrieval.';
 
 export class RetrievalError extends Error {}
 /** A misconfiguration that would fail every client the same way: abort the run instead of alerting once per client. */
@@ -270,10 +273,9 @@ export interface RetrievalScope {
 }
 
 export async function retrieveForClient(ctx: JobContext, deps: InvoiceRetrievalDeps, client: ClientRow) {
+    if (client.auth_method === 'certificate') throw new RetrievalError(CERTIFICATE_SYNC_UNSUPPORTED);
     if (!client.ksef_token_encrypted) {
-        throw new RetrievalError(client.auth_method === 'certificate'
-            ? 'client authenticates with a certificate; the retrieval job supports KSeF tokens only'
-            : 'no KSeF token is configured for this client');
+        throw new RetrievalError('no KSeF token is configured for this client');
     }
     const token = deps.decryptToken(client.ksef_token_encrypted, client.id);
     const access = await deps.ksef.authenticate(client.nip, token);
@@ -314,7 +316,7 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
         async run(ctx): Promise<JobResult> {
             const scope: RetrievalScope = (ctx.payload as RetrievalScope | null) ?? {};
             const clients = await ctx.db.query(
-                `SELECT id, nip, firm_id, client_name, auth_method, ksef_token_encrypted, hwm_sales, hwm_purchases
+                `SELECT id, nip, firm_id, client_name, auth_method, ksef_token_encrypted, hwm_sales, hwm_purchases, last_sync_error
                    FROM clients
                   WHERE sync_enabled = true
                     AND ($1::int IS NULL OR id = $1::int)
@@ -326,9 +328,18 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
             const failures: JobFailure[] = [];
             const perClient: unknown[] = [];
             let processed = 0;
+            let skipped = 0;
             for (const client of clients.rows as ClientRow[]) {
                 if (ctx.signal.aborted) throw new Error('invoice-retrieval aborted (timeout or lost lease)');
                 try {
+                    if (client.auth_method === 'certificate') {
+                        if (!ctx.shadow && client.last_sync_error !== CERTIFICATE_SYNC_UNSUPPORTED) {
+                            await recordStatus(ctx.db, client, CERTIFICATE_SYNC_UNSUPPORTED);
+                        }
+                        perClient.push({ nip: client.nip, status: 'certificate-auth-unsupported' });
+                        skipped++;
+                        continue;
+                    }
                     const outcomes = await retrieveForClient(ctx, deps, client);
                     perClient.push({ nip: client.nip, outcomes });
                     if (!ctx.shadow) await recordStatus(ctx.db, client, null);
@@ -344,7 +355,7 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
                     }
                 }
             }
-            return { processed, failures, detail: { clients: clients.rows.length, perClient } };
+            return { processed, skipped, failures, detail: { clients: clients.rows.length, perClient } };
         },
     };
 }

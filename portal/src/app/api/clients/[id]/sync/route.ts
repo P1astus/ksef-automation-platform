@@ -18,12 +18,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
 
     const clientRes = await query(
-        'SELECT id, nip, client_name, ksef_token_encrypted FROM clients WHERE id = $1 AND firm_id = $2',
+        'SELECT id, nip, client_name, auth_method, ksef_token_encrypted FROM clients WHERE id = $1 AND firm_id = $2',
         [id, session.firmId]
     );
     if (!clientRes.rows[0]) return NextResponse.json({ error: 'Klient nie znaleziony' }, { status: 404 });
 
     const client = clientRes.rows[0];
+    if (client.auth_method === 'certificate') {
+        return NextResponse.json({ error: 'Synchronizacja certyfikatem nie jest jeszcze obsługiwana. Skonfiguruj token KSeF.' }, { status: 400 });
+    }
     if (!client.ksef_token_encrypted) {
         return NextResponse.json({
             error: 'Brak tokenu KSeF. Skonfiguruj token w Ustawienia → Tokeny KSeF przed synchronizacją.'
