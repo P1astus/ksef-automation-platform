@@ -88,7 +88,7 @@ ksef-platform/
 │   ├── 04-ksef-invoice-retrieval.json
 │   ├── 05-offline24-monitor.json
 │   ├── 06-jpk-vat-preparation.json
-│   └── 08-ksef-submit-test-invoice.json
+│   └── 09-client-notifications.json
 ├── xades-sidecar/              # Java XAdES-BES signing service (built by Docker)
 │   ├── Dockerfile
 │   ├── pom.xml
@@ -271,7 +271,7 @@ The platform consists of 7 workflows that must be imported in a specific order (
 | 4 | `04-ksef-invoice-retrieval.json` | KSeF - Invoice Retrieval v2 | Depends on Authenticate |
 | 5 | `05-offline24-monitor.json` | KSeF - Offline24 Monitor | Uses Send Alert |
 | 6 | `06-jpk-vat-preparation.json` | KSeF - JPK_VAT Preparation | Uses Send Alert |
-| 7 | `08-ksef-submit-test-invoice.json` | KSeF - Submit Test Invoice | Manual test tool |
+| 7 | `09-client-notifications.json` | KSeF - Client Notifications | Calls the protected portal notification routes |
 
 ### How to Import Each Workflow
 
@@ -510,14 +510,10 @@ docker exec ksef_db psql -U ksef_app -d ksef_platform -c \
   "SELECT action, details, created_at FROM audit_log ORDER BY created_at DESC LIMIT 1;"
 ```
 
-### 10.4 Submit Test Invoice (Optional)
+### 10.4 Submit a test invoice (Optional)
 
-If you want to test invoice submission to KSeF:
-
-1. Temporarily activate the **KSeF - Submit Test Invoice** workflow
-2. Execute it manually in the n8n UI
-3. It will submit a test invoice and return a KSeF reference number
-4. **Deactivate it after testing** — it's a manual tool, not for production use
+Workflow 08 was a development smoke test and has been removed. Test submissions use the authenticated portal action
+backed by `/api/ksef/send`; do not recreate or activate the old n8n workflow.
 
 ---
 
@@ -533,8 +529,6 @@ Activate workflows in this order (dependencies first):
 | 4 | KSeF - Invoice Retrieval v2 | Every 30 minutes | Pulls invoices from KSeF |
 | 5 | KSeF - Offline24 Monitor | Every 2 hours | Tracks offline upload deadlines |
 | 6 | KSeF - JPK_VAT Preparation | 5th of month, 08:00 | Monthly JPK report generation |
-
-**Do NOT activate** KSeF - Submit Test Invoice in production.
 
 To activate each workflow:
 1. Open the workflow in n8n
@@ -566,7 +560,6 @@ Before going live with real client data:
 2. **Update all KSeF API URLs in workflows** from `api-test.ksef.mf.gov.pl` to `api.ksef.mf.gov.pl`. The following workflows contain hardcoded KSeF URLs that must be updated:
    - **KSeF - Authenticate v2**: 4 HTTP Request nodes (Get Public Key, Request Challenge, Submit Auth, Redeem Token)
    - **KSeF - Invoice Retrieval v2**: 4 HTTP Request nodes (Open Session, Query Sales, Query Purchases, Close Session)
-   - **KSeF - Submit Test Invoice**: 5 HTTP Request nodes
 
 3. Restart the stack:
    ```bash
