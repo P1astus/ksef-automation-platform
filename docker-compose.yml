@@ -147,6 +147,9 @@ services:
       - "JOBS_LEASE_SECONDS=${JOBS_LEASE_SECONDS:-}"
       - "KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}"
       - XADES_SIDECAR_URL=http://xades-sidecar:8090
+      # invoice-retrieval (replaces workflows 02+04): authenticates to KSeF through the sidecar and decrypts stored tokens.
+      - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
+      - "KSEF_CREDENTIALS_KEY=${KSEF_CREDENTIALS_KEY:-}"
       - "DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-}"
       - "EMAIL_TRANSPORT=${EMAIL_TRANSPORT:-}"
       - "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}"

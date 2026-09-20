@@ -1,6 +1,9 @@
 import type { Job } from './types';
 import { healthCheckJob } from './health-check';
 import { offline24MonitorJob } from './offline24-monitor';
+import { invoiceRetrievalJob } from './invoice-retrieval';
+import { initInteractiveSession, queryInvoices, terminateSession } from '../ksef-client';
+import { decryptSecret, clientCredentialContext } from '../credential-crypto';
 import { clientNotificationsOffline24Job, clientNotificationsReceivablesJob } from './client-notifications';
 import { jpkPreparationJob } from './jpk-preparation';
 
@@ -17,6 +20,15 @@ export function buildJobs(env: Env): Job[] {
             sidecarUrl: env.XADES_SIDECAR_URL || 'http://xades-sidecar:8090',
         }),
         offline24MonitorJob(),
+        invoiceRetrievalJob({
+            // KSeF base URL comes from KSEF_ENVIRONMENT inside ksef-client (test unless explicitly 'prod'), same as health-check.
+            ksef: {
+                authenticate: initInteractiveSession,
+                query: (token, o) => queryInvoices(token, { subjectType: o.subjectType, dateFrom: o.dateFrom, dateTo: o.dateTo, pageOffset: o.pageOffset, pageSize: o.pageSize }),
+                terminate: terminateSession,
+            },
+            decryptToken: (stored, clientId) => decryptSecret(stored, clientCredentialContext(clientId)),
+        }),
         clientNotificationsOffline24Job,
         clientNotificationsReceivablesJob,
         jpkPreparationJob,
