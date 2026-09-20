@@ -15,25 +15,25 @@ import { join } from 'path';
 
 const ROOT = join(__dirname, '..', '..', '..', '..');
 
-describe('determineJpkStatus (route helper, mirrors the n8n workflow rule)', () => {
+describe('determineJpkStatus (shared by the route and scheduled job)', () => {
     it('flags correction_needed when any invoice is marked BFK (offline, uploaded late)', async () => {
-        const { determineJpkStatus } = await import('@/app/api/jpk/generate/route');
+        const { determineJpkStatus } = await import('@/lib/jpk-generator');
         expect(determineJpkStatus([{ jpk_marker: 'NrKSeF' }, { jpk_marker: 'BFK' }])).toBe('correction_needed');
     });
 
     it('flags in_progress when any invoice is marked DI (undetermined, manual review) and none are BFK', async () => {
-        const { determineJpkStatus } = await import('@/app/api/jpk/generate/route');
+        const { determineJpkStatus } = await import('@/lib/jpk-generator');
         expect(determineJpkStatus([{ jpk_marker: 'NrKSeF' }, { jpk_marker: 'DI' }])).toBe('in_progress');
     });
 
     it('is ready when every invoice has a determined, on-time marker', async () => {
-        const { determineJpkStatus } = await import('@/app/api/jpk/generate/route');
+        const { determineJpkStatus } = await import('@/lib/jpk-generator');
         expect(determineJpkStatus([{ jpk_marker: 'NrKSeF' }, { jpk_marker: 'OFF' }])).toBe('ready');
         expect(determineJpkStatus([])).toBe('ready');
     });
 
     it('BFK takes priority over DI when both are present, matching the workflow\'s CASE order', async () => {
-        const { determineJpkStatus } = await import('@/app/api/jpk/generate/route');
+        const { determineJpkStatus } = await import('@/lib/jpk-generator');
         expect(determineJpkStatus([{ jpk_marker: 'DI' }, { jpk_marker: 'BFK' }])).toBe('correction_needed');
     });
 });

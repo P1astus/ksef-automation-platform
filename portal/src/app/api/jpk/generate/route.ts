@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireActiveSubscription } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { generateJpkV7M, JpkGenerationError } from '@/lib/jpk-generator';
+import { determineJpkStatus, generateJpkV7M, JpkGenerationError } from '@/lib/jpk-generator';
 import { InvalidJpkMarkerError } from '@/lib/jpk-markers';
 import { logActivity } from '@/lib/activity';
 
@@ -11,11 +11,7 @@ import { logActivity } from '@/lib/activity';
 // (marker undetermined, manual review) means the preparation isn't finished;
 // otherwise it's ready. Same three-way rule, same column, same meaning - kept
 // in one place so the portal route and the n8n workflow don't drift again.
-export function determineJpkStatus(invoices: { jpk_marker?: string | null }[]): 'correction_needed' | 'in_progress' | 'ready' {
-    if (invoices.some(i => i.jpk_marker === 'BFK')) return 'correction_needed';
-    if (invoices.some(i => i.jpk_marker === 'DI')) return 'in_progress';
-    return 'ready';
-}
+export { determineJpkStatus } from '@/lib/jpk-generator';
 
 export async function POST(request: Request) {
     const session = await getSession();

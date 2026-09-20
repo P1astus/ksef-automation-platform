@@ -108,6 +108,14 @@ export interface JpkInvoiceRow {
     jpk_margin_method?: 'individual' | 'sum' | string | null;
 }
 
+// Shared by interactive generation and the scheduled preparation job. BFK takes priority because a correction is
+// required even when another invoice in the same period is still waiting for manual DI resolution.
+export function determineJpkStatus(invoices: { jpk_marker?: string | null }[]): 'correction_needed' | 'in_progress' | 'ready' {
+    if (invoices.some(i => i.jpk_marker === 'BFK')) return 'correction_needed';
+    if (invoices.some(i => i.jpk_marker === 'DI')) return 'in_progress';
+    return 'ready';
+}
+
 function esc(s: string | undefined | null): string {
     if (!s) return '';
     return String(s)
