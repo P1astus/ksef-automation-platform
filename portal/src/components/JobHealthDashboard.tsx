@@ -1,3 +1,4 @@
+import { resolveDeployment } from '@/lib/deployment';
 import { query } from '@/lib/db';
 import { buildJobs } from '@/lib/jobs/registry';
 import { loadJobHealth } from '@/lib/jobs/dashboard';
@@ -9,6 +10,7 @@ const cell = { padding: '9px 10px', verticalAlign: 'top' as const };
 export default async function JobHealthDashboard({ firmId }: { firmId: number | null }) {
     const data = await loadJobHealth({ query }, firmId);
     const jobs = buildJobs(process.env);
+    const canRunGlobal = firmId === null || !resolveDeployment(process.env).operatorConsole;
     const newest = data.occurrences[0]?.scheduled_for ? new Date(data.occurrences[0].scheduled_for).getTime() : 0;
     const workerStale = !newest || Date.now() - newest > 30 * 60_000;
 
@@ -23,14 +25,14 @@ export default async function JobHealthDashboard({ firmId }: { firmId: number | 
                 Brak aktywności workera w ostatnich 30 minutach. Sprawdź usługę ksef_worker i zmienne JOBS_ENABLED / JOBS_SHADOW.
             </div>}
 
-            <section style={{ marginBottom: 24 }}>
+            {canRunGlobal && <section style={{ marginBottom: 24 }}>
                 <h2 style={{ fontSize: 16 }}>Uruchom zadanie</h2>
                 <div style={{ display: 'grid', gap: 8 }}>
                     {jobs.map(job => <div key={job.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px' }}>
                         <code style={{ fontSize: 12 }}>{job.name}</code><RunJobButton jobName={job.name} />
                     </div>)}
                 </div>
-            </section>
+            </section>}
 
             <section style={{ marginBottom: 24 }}>
                 <h2 style={{ fontSize: 16 }}>Ostatnie wykonania</h2>
@@ -39,7 +41,7 @@ export default async function JobHealthDashboard({ firmId }: { firmId: number | 
                         <tbody>{data.occurrences.map(row => <tr key={row.id} style={{ borderTop: '1px solid var(--border)' }}>
                             <td style={cell}>{row.job_name}{row.shadow ? ' (shadow)' : ''}</td><td style={cell}>{fmt(row.scheduled_for)}</td>
                             <td style={cell}>{row.state}</td><td style={cell}>{row.attempts} / {row.max_attempts}</td>
-                            <td style={cell}>{fmt(row.finished_at)}</td><td style={{ ...cell, color: row.last_error ? 'var(--error)' : undefined, maxWidth: 360 }}>{row.last_error || '—'}</td>
+                            <td style={cell}>{fmt(row.finished_at)}</td><td style={{ ...cell, color: row.last_error ? 'var(--error)' : undefined, maxWidth: 360 }}>{row.last_error || '—'}{row.result?.failures?.map((failure: { subject: string; error: string }, index: number) => <div key={index} style={{ color: 'var(--error)', marginTop: 4 }}>{failure.subject}: {failure.error}</div>)}</td>
                         </tr>)}</tbody></table>
                     {data.occurrences.length === 0 && <p style={{ padding: 14, color: 'var(--text-muted)' }}>Brak zarejestrowanych wykonań.</p>}
                 </div>

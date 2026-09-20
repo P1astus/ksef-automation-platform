@@ -3,6 +3,7 @@ import { getSession, sessionRole } from '@/lib/auth';
 import { getOperatorSession } from '@/lib/operator-auth';
 import { query } from '@/lib/db';
 import { verifySameOrigin } from '@/lib/csrf';
+import { resolveDeployment } from '@/lib/deployment';
 import { enqueueManual } from '@/lib/jobs/manual';
 
 export async function POST(request: Request) {
@@ -12,6 +13,10 @@ export async function POST(request: Request) {
     const [tenant, operator] = await Promise.all([getSession(), getOperatorSession()]);
     if (!operator && (!tenant || sessionRole(tenant) !== 'owner')) {
         return NextResponse.json({ error: tenant ? 'Brak uprawnień do tej operacji' : 'Unauthorized' }, { status: tenant ? 403 : 401 });
+    }
+
+    if (!operator && resolveDeployment(process.env).operatorConsole) {
+        return NextResponse.json({ error: 'Global jobs require an operator session; use client sync for your firm' }, { status: 403 });
     }
 
     const body = await request.json().catch(() => ({}));
