@@ -7,13 +7,10 @@ const WORKFLOWS_DIR = join(__dirname, '..', '..', '..', '..', 'workflows');
 describe('D7: no hardcoded KSeF host remains in any workflow url field', () => {
     const workflowFiles = readdirSync(WORKFLOWS_DIR).filter(f => f.endsWith('.json'));
 
-    it('found the expected 7 workflow files after the obsolete workflow 08 removal', () => {
-        // 07-document-collection.json was deleted 2026-09-13 (unauthenticated
-        // webhook, nothing called it) - see CLAUDE.md's Known issues section.
-        // 09-client-notifications.json added later - it calls the portal and
-        // n8n's own webhook, never the KSeF API, so it doesn't affect the
-        // other checks in this file.
-        expect(workflowFiles.length).toBe(7);
+    it('workflows 02 and 04 are gone: their replacement is lib/jobs/invoice-retrieval.ts', () => {
+        // 02 exposed an UNAUTHENTICATED webhook that minted live KSeF access tokens for any client; 04 depended on it.
+        expect(workflowFiles).not.toContain('02-ksef-authenticate.json');
+        expect(workflowFiles).not.toContain('04-ksef-invoice-retrieval.json');
     });
 
     it.each(workflowFiles)('%s has no hardcoded api(-test).ksef.mf.gov.pl in a "url" field', (file) => {
@@ -22,8 +19,8 @@ describe('D7: no hardcoded KSeF host remains in any workflow url field', () => {
         expect(hardcoded).toEqual([]);
     });
 
-    it('the 3 remaining files that call the KSeF API all reference $env.KSEF_API_BASE', () => {
-        for (const file of ['02-ksef-authenticate.json', '03-health-check.json', '04-ksef-invoice-retrieval.json']) {
+    it('the remaining file that calls the KSeF API references $env.KSEF_API_BASE', () => {
+        for (const file of ['03-health-check.json']) {
             const content = readFileSync(join(WORKFLOWS_DIR, file), 'utf8');
             expect(content).toContain('$env.KSEF_API_BASE');
         }

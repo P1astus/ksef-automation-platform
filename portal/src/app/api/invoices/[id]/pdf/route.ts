@@ -6,7 +6,7 @@ import { isZeroVatRate, type VatRateCode } from '@/lib/ksef-invoice-builder';
 import { parseFa3Lines } from '@/lib/parse-fa3-lines';
 
 // Fallback for invoices with no stored invoice_lines (e.g. pulled in from
-// KSeF by 04-ksef-invoice-retrieval.json, which receives someone else's
+// KSeF by the invoice-retrieval job (lib/jobs/invoice-retrieval.ts), which receives someone else's
 // already-built FA(3) document rather than building one itself). See
 // lib/parse-fa3-lines.ts for what it extracts and why there's no per-line
 // "vat"/"gross" to recover — FA(3) only reports the rate code (P_12) and

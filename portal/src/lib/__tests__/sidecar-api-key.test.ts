@@ -48,27 +48,10 @@ describe('ksef-client.ts sends X-Sidecar-Api-Key on every sidecar call', () => {
     });
 });
 
-describe('n8n workflows send the same header when calling the sidecar directly', () => {
-    function loadNodeCode(file: string, nodeName: string): string {
-        const wf = JSON.parse(readFileSync(join(ROOT, 'workflows', file), 'utf8'));
-        const node = wf.nodes.find((n: any) => n.name === nodeName);
-        expect(node, `${nodeName} should exist in ${file}`).toBeTruthy();
-        return node.parameters.jsCode as string;
-    }
-
-    it.each([
-        ['02-ksef-authenticate.json', 'Encrypt Token RSA-OAEP'],
-        ['04-ksef-invoice-retrieval.json', 'Generate Session Keys'],
-    ])('%s: "%s" sends X-Sidecar-Api-Key from $env.SIDECAR_API_KEY', (file, nodeName) => {
-        const code = loadNodeCode(file, nodeName);
-        expect(code).toContain("headers: { 'X-Sidecar-Api-Key': $env.SIDECAR_API_KEY }");
-    });
-});
-
 describe('docker-compose.yml requires SIDECAR_API_KEY on every service that talks to the sidecar', () => {
-    it('portal, n8n, and xades-sidecar all fail fast without it set', () => {
+    it('portal, worker, n8n, and xades-sidecar all fail fast without it set', () => {
         const src = readFileSync(join(ROOT, 'docker-compose.yml'), 'utf8');
         const occurrences = src.match(/SIDECAR_API_KEY=\$\{SIDECAR_API_KEY:\?/g) || [];
-        expect(occurrences.length).toBe(3);
+        expect(occurrences.length).toBe(4);
     });
 });

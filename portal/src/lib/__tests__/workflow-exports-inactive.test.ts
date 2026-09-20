@@ -3,15 +3,15 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 // The exported workflow JSON must never declare itself active. Importing an export with `"active": true` re-arms it
-// immediately, and workflows 04 and 05 still carry known correctness defects (04 advances its high-water mark with
-// the wall clock; 05 writes a VAT marker without a firm filter) until they are ported off n8n. Activation is a
+// immediately, and workflow 05 still carries a known correctness defect (it writes a VAT marker without a firm filter) until it is retired in
+// favour of lib/jobs/offline24-monitor.ts (04, which advanced its high-water mark with the wall clock, has been replaced). Activation is a
 // per-environment decision the user makes, never something an import does on its own.
 const DIR = join(__dirname, '..', '..', '..', '..', 'workflows');
 const files = readdirSync(DIR).filter(f => f.endsWith('.json')).sort();
 
 describe('workflow exports are inactive', () => {
     it('finds the workflow files', () => {
-        expect(files.length).toBeGreaterThanOrEqual(7);
+        expect(files.length).toBeGreaterThan(0);
     });
 
     it.each(files)('%s does not declare active: true', (file) => {
