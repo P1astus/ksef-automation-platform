@@ -18,7 +18,7 @@ function walk(dir: string, out: string[] = []): string[] {
 describe('portal env vars reach the container', () => {
     // NODE_ENV is set by the Dockerfile; OCR_UPLOAD_DIR and NEXT_PUBLIC_BASE_URL
     // are optional overrides with working defaults / a fallback in appUrl().
-    const EXEMPT = new Set(['NODE_ENV', 'OCR_UPLOAD_DIR', 'NEXT_PUBLIC_BASE_URL']);
+    const EXEMPT = new Set(['NODE_ENV', 'NEXT_RUNTIME', 'OCR_UPLOAD_DIR', 'NEXT_PUBLIC_BASE_URL']);
 
     it('docker-compose passes through every process.env.X the portal source reads', () => {
         const compose = readFileSync(COMPOSE, 'utf8');

@@ -123,8 +123,10 @@ async function recordSmtpHealth(status: 'ok' | 'error', details: Record<string, 
 }
 
 async function runSmtpProbe(): Promise<void> {
-    const config = smtpConfig();
+    let host = process.env.SMTP_HOST?.trim() || null;
     try {
+        const config = smtpConfig();
+        host = config.host;
         await getSmtpClient().sendMail({
             from: config.from,
             to: config.checkTo,
@@ -132,18 +134,32 @@ async function runSmtpProbe(): Promise<void> {
             text: 'Konfiguracja SMTP KSeF Auto działa poprawnie.',
             html: '<p>Konfiguracja SMTP KSeF Auto działa poprawnie.</p>',
         });
-        await recordSmtpHealth('ok', { phase: 'first-use-probe', host: config.host });
+        await recordSmtpHealth('ok', { phase: 'first-run-probe', host });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await recordSmtpHealth('error', { phase: 'first-use-probe', host: config.host, error: message });
+        await recordSmtpHealth('error', { phase: 'first-run-probe', host, error: message });
         throw error;
     }
 }
 
+export async function checkMailTransportOperationally(): Promise<void> {
+    if (selectedTransport() !== 'smtp') return;
+    smtpProbe ||= (async () => {
+        const previous = await query(
+            `SELECT 1 FROM system_health
+             WHERE check_type = 'smtp' AND status = 'ok'
+               AND details->>'phase' = 'first-run-probe'
+             LIMIT 1`
+        );
+        if (previous.rows.length > 0) return;
+        await runSmtpProbe();
+    })();
+    await smtpProbe;
+}
+
 async function sendSmtp(message: MailMessage) {
     const config = smtpConfig();
-    smtpProbe ||= runSmtpProbe();
-    await smtpProbe;
+    await checkMailTransportOperationally();
     try {
         await getSmtpClient().sendMail({ from: config.from, ...message });
     } catch (error) {
