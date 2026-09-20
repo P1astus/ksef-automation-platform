@@ -19,6 +19,15 @@ describe('POST /api/jobs/run/machine', () => {
         mocks.buildJobs.mockReset().mockReturnValue([{ name: 'health-check', maxAttempts: 3 }]);
     });
 
+    it.each(['', undefined])('refuses an unconfigured secret (%s) without enqueueing', async (secret) => {
+        if (secret === undefined) delete process.env.JOB_SECRET;
+        else process.env.JOB_SECRET = secret;
+        const { POST } = await import('./route');
+        const response = await POST(req(''));
+        expect(response.status).toBe(503);
+        expect(mocks.enqueue).not.toHaveBeenCalled();
+    });
+
     it('rejects the wrong JOB_SECRET without enqueueing', async () => {
         const { POST } = await import('./route');
         const response = await POST(req('wrong-secret'));
