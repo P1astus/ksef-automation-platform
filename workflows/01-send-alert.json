@@ -4,7 +4,7 @@
   "id": "f683A6qBbBoYY8hV",
   "name": "KSeF - Send Alert v2",
   "description": null,
-  "active": true,
+  "active": false,
   "isArchived": false,
   "nodes": [
     {

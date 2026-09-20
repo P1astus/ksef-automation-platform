@@ -4,7 +4,7 @@
   "id": "nQOe1mWZcCdRG94F",
   "name": "KSeF - Invoice Retrieval & Classification v2",
   "description": null,
-  "active": true,
+  "active": false,
   "isArchived": false,
   "nodes": [
     {
