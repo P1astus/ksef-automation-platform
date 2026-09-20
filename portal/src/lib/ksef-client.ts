@@ -190,35 +190,49 @@ export async function terminateSession(accessToken: string): Promise<void> {
     }
 }
 
+export type InvoiceSubject = 'Subject1' | 'Subject2';   // Subject1 = seller (our sales), Subject2 = buyer (our purchases)
+
+export interface InvoiceMetadataPage {
+    invoices: any[];
+    hasMore: boolean;
+    isTruncated: boolean;
+    /** Only for PermanentStorage queries: the watermark up to which KSeF guarantees every invoice is already visible. */
+    permanentStorageHwmDate?: string;
+}
+
 /**
- * Query invoice metadata.
- * Returns up to pageSize invoice metadata records for the given date range.
+ * Query invoice metadata - POST /invoices/query/metadata, incremental scenario from the spec: date type
+ * PermanentStorage, sortOrder Asc, restricted to KSeF's own permanent-storage watermark. `subjectType` and
+ * `dateRange.dateType` are required by the API; the page is `pageOffset` (a page index, not a record offset) and
+ * `pageSize` (10-250) in the QUERY STRING. A range may span at most 3 months: callers must window it.
+ *
+ * `isTruncated` (10 000 records reached) means: do not keep paging - narrow `from` to the last record's date, reset
+ * pageOffset and continue. `hasMore` without `isTruncated` means: increase pageOffset.
  */
 export async function queryInvoices(
     accessToken: string,
     opts: {
-        dateFrom: string;  // ISO date string
+        subjectType: InvoiceSubject;
+        dateFrom: string;  // ISO 8601
         dateTo: string;
-        type?: 'Received' | 'Issued';
         pageOffset?: number;
         pageSize?: number;
     }
-): Promise<{ invoices: unknown[]; hasMore: boolean; isTruncated: boolean }> {
-    const body: Record<string, unknown> = {
-        dateRange: { from: opts.dateFrom, to: opts.dateTo },
-        pageSize: opts.pageSize ?? 100,
-        pageOffset: opts.pageOffset ?? 0,
-    };
-    if (opts.type) body.type = opts.type;
-
-    const res = await fetch(`${BASE_URL}/invoices/query/metadata?sortOrder=Asc`, {
+): Promise<InvoiceMetadataPage> {
+    const pageSize = opts.pageSize ?? 100;
+    if (pageSize < 10 || pageSize > 250) throw new Error('KSeF pageSize must be between 10 and 250');
+    const qs = new URLSearchParams({ sortOrder: 'Asc', pageOffset: String(opts.pageOffset ?? 0), pageSize: String(pageSize) });
+    const res = await fetch(`${BASE_URL}/invoices/query/metadata?${qs}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({
+            subjectType: opts.subjectType,
+            dateRange: { dateType: 'PermanentStorage', from: opts.dateFrom, to: opts.dateTo, restrictToPermanentStorageHwmDate: true },
+        }),
+        signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
         const text = await res.text().catch(() => '');
