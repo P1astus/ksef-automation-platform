@@ -114,9 +114,8 @@ describe('offline24-monitor job (port of workflow 05)', () => {
     });
 
     it('CROSS-TENANT: a KSeF number held by two firms only ever marks the matched firm\'s invoice', async () => {
-        // Post-migration reality: buyer and seller can both be firms on the platform, so UNIQUE(firm_id, ksef_number).
+        // Post-contract reality: buyer and seller can both be firms on the platform, so only UNIQUE(firm_id, client_nip, ksef_number) remains.
         await pg.query('ALTER TABLE invoices DROP CONSTRAINT invoices_ksef_number_key');
-        await pg.query('ALTER TABLE invoices ADD CONSTRAINT invoices_firm_ksef_key UNIQUE (firm_id, ksef_number)');
         const a = await firm('a'); const b = await firm('b');
         await client(a, '1111111111'); await client(b, '2222222222');
         const shared = '1111111111-20260921-AAAAAA-01';

@@ -10,3 +10,4 @@
 
 The historical SQL at the repository root (`ksef-schema*.sql`) and in `../migrations/` is archive material only.
 See INSTALL.md section 13.11.
+- `contract/` - CONTRACT steps that are written but deliberately NOT in the manifest yet (each file says what must hold before it is promoted).
