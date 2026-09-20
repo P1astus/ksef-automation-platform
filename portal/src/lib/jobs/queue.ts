@@ -54,7 +54,7 @@ export async function enqueue(
  * have used all their attempts become `failed`. Run this BEFORE claim(): the partial unique index means a stale
  * `running` row would otherwise block its job forever.
  */
-export async function reapExpired(db: Db, now: Date): Promise<{ id: string; job_name: string; state: OccurrenceState; attempts: number }[]> {
+export async function reapExpired(db: Db, now: Date, modes?: { enabled: string[]; shadow: string[] }): Promise<{ id: string; job_name: string; state: OccurrenceState; attempts: number; shadow: boolean }[]> {
     const res = await db.query(
         `UPDATE job_occurrences
             SET state = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
@@ -64,8 +64,9 @@ export async function reapExpired(db: Db, now: Date): Promise<{ id: string; job_
                 worker_id = NULL,
                 finished_at = CASE WHEN attempts >= max_attempts THEN $1::timestamptz ELSE NULL END
           WHERE state = 'running' AND lease_expires_at < $1
-          RETURNING id, job_name, state, attempts`,
-        [iso(now)]
+            AND ($2::text[] IS NULL OR (NOT shadow AND job_name = ANY($2::text[])) OR (shadow AND job_name = ANY($3::text[])))
+          RETURNING id, job_name, state, attempts, shadow`,
+        [iso(now), modes?.enabled ?? null, modes?.shadow ?? null]
     );
     return res.rows;
 }
@@ -73,7 +74,7 @@ export async function reapExpired(db: Db, now: Date): Promise<{ id: string; job_
 /** Claim the oldest due occurrence of an enabled job whose job is not already running. Null when nothing is claimable. */
 export async function claim(
     db: Db,
-    o: { workerId: string; now: Date; leaseSeconds: number; jobNames: string[] }
+    o: { workerId: string; now: Date; leaseSeconds: number; jobNames: string[]; shadowJobs?: string[] }
 ): Promise<Occurrence | null> {
     if (o.jobNames.length === 0) return null;
     try {
@@ -81,6 +82,7 @@ export async function claim(
             `WITH candidate AS (
                  SELECT c.id FROM job_occurrences c
                   WHERE c.state = 'pending' AND c.run_after <= $1 AND c.job_name = ANY($3::text[])
+                    AND c.shadow = (c.job_name = ANY($5::text[]))
                     AND NOT EXISTS (SELECT 1 FROM job_occurrences r WHERE r.job_name = c.job_name AND r.state = 'running')
                   ORDER BY c.scheduled_for, c.id
                   FOR UPDATE SKIP LOCKED
@@ -95,7 +97,7 @@ export async function claim(
                FROM candidate
               WHERE j.id = candidate.id
               RETURNING j.id, j.job_name, j.occurrence_key, j.scheduled_for, j.state, j.attempts, j.max_attempts, j.shadow, j.payload`,
-            [iso(o.now), o.leaseSeconds, o.jobNames, o.workerId]
+            [iso(o.now), o.leaseSeconds, o.jobNames, o.workerId, o.shadowJobs ?? []]
         );
         return res.rows[0] ?? null;
     } catch (err: any) {

@@ -82,12 +82,12 @@ export async function tickOnce(deps: RunnerDeps): Promise<TickSummary> {
     const alertsFor = (isShadow: boolean) => createAlerts({ db: deps.db, sendMail: deps.sendMail, alertEmail: deps.alertEmail, shadow: isShadow, log });
 
     // 1. Recover occurrences whose worker died or hung. Must precede claim(): a stale `running` row blocks its job.
-    const reaped = await reapExpired(deps.db, now());
+    const reaped = await reapExpired(deps.db, now(), { enabled: deps.enabled, shadow });
     summary.reaped = reaped;
     for (const r of reaped) {
         log(`recovered ${r.job_name} #${r.id}: ${r.state === 'failed' ? 'attempts exhausted' : 'will retry'}`);
         if (r.state === 'failed') {
-            await alertsFor(false).raise({
+            await alertsFor(r.shadow).raise({
                 severity: 'critical', source: r.job_name, subject: `Job ${r.job_name} failed permanently`,
                 message: `Occurrence ${r.id} of ${r.job_name} kept losing its worker and used all ${r.attempts} attempts.`,
             });
@@ -110,7 +110,7 @@ export async function tickOnce(deps: RunnerDeps): Promise<TickSummary> {
     // 3. Claim and run, oldest first, bounded per tick.
     const claimable = [...deps.enabled, ...shadow];
     for (let i = 0; i < (deps.maxPerTick ?? 20); i++) {
-        const occ = await claim(deps.db, { workerId: deps.workerId, now: now(), leaseSeconds, jobNames: claimable });
+        const occ = await claim(deps.db, { workerId: deps.workerId, now: now(), leaseSeconds, jobNames: claimable, shadowJobs: shadow });
         if (!occ) break;
         const job = deps.jobs.find(j => j.name === occ.job_name)!;
         summary.ran.push(await execute(deps, job, occ, alertsFor(occ.shadow), now, log, leaseSeconds));

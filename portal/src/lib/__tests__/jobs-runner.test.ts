@@ -180,6 +180,34 @@ describe('crash and lease recovery', () => {
 });
 
 describe('shadow mode is side-effect free', () => {
+    it('a shadow-only worker leaves pre-existing real work pending', async () => {
+        await pg.query(`INSERT INTO job_occurrences (job_name, occurrence_key, scheduled_for, run_after, shadow)
+                        VALUES ('health', 'manual:old', $1, $1, false)`, [T0.toISOString()]);
+        const run = vi.fn(ok());
+        await tickOnce(deps([job('health', run)], { enabled: [], shadow: ['health'] }));
+        expect(run.mock.calls.every(([ctx]) => ctx.shadow)).toBe(true);
+        expect((await rows()).find(r => r.occurrence_key === 'manual:old').state).toBe('pending');
+    });
+
+    it('recovering an exhausted shadow occurrence never records or mails an alert', async () => {
+        await pg.query(`INSERT INTO job_occurrences (job_name, occurrence_key, scheduled_for, state, attempts, max_attempts, lease_expires_at, worker_id, shadow)
+                        VALUES ('health', 'shadow:old', $1, 'running', 3, 3, $2, 'dead', true)`,
+            [T0.toISOString(), new Date(T0.getTime() - 1000).toISOString()]);
+        const d = deps([job('health', ok())], { enabled: [], shadow: ['health'] });
+        await tickOnce(d);
+        expect(await alertRows()).toEqual([]);
+        expect(d.sendMail).not.toHaveBeenCalled();
+    });
+
+    it('an inert worker does not reap work or alert', async () => {
+        await pg.query(`INSERT INTO job_occurrences (job_name, occurrence_key, scheduled_for, state, attempts, max_attempts, lease_expires_at, worker_id)
+                        VALUES ('health', 'old', $1, 'running', 3, 3, $2, 'dead')`,
+            [T0.toISOString(), new Date(T0.getTime() - 1000).toISOString()]);
+        await tickOnce(deps([job('health', ok())], { enabled: [] }));
+        expect((await rows())[0].state).toBe('running');
+        expect(await alertRows()).toEqual([]);
+    });
+
     it('runs with ctx.shadow, marks the occurrence shadow, uses a separate key, and sends/records no alert', async () => {
         let seenShadow: boolean | undefined;
         const run: Job['run'] = async ctx => {
