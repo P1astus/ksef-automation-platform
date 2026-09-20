@@ -1,3 +1,6 @@
+# Build context is the REPOSITORY ROOT (docker-compose.yml: build.context: .), not ./portal, so the image can
+# carry the schema (db/) and the migration runner. The root .dockerignore is a whitelist: only portal/ and db/
+# enter the context, so certificates, .env files and backups can never leak into an image layer.
 FROM node:20-alpine AS base
 
 # Install dependencies only when needed
@@ -6,14 +9,14 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-COPY package.json package-lock.json* ./
+COPY portal/package.json portal/package-lock.json* ./
 RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY portal/ ./
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
@@ -49,6 +52,11 @@ RUN mkdir -p uploads && chown nextjs:nodejs uploads
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Migration runner + the schema it applies. Run by the one-shot ksef_migrate compose service; the portal
+# never applies migrations itself. Historical SQL under the repo's migrations/ is archive and is NOT copied.
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --chown=nextjs:nodejs db ./db
 
 # pdf-parse and tesseract.js both load part of their real functionality
 # dynamically at runtime (pdf-parse: a try/catch require of @napi-rs/canvas;

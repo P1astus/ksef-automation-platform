@@ -1,8 +1,16 @@
 name: ksef-automation-platform
 
+# The portal image is built from the repository root so it can carry db/ (the schema) and the migration
+# runner. The root .dockerignore is a whitelist (portal/ and db/ only). portal and ksef_migrate share this
+# build and image tag, so it is built once.
+x-portal-build: &portal-build
+  context: .
+  dockerfile: portal/Dockerfile
+
 services:
   portal:
-    build: ./portal
+    build: *portal-build
+    image: ksef-portal:local
     container_name: ksef_portal
     restart: unless-stopped
     environment:
@@ -50,6 +58,9 @@ services:
     depends_on:
       ksef_db:
         condition: service_healthy
+      # The schema must exist before the portal serves anything. If migration fails, the portal never starts.
+      ksef_migrate:
+        condition: service_completed_successfully
 
   nginx:
     image: nginx:alpine
@@ -90,8 +101,8 @@ services:
       - POSTGRES_PASSWORD=${KSEF_DB_PASSWORD}
     volumes:
       - ksef_db_data:/var/lib/postgresql/data
-      - ./ksef-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./ksef-holidays-init.sql:/docker-entrypoint-initdb.d/02-holidays.sql
+      # No docker-entrypoint-initdb.d mounts: initdb scripts ran only on an empty volume and covered only the
+      # base schema, so a fresh install had no `firms` table. Schema is applied by ksef_migrate (db/).
     ports:
       - "5433:5432"
     healthcheck:
@@ -99,6 +110,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # One-shot: applies db/baseline-2026-09-20.sql to an empty database, or audits-then-adopts an existing one,
+  # then any post-cutover migrations. `docker compose run --rm ksef_migrate` runs it by hand. An existing
+  # database needs MIGRATIONS_CONFIRM_ADOPTION=1 once, after a backup - see INSTALL.md.
+  ksef_migrate:
+    build: *portal-build
+    image: ksef-portal:local
+    container_name: ksef_migrate
+    restart: "no"
+    command: ["node", "scripts/migrate.mjs"]
+    environment:
+      - DATABASE_URL=postgresql://ksef_app:${KSEF_DB_PASSWORD}@ksef_db:5432/ksef_platform
+      - "MIGRATIONS_CONFIRM_ADOPTION=${MIGRATIONS_CONFIRM_ADOPTION:-}"
+      - "MIGRATIONS_ALLOW_CHECKSUM_DRIFT=${MIGRATIONS_ALLOW_CHECKSUM_DRIFT:-}"
+    depends_on:
+      ksef_db:
+        condition: service_healthy
 
   n8n:
     image: n8nio/n8n:latest
@@ -151,6 +179,8 @@ services:
         condition: service_healthy
       ksef_db:
         condition: service_healthy
+      ksef_migrate:
+        condition: service_completed_successfully
 
   xades-sidecar:
     build: ./xades-sidecar

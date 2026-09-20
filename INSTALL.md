@@ -79,8 +79,8 @@ cd ksef-platform
 ```
 ksef-platform/
 ├── docker-compose.yml          # Stack definition (4 services)
-├── ksef-schema.sql             # Database schema (auto-runs on first start)
-├── ksef-holidays-init.sql      # Polish holidays 2026-2028 (auto-runs on first start)
+├── db/                         # Schema: baseline-2026-09-20.sql (+ Polish holiday calendar 2026-2028) and post-cutover migrations/
+├── ksef-schema*.sql, migrations/  # ARCHIVE of the historical SQL - no longer run by anything (see 13.11)
 ├── workflows/                  # 7 n8n workflow JSON files
 │   ├── 01-send-alert.json
 │   ├── 02-ksef-authenticate.json
@@ -232,7 +232,7 @@ docker compose logs postgres        # n8n internal DB errors
 **Common issues:**
 - Port conflict: Another service already using 5432, 5433, 5678, or 8090. Stop the conflicting service or change ports in `docker-compose.yml`.
 - Low memory: The XAdES sidecar (Java) needs ~512 MB to build. Ensure Docker has at least 4 GB RAM allocated.
-- Schema not loading: The `ksef-schema.sql` only runs on the FIRST start when the `ksef_db_data` volume is empty. If you need to re-initialize, remove the volume: `docker compose down -v` (WARNING: destroys all data).
+- Schema not loading: the schema is applied by the one-shot `ksef_migrate` service (`docker compose logs ksef_migrate`), on an empty volume or an existing database, and the portal will not start if it fails. See 13.11. To re-initialize from scratch, `docker compose down -v` (WARNING: destroys all data).
 
 ---
 
@@ -866,14 +866,10 @@ question; filing with the tax office remains the accountant's responsibility.
 1. `openssl rand -base64 32` -> `KSEF_CREDENTIALS_KEY=` in the root `.env`; **back it up together with `.env`**.
 2. `docker compose up -d` (portal and n8n both receive it), then re-import/patch workflow `02-ksef-authenticate`
    in n8n (its Code node decrypts) - never activate it without sign-off.
-3. Apply `migrations/2026-09-19-firm-imap.sql`, `-auth-rate-limits.sql`, `-firm-user-reset.sql`.
-   Also apply `migrations/2026-09-19-jpk-v7m3-envelope.sql` (round 17: client tax-office code and JPK document-type/IMP
-   columns). JPK generation refuses for a client with no tax-office code (client page) or no contact e-mail.
-   Then apply `migrations/2026-09-19-jpk-remaining-fields.sql` (sole-trader identity, foreign-contractor country, margin
-   value; widens `buyer_nip`/`seller_nip`). A sole-trader client needs first name, surname and date of birth on its page.
-   Also apply `migrations/2026-09-19-zus-declarations.sql` (round 19: `zus_declarations` + `zus_declaration_events`, the ZUS DRA/RCA
-   import register at `/dashboard/zus`; storage/export only, no ZUS submission).
-   Apply `migrations/2026-09-19-jpk-test-gateway-submissions.sql` only if using the default-off TEST-only JPK action (§13.10).
+3. Schema: nothing to apply by hand any more - every table these features need (IMAP settings, rate limits, member
+   password reset, JPK envelope fields, ZUS register, the TEST gateway table) is in the baseline applied by `ksef_migrate`
+   (13.11). JPK generation still refuses for a client with no tax-office code (client page) or no contact e-mail, and a
+   sole-trader client needs first name, surname and date of birth on its page.
 4. Re-encrypt existing rows (one-off; the legacy format must be stated because unprefixed rows are ambiguous):
    ```bash
    cd portal
@@ -881,3 +877,35 @@ question; filing with the tax office remains the accountant's responsibility.
    KSEF_CREDENTIALS_KEY='<the key>' KSEF_LEGACY_FORMAT=base64 node scripts/migrate-ksef-credentials.mjs
    ```
    Runs in one transaction. Rows already starting `enc:v1:` are skipped. Take a backup first (§13.1).
+
+### 13.11 Schema management (`ksef_migrate`)
+
+The schema is no longer applied by `docker-entrypoint-initdb.d` or by hand. A one-shot `ksef_migrate` service runs
+`node scripts/migrate.mjs` before the portal starts (`docker compose logs ksef_migrate`); if it fails the portal does not
+start. It has three paths and never guesses:
+
+| Situation | What happens |
+|---|---|
+| **Empty database** (new install) | Applies `db/baseline-2026-09-20.sql` (schema + the Polish business-day calendar) and records it. |
+| **Existing database** (installed before this change) | Runs a **read-only audit** against the baseline's invariants (`db/baseline-2026-09-20.invariants.json`, derived from the baseline, never hand-written). On a full match it records the baseline as *adopted* and applies nothing. On any mismatch it stops, prints exactly what is missing or different, and changes nothing. |
+| **Baseline already recorded** | Applies any migrations listed in `db/migrations/manifest.json`, in order, each committed together with its `schema_migrations` row. Otherwise a no-op. |
+
+**Adopting an existing database (once):**
+
+```bash
+docker exec ksef_db pg_dump -U ksef_app ksef_platform > ksef_before_adoption.sql     # 1. backup (13.1)
+docker compose run --rm ksef_migrate                                                # 2. audit only: exit 3 = "passed, not recorded"
+MIGRATIONS_CONFIRM_ADOPTION=1 docker compose run --rm ksef_migrate                 # 3. record it (only after a passing audit)
+```
+
+Exit codes: `0` ok, `1` unexpected failure, `2` audit mismatch (the report lists the objects to fix by hand; the historical SQL under
+`migrations/` is the reference), `3` audit passed but adoption not yet confirmed.
+
+**Rules.** A released baseline or an applied migration must never be edited: a checksum mismatch stops the upgrade
+(`MIGRATIONS_ALLOW_CHECKSUM_DRIFT=true` is a documented one-time escape hatch; line-ending-only changes are not drift). Two runners
+started together are safe - the second waits on a lock and then finds nothing to do. An older application image against a newer
+database is allowed, so an upgrade can be rolled back by redeploying the previous image without restoring the database.
+The `business_days` calendar is seeded through **2028-12-31** and must be extended before then (a new migration).
+The historical SQL (`ksef-schema*.sql`, `migrations/*`, including the tenancy rollback) is archive material: it is not in the
+image and nothing executes it.
+

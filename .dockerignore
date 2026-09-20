@@ -1,0 +1,24 @@
+# Whitelist: the portal image is built from the repo root (see docker-compose.yml), so the
+# context must never contain secrets, certificates, backups, or internal notes.
+# Everything is excluded, then only what a build needs is re-included.
+*
+
+!portal
+!db
+
+# Inside the re-included directories, still exclude build output and secrets.
+portal/node_modules
+portal/.next
+portal/.env*
+!portal/.env.example
+portal/test-results
+portal/playwright-report
+portal/uploads
+**/*.p12
+**/*.pem
+**/*.key
+**/.env
+**/.env.*
+!**/.env.example
+**/.env.template
+**/npm-debug.log*
