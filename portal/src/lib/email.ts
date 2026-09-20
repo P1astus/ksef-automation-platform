@@ -1,20 +1,32 @@
-const RESEND_API = 'https://api.resend.com/emails';
 import { appUrl } from '@/lib/app-url';
-const FROM = process.env.RESEND_FROM_EMAIL || 'KSeF Auto <noreply@ksef.auto>';
+import { sendMail } from '@/lib/mail-transport';
 
 async function send(to: string, subject: string, html: string) {
-    const key = process.env.RESEND_API_KEY;
-    if (!key) {
-        throw new Error('RESEND_API_KEY is not configured');
-    }
-    const response = await fetch(RESEND_API, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: FROM, to, subject, html }),
-    });
-    if (!response.ok) {
-        throw new Error(`Resend rejected email with HTTP ${response.status}`);
-    }
+    await sendMail({ to, subject, html });
+}
+
+export async function sendPasswordReset(email: string, resetUrl: string) {
+    await send(email, 'Reset hasła — KSeF Auto', `
+        <h2>Reset hasła</h2>
+        <p>Kliknij poniższy link, aby ustawić nowe hasło. Link jest ważny przez 1 godzinę.</p>
+        <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+            Ustaw nowe hasło →
+        </a>
+        <p style="margin-top:24px;color:#94a3b8;font-size:13px;">
+            Jeśli nie prosiłeś o reset hasła, zignoruj tę wiadomość.
+        </p>
+    `);
+}
+
+export async function sendTeamInvite(email: string, firmName: string, inviteUrl: string) {
+    await send(email, `Zaproszenie do ${firmName} w KSeF Auto`, `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
+            <h1 style="color:#6366f1;font-size:22px">Zaproszenie do zespołu</h1>
+            <p style="color:#555;font-size:15px">Zostałeś zaproszony do biura <strong>${firmName}</strong> w KSeF Auto.</p>
+            <a href="${inviteUrl}" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Dołącz do zespołu →</a>
+            <p style="color:#999;font-size:12px;margin-top:24px">Link ważny 7 dni. KSeF Auto</p>
+        </div>
+    `);
 }
 
 export async function sendWelcome(email: string, firmName: string) {

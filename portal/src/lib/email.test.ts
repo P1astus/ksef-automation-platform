@@ -1,25 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-describe('email delivery', () => {
-    beforeEach(() => {
-        vi.resetModules();
-        vi.restoreAllMocks();
-        process.env.RESEND_API_KEY = 'test-resend-key';
+const sendMail = vi.hoisted(() => vi.fn());
+vi.mock('./mail-transport', () => ({ sendMail }));
+
+describe('email templates', () => {
+    beforeEach(() => sendMail.mockReset().mockResolvedValue(undefined));
+
+    it('sends password resets through the configured transport', async () => {
+        const { sendPasswordReset } = await import('./email');
+
+        await sendPasswordReset('owner@example.test', 'https://portal.example/reset-password/token');
+
+        expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+            to: 'owner@example.test',
+            subject: expect.stringMatching(/reset hasła/i),
+            html: expect.stringContaining('https://portal.example/reset-password/token'),
+        }));
     });
 
-    it('fails rather than pretending to send when the email provider is unconfigured', async () => {
-        delete process.env.RESEND_API_KEY;
-        const { sendOffline24Warning } = await import('./email');
+    it('sends team invitations through the configured transport', async () => {
+        const { sendTeamInvite } = await import('./email');
 
-        await expect(sendOffline24Warning('client@example.com', 'Client', 'FV/1', '2026-09-19T12:00:00Z', '1h'))
-            .rejects.toThrow(/resend_api_key/i);
-    });
+        await sendTeamInvite('member@example.test', 'Biuro Test', 'https://portal.example/invite/accept?token=x');
 
-    it('fails when Resend returns a non-success status', async () => {
-        vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
-        const { sendOffline24Warning } = await import('./email');
-
-        await expect(sendOffline24Warning('client@example.com', 'Client', 'FV/1', '2026-09-19T12:00:00Z', '1h'))
-            .rejects.toThrow(/http 503/i);
+        expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+            to: 'member@example.test',
+            subject: expect.stringContaining('Biuro Test'),
+            html: expect.stringContaining('https://portal.example/invite/accept?token=x'),
+        }));
     });
 });
