@@ -972,7 +972,10 @@ with `openssl x509 -in certificates/local/tls.crt -noout -fingerprint -sha256` o
   Alternatively import it into the System keychain in Keychain Access and set SSL trust to *Always Trust*.
 
 Restart the browser after installing trust. A warning means the accessed hostname/IP is absent from the SAN list, trust was
-installed in the wrong store, or an old certificate is cached; do not train users to click through it.
+installed in the wrong store, or an old certificate is cached; do not train users to click through it. Local nginx sends
+`Strict-Transport-Security` with a one-year lifetime. After a browser has seen that header, it will not offer a click-through
+when the self-signed certificate changes or becomes untrusted. Trust the current certificate on every PC before opening the
+site; when rotating it, install the replacement on every PC before switching nginx to the new certificate.
 
 **3. Start and claim the installation.** Generate the TLS files before nginx starts.
 
