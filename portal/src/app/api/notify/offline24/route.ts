@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { sendOffline24Warning } from '@/lib/email';
 import { safeEqual } from '@/lib/auth';
+import { assertMailTransportConfigured } from '@/lib/mail-transport';
+import { notifyOffline24 } from '@/lib/notifications/offline24';
 
 // Called by workflows/09-client-notifications.json every 2 hours. Protected
 // by a shared secret exactly like digest/route.ts: Authorization: Bearer
@@ -23,47 +24,12 @@ export async function POST(request: Request) {
     if (!safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (!process.env.RESEND_API_KEY) {
-        return NextResponse.json({ error: 'RESEND_API_KEY is not configured' }, { status: 503 });
+    try {
+        assertMailTransportConfigured();
+    } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 503 });
     }
-
-    const pending = await query(`
-        SELECT oi.id, oi.invoice_number, oi.upload_deadline,
-               oi.client_notified_4h, oi.client_notified_1h, oi.client_notified_overdue,
-               c.contact_email, c.client_name
-        FROM offline_invoices oi
-        JOIN clients c ON oi.client_nip = c.nip AND oi.firm_id = c.firm_id
-        WHERE oi.uploaded_to_ksef = false AND c.contact_email IS NOT NULL
-          AND NOT (oi.client_notified_4h AND oi.client_notified_1h AND oi.client_notified_overdue)
-    `);
-
-    let sent = 0;
-    let failed = 0;
-    const now = Date.now();
-    for (const row of pending.rows) {
-        const diffMs = new Date(row.upload_deadline).getTime() - now;
-        const diffHours = diffMs / (1000 * 60 * 60);
-
-        let tier: '4h' | '1h' | 'overdue' | null = null;
-        let flagColumn: string | null = null;
-        if (diffMs <= 0 && !row.client_notified_overdue) { tier = 'overdue'; flagColumn = 'client_notified_overdue'; }
-        else if (diffHours < 1 && !row.client_notified_1h) { tier = '1h'; flagColumn = 'client_notified_1h'; }
-        else if (diffHours < 4 && !row.client_notified_4h) { tier = '4h'; flagColumn = 'client_notified_4h'; }
-
-        if (!tier || !flagColumn) continue;
-
-        try {
-            await sendOffline24Warning(row.contact_email, row.client_name, row.invoice_number, row.upload_deadline, tier);
-            await query(`UPDATE offline_invoices SET ${flagColumn} = true WHERE id = $1`, [row.id]);
-            sent++;
-        } catch (error) {
-            failed++;
-            // The flag remains false, so the next scheduled run can retry.
-            // Do not hide this: the response below is non-2xx if any warning
-            // could not be delivered, allowing n8n's error handling to alert.
-            console.error(`Offline24 ${tier} warning failed for queue row ${row.id}:`, error);
-        }
-    }
-
-    return NextResponse.json({ ok: failed === 0, sent, failed }, { status: failed === 0 ? 200 : 502 });
+    const result = await notifyOffline24({ db: { query }, now: () => new Date(), shadow: false, signal: request.signal });
+    const failed = result.failures?.length ?? 0;
+    return NextResponse.json({ ok: failed === 0, sent: result.processed ?? 0, failed }, { status: failed === 0 ? 200 : 502 });
 }

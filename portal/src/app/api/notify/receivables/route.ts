@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { sendReceivablesDigest } from '@/lib/email';
 import { safeEqual } from '@/lib/auth';
+import { assertMailTransportConfigured } from '@/lib/mail-transport';
+import { notifyReceivables } from '@/lib/notifications/receivables';
 
 // Called weekly by workflows/09-client-notifications.json. Same shared-
 // secret pattern as digest/route.ts and notify/offline24/route.ts.
@@ -20,47 +21,15 @@ export async function POST(request: Request) {
     if (!safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (!process.env.RESEND_API_KEY) {
-        return NextResponse.json({ error: 'RESEND_API_KEY is not configured' }, { status: 503 });
+    try {
+        assertMailTransportConfigured();
+    } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 503 });
     }
-
-    const overdue = await query(`
-        SELECT c.id AS client_id, c.contact_email, c.client_name,
-               i.invoice_number, i.gross_amount, i.due_date
-        FROM invoices i
-        JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
-        WHERE i.direction = 'sales' AND i.payment_status = 'unpaid'
-          AND i.due_date IS NOT NULL AND i.due_date < NOW()
-          AND c.contact_email IS NOT NULL
-        ORDER BY c.id, i.due_date ASC
-    `);
-
-    const byClient = new Map<number, { contact_email: string; client_name: string; invoices: { invoice_number: string; gross_amount: string; due_date: string }[] }>();
-    for (const row of overdue.rows) {
-        if (!byClient.has(row.client_id)) {
-            byClient.set(row.client_id, { contact_email: row.contact_email, client_name: row.client_name, invoices: [] });
-        }
-        byClient.get(row.client_id)!.invoices.push({
-            invoice_number: row.invoice_number,
-            gross_amount: row.gross_amount,
-            due_date: row.due_date,
-        });
-    }
-
-    let sent = 0;
-    let failed = 0;
-    for (const client of byClient.values()) {
-        try {
-            await sendReceivablesDigest(client.contact_email, client.client_name, client.invoices);
-            sent++;
-        } catch (error) {
-            failed++;
-            console.error(`Receivables digest failed for ${client.contact_email}:`, error);
-        }
-    }
-
-    return NextResponse.json(
-        { ok: failed === 0, sent, failed, clientsWithOverdue: byClient.size },
-        { status: failed === 0 ? 200 : 502 }
-    );
+    const result = await notifyReceivables({ db: { query }, now: () => new Date(), shadow: false, signal: request.signal });
+    const failed = result.failures?.length ?? 0;
+    return NextResponse.json({
+        ok: failed === 0, sent: result.processed ?? 0, failed,
+        clientsWithOverdue: result.detail.clientsWithOverdue,
+    }, { status: failed === 0 ? 200 : 502 });
 }
