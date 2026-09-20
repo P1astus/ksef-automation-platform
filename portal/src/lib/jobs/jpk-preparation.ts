@@ -73,7 +73,7 @@ export const jpkPreparationJob: Job = {
     // delivery marker in the current schema, so a crash after SMTP acceptance can repeat the attachment on retry.
     async run(ctx): Promise<JobResult> {
         abortIfNeeded(ctx.signal);
-        const { period, start, end } = preparationPeriod(ctx.now());
+        const { period, start, end } = preparationPeriod(ctx.scheduledFor ? new Date(ctx.scheduledFor) : ctx.now());
         const clients = await ctx.db.query(
             `SELECT DISTINCT i.firm_id, i.client_nip, c.client_name, c.tax_office_code, c.contact_email,
                     c.taxpayer_type, c.first_name, c.last_name, c.birth_date,

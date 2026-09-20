@@ -35,6 +35,8 @@ export interface JobResult {
 export interface JobContext {
     db: Db;
     now: () => Date;
+    /** Original schedule time, stable across retries and catch-up. */
+    scheduledFor?: Date | string;
     /**
      * A shadow run computes and records what it WOULD do and writes nothing else: no markers, no alert flags, no
      * preparation rows, no mail. Jobs MUST honour this; the alerts module already does.

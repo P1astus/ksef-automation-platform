@@ -124,7 +124,7 @@ async function execute(
 ): Promise<TickSummary['ran'][number]> {
     const base = { job: job.name, occurrenceKey: occ.occurrence_key, shadow: occ.shadow };
     const controller = new AbortController();
-    const ctx: JobContext = { db: deps.db, now, shadow: occ.shadow, payload: occ.payload ?? null, signal: controller.signal, alerts, log: m => log(`${job.name}: ${m}`) };
+    const ctx: JobContext = { db: deps.db, now, scheduledFor: occ.scheduled_for, shadow: occ.shadow, payload: occ.payload ?? null, signal: controller.signal, alerts, log: m => log(`${job.name}: ${m}`) };
 
     // The lease is extended while the job runs; if extending it fails the job no longer owns this occurrence.
     const hb = setInterval(async () => {

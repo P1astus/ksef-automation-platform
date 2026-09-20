@@ -51,6 +51,15 @@ describe('jpk-preparation job', () => {
         expect(ctx.query.mock.calls[0][1]).toEqual(['2026-08', '2026-08-01', '2026-08-31']);
     });
 
+    it('uses the scheduled period when a fifth-day occurrence catches up on the sixth', async () => {
+        const { jpkPreparationJob } = await import('../jobs/jpk-preparation');
+        const ctx = context();
+        ctx.now = () => new Date('2026-09-06T06:00:00Z');
+        Object.assign(ctx, { scheduledFor: new Date('2026-09-05T06:00:00Z') });
+        await jpkPreparationJob.run(ctx);
+        expect(ctx.query.mock.calls[0][1]).toEqual(['2026-08', '2026-08-01', '2026-08-31']);
+    });
+
     it('upserts the generated JPK and emails the accountant with the CSV actually attached', async () => {
         const { jpkPreparationJob } = await import('../jobs/jpk-preparation');
         const ctx = context();
