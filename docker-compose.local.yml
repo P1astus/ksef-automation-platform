@@ -5,6 +5,7 @@
 # no base-file port publication or n8n dependency may leak into the local edition.
 services:
   portal:
+    container_name: !reset null
     environment:
       - DEPLOYMENT_MODE=local
       - ACCESS_PROVIDER=${ACCESS_PROVIDER:-unmetered}
@@ -19,6 +20,7 @@ services:
     ports: !reset []
 
   nginx:
+    container_name: !reset null
     ports: !override
       - "80:80"
       - "443:443"
@@ -29,17 +31,27 @@ services:
       - portal
 
   ksef_db:
+    container_name: !reset null
     ports: !reset []
 
+  ksef_migrate:
+    container_name: !reset null
+
+  ksef_worker:
+    container_name: !reset null
+
   xades-sidecar:
+    container_name: !reset null
     ports: !reset []
 
   # The TypeScript worker replaces scheduling. Keep the legacy workflow engine
   # available for explicit migration/debug work, but do not start it by default.
   postgres:
+    container_name: !reset null
     profiles: ["legacy-n8n"]
     ports: !reset []
 
   n8n:
+    container_name: !reset null
     profiles: ["legacy-n8n"]
     ports: !reset []
