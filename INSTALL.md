@@ -928,6 +928,104 @@ Only the token's SHA-256 is stored; the raw value is shown once, so copy it now.
 unused token. It refuses once an account exists. The first firm is created as an active **Pro** firm with no trial clock. Two
 people submitting the token at once cannot both succeed; a used token cannot be replayed.
 
+#### 13.12.1 Secure local installation on a LAN
+
+This is the supported local-install path. It requires Docker Compose **v2.24.4+** because the overlay uses `!reset` and
+`!override` to remove unsafe settings inherited from the hosted stack. In zsh, use a function (not a quoted command string):
+
+```zsh
+dc() { docker compose -f docker-compose.yml -f docker-compose.local.yml "$@"; }
+```
+
+The overlay sets `DEPLOYMENT_MODE=local`, blanks Resend/Anthropic/Stripe configuration, and publishes only nginx on 80 and
+443. Portal, both PostgreSQL services, n8n and the XAdES sidecar remain on the Compose network. The old n8n scheduler and its
+database have the `legacy-n8n` profile and do not start by default. Only for deliberate migration/debug work, and never to
+activate a workflow, start them with `dc --profile legacy-n8n up -d postgres n8n`.
+
+**1. Configure local secrets and origin.** At minimum, generate the normal database/JWT/sidecar secrets plus the credential
+key, and set the exact LAN origin in `.env` (no trailing slash):
+
+```dotenv
+NEXT_PUBLIC_APP_URL=https://ksef-box.local
+KSEF_CREDENTIALS_KEY=<output of: openssl rand -base64 32>
+SMTP_HOST=mail.example.internal
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=ksef@example.pl
+```
+
+Keep `.env` and `KSEF_CREDENTIALS_KEY` together in the backup. Without that exact key, restored `enc:v1:` KSeF tokens,
+certificates and IMAP passwords cannot be decrypted.
+
+**2. Create a certificate with the real access names.** Give the script every hostname and IP that browsers will use; each
+is written into `subjectAltName`. Regenerate it whenever the server address changes.
+
+```bash
+scripts/generate-local-certificate.sh ksef-box.local 192.168.1.40
+openssl x509 -in certificates/local/tls.crt -noout -text
+```
+
+The private `tls.key` stays on the server and is mounted read-only into nginx. Copy only `tls.crt` to workstations. This is a
+self-signed certificate, so install it as trusted only on devices managed by the firm, after comparing its SHA-256 fingerprint
+with `openssl x509 -in certificates/local/tls.crt -noout -fingerprint -sha256` on the server.
+
+- **Windows (Administrator PowerShell or Command Prompt):** copy `tls.crt` locally, then run
+  `certutil -addstore -f Root tls.crt`. It should appear under *Trusted Root Certification Authorities → Certificates*.
+  Remove it later with `certutil -delstore Root <certificate-serial-number>`.
+- **macOS (administrator account):** copy `tls.crt` locally, then run
+  `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain tls.crt`.
+  Alternatively import it into the System keychain in Keychain Access and set SSL trust to *Always Trust*.
+
+Restart the browser after installing trust. A warning means the accessed hostname/IP is absent from the SAN list, trust was
+installed in the wrong store, or an old certificate is cached; do not train users to click through it.
+
+**3. Start and claim the installation.** Generate the TLS files before nginx starts.
+
+```zsh
+dc up -d --build
+dc ps
+dc run --rm ksef_migrate node scripts/setup-token.mjs
+```
+
+Open `https://ksef-box.local/setup`, paste the one-time token, and enter the firm name, administrator e-mail and password.
+Local `/register` redirects to `/setup`; after the first firm exists, `/setup` returns 404. Hosted registration is unchanged.
+
+The built portal image sets `NODE_ENV=production`, and both session-creation paths therefore emit a `Secure`, `HttpOnly`,
+`SameSite=Lax` cookie. Verify after login in browser DevTools → Network → the login/register response → `Set-Cookie`; it must
+contain `Secure`. nginx still overwrites `X-Real-IP` from the TCP peer, so IP-keyed rate limiting does not trust a client header.
+
+**4. Check exposure from another LAN device.** The host's LAN IP is a weaker fallback, but it still catches accidental Compose
+port publication:
+
+```bash
+scripts/verify-local-network.sh 192.168.1.40
+```
+
+The gate requires HTTPS on 443, an HTTP 308 redirect on 80, and closed ports 3000, 5432, 5433, 5678 and 8090. Host firewalls
+may expose fewer ports, never more; allow inbound TCP 80/443 only on the trusted LAN profile.
+
+**5. Egress defaults.** The local overlay supplies no Resend, Anthropic, Stripe or n8n webhook credential, disables Next.js
+telemetry, and n8n is absent by default. The portal CSP includes `connect-src 'self'`, with fonts and assets self-hosted, so a
+workstation cannot silently contact those vendors either. Expected outbound traffic remains: configured company SMTP,
+MF/KSeF endpoints required for the product, and the NIP white-list service. Review any explicitly configured integration before
+promising an air-gapped installation.
+
+**6. Back up and prove restoration.** Encrypt the secrets archive before any off-site copy:
+
+```bash
+openssl rand -base64 48 > /root/ksef-backup.pass
+chmod 600 /root/ksef-backup.pass
+BACKUP_ENCRYPT_PASSPHRASE_FILE=/root/ksef-backup.pass scripts/backup-local.sh
+BACKUP_ENCRYPT_PASSPHRASE_FILE=/root/ksef-backup.pass scripts/verify-local-backup.sh
+```
+
+`backup-local.sh` captures `ksef_platform`, the `ocr_uploads` volume, `certificates/`, and `.env`, then writes checksums.
+`verify-local-backup.sh` restores them into a fresh `ksef_verify_*` Compose project, requires `ksef_migrate` to report a no-op,
+and decrypts one stored `enc:v1:` credential with the restored `KSEF_CREDENTIALS_KEY`. It fails if the backup has no encrypted
+credential, because a key round-trip cannot otherwise be proved. The verification project and volumes are removed on exit.
+
 ### 13.13 Job worker (`ksef_worker`) - replacing n8n workflow by workflow
 
 `ksef_worker` runs the platform's scheduled work in-process, replacing n8n one workflow at a time. It uses the portal image
@@ -949,4 +1047,3 @@ Occurrences, retries and outcomes are in the `job_occurrences` table; alerts in 
 occurrence is recovered automatically (its lease expires), retried with backoff, and after its last attempt fails permanently with
 a critical alert. At most one occurrence of a job runs at once (enforced by a database index), so two workers cannot double-run it.
 Schedules use an explicit timezone (Europe/Warsaw); a repeated DST hour runs once and a skipped one runs once at the next valid time.
-
