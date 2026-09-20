@@ -81,7 +81,7 @@ export async function GET(request: Request) {
                     headers: sidecarHeaders(),
                     body: JSON.stringify({
                         token: tokenPlaintext,
-                        timestamp: String(ch.timestampMs),
+                        timestamp: ch.timestamp,   // ISO-8601: the sidecar Instant.parse()s it and derives the epoch ms itself
                         ksefPublicKeyPem: cert,
                     }),
                     signal: AbortSignal.timeout(10000),

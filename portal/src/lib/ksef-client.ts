@@ -92,18 +92,19 @@ export async function initInteractiveSession(
     nip: string,
     tokenPlaintext: string
 ): Promise<string> {
-    const [certificate, { challenge, timestampMs }] = await Promise.all([
+    const [certificate, { challenge, timestamp }] = await Promise.all([
         getPublicKeyCertificate('KsefTokenEncryption'),
         getChallenge(),
     ]);
 
-    // XAdES sidecar encrypts `token|timestampMs` with RSA-OAEP SHA-256
+    // XAdES sidecar encrypts `token|timestampMs` with RSA-OAEP SHA-256. It derives the epoch milliseconds itself from the
+    // challenge's ISO-8601 `timestamp` (Instant.parse), so send THAT - the epoch-millisecond string does not parse there.
     const encRes = await fetch(`${XADES_SIDECAR}/encrypt-for-session`, {
         method: 'POST',
         headers: sidecarHeaders(),
         body: JSON.stringify({
             token: tokenPlaintext,
-            timestamp: String(timestampMs),   // pass as ms string — sidecar concatenates token|timestamp
+            timestamp,
             ksefPublicKeyPem: certificate,
         }),
         signal: AbortSignal.timeout(10_000),
