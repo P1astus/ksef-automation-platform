@@ -15,6 +15,13 @@ services:
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://ksef_app:${KSEF_DB_PASSWORD}@ksef_db:5432/ksef_platform
+      # Deployment edition (lib/deployment.ts). Empty = hosted SaaS with Stripe access, exactly as before.
+      # A bad value stops the app at first use; a Stripe key with a non-Stripe ACCESS_PROVIDER is refused.
+      - "DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-}"
+      - "ACCESS_PROVIDER=${ACCESS_PROVIDER:-}"
+      - "EMAIL_TRANSPORT=${EMAIL_TRANSPORT:-}"
+      - "PUBLIC_UPLOAD_ENABLED=${PUBLIC_UPLOAD_ENABLED:-}"
+      - "SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-}"
       - "JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env - generate with: openssl rand -hex 32}"
       - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
       # Hyphenated hostname, not the underscored container_name below -
