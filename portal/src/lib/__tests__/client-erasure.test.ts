@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { applyBaseline } from './helpers/baseline';
 
 // clients/[id]/erase/route.ts's core behavior: proves the erase action
 // clears exactly the CRM/contact columns and nothing else, and — the whole
@@ -20,9 +21,7 @@ describe('GDPR client erasure: scoped to CRM fields, invoices untouched', () => 
 
     beforeAll(async () => {
         db = new PGlite();
-        for (const file of ['ksef-schema.sql', 'ksef-schema-migration.sql', 'ksef-schema-migration-v2.sql', join('migrations', 'sprint9-13.sql'), join('migrations', '2026-09-13-tenancy-fix.sql'), join('migrations', '2026-09-14-gdpr-erasure.sql')]) {
-            await db.exec(readFileSync(join(ROOT, file), 'utf8'));
-        }
+        await applyBaseline(db);
 
         const firmRes = await db.query<{ id: number }>(
             `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash) VALUES ('Firm A', 'firm-a', 'a@example.com', 'x') RETURNING id`

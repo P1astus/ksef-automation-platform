@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import bcrypt from 'bcryptjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { applyBaseline } from './helpers/baseline';
 
 // Before this fix, settings/route.ts's update_password action always wrote
 // firms.admin_password_hash - the firm owner's credential - regardless of
@@ -51,9 +52,7 @@ describe('settings/route.ts update_password: branches by identity, not role', ()
 
     beforeAll(async () => {
         db = new PGlite();
-        for (const file of ['ksef-schema.sql', 'ksef-schema-migration.sql', 'ksef-schema-migration-v2.sql', join('migrations', 'sprint9-13.sql')]) {
-            await db.exec(readFileSync(join(ROOT, file), 'utf8'));
-        }
+        await applyBaseline(db);
 
         const ownerHash = await bcrypt.hash('owner-original', 10);
         const firmRes = await db.query<{ id: number }>(

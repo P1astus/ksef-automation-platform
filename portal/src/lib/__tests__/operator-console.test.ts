@@ -27,6 +27,7 @@ vi.mock('../db', () => ({ query: (...a: any[]) => queryMock(...a) }));
 
 import * as op from '../operator-auth';
 import { encrypt as firmEncrypt, decrypt as firmDecrypt } from '../auth';
+import { applyBaseline } from './helpers/baseline';
 
 beforeEach(() => { queryMock.mockReset(); queryMock.mockResolvedValue({ rows: [] }); cookieJar.clear(); op._resetThrottleForTests(); });
 
@@ -164,9 +165,7 @@ describe('admin-data against the real schema', () => {
     let a: number; let b: number;
     beforeAll(async () => {
         db = new PGlite();
-        for (const f of ['ksef-schema.sql', 'ksef-schema-migration.sql', 'ksef-schema-migration-v2.sql', 'migrations/sprint9-13.sql', 'migrations/2026-09-13-tenancy-fix.sql', 'migrations/2026-09-13-offline-invoice-linking.sql', 'migrations/2026-09-14-gdpr-erasure.sql', 'migrations/2026-09-19-operators.sql']) {
-            await db.exec(readFileSync(join(ROOT, f), 'utf8'));
-        }
+        await applyBaseline(db);
         // idempotent
         await db.exec(readFileSync(join(ROOT, 'migrations/2026-09-19-operators.sql'), 'utf8'));
         a = (await db.query<{ id: number }>(`INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash) VALUES ('Quiet', 'quiet', 'q@x.pl', 'SECRETHASH') RETURNING id`)).rows[0].id;

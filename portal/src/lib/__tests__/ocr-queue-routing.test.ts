@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { applyBaseline } from './helpers/baseline';
 
 // ocr/route.ts and email/sync/route.ts's actual query shapes: a clean
 // extraction still auto-promotes straight to invoices (unchanged from
@@ -55,9 +56,7 @@ describe('ocr_queue routing: review gating and the buyer_nip fix', () => {
 
     beforeAll(async () => {
         db = new PGlite();
-        for (const file of ['ksef-schema.sql', 'ksef-schema-migration.sql', 'ksef-schema-migration-v2.sql', join('migrations', 'sprint9-13.sql'), join('migrations', '2026-09-13-tenancy-fix.sql')]) {
-            await db.exec(readFileSync(join(ROOT, file), 'utf8'));
-        }
+        await applyBaseline(db);
 
         const firmRes = await db.query<{ id: number }>(
             `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash, firm_nip) VALUES ('Firm A', 'firm-a', 'a@example.com', 'x', '9998887766') RETURNING id`

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { encrypt, decrypt, sessionRole, requireRole } from '../auth';
+import { applyBaseline } from './helpers/baseline';
 
 // Before this fix, an invited team member (firm_users) could complete the
 // entire invite-accept flow and then never log in at all: auth/login/
@@ -54,9 +55,7 @@ describe('firm_users login (the gap: invited members could never log in)', () =>
 
     beforeAll(async () => {
         db = new PGlite();
-        for (const file of ['ksef-schema.sql', 'ksef-schema-migration.sql', 'ksef-schema-migration-v2.sql', join('migrations', 'sprint9-13.sql')]) {
-            await db.exec(readFileSync(join(ROOT, file), 'utf8'));
-        }
+        await applyBaseline(db);
 
         const ownerHash = await bcrypt.hash('owner-password', 10);
         const firmRes = await db.query<{ id: number }>(

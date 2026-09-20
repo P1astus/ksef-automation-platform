@@ -1,0 +1,1593 @@
+{
+  "functions": {
+    "next_business_day(from_date date)": "97ecfc7543aaca589874b25878f74f71"
+  },
+  "indexes": {
+    "activity_log_pkey": "create unique index activity_log_pkey on public.activity_log using btree id",
+    "audit_log_pkey": "create unique index audit_log_pkey on public.audit_log using btree id",
+    "auth_rate_limits_pkey": "create unique index auth_rate_limits_pkey on public.auth_rate_limits using btree scope, subject_hash",
+    "auth_rate_limits_window_idx": "create index auth_rate_limits_window_idx on public.auth_rate_limits using btree window_started_at",
+    "business_days_pkey": "create unique index business_days_pkey on public.business_days using btree date",
+    "clients_firm_id_nip_key": "create unique index clients_firm_id_nip_key on public.clients using btree firm_id, nip",
+    "clients_pkey": "create unique index clients_pkey on public.clients using btree id",
+    "document_requests_pkey": "create unique index document_requests_pkey on public.document_requests using btree id",
+    "document_requests_token_key": "create unique index document_requests_token_key on public.document_requests using btree token",
+    "firm_imap_settings_pkey": "create unique index firm_imap_settings_pkey on public.firm_imap_settings using btree firm_id",
+    "firm_users_firm_id_email_key": "create unique index firm_users_firm_id_email_key on public.firm_users using btree firm_id, email",
+    "firm_users_pkey": "create unique index firm_users_pkey on public.firm_users using btree id",
+    "firm_users_reset_token_key": "create unique index firm_users_reset_token_key on public.firm_users using btree reset_token where reset_token is not null",
+    "firms_admin_email_key": "create unique index firms_admin_email_key on public.firms using btree admin_email",
+    "firms_firm_nip_key": "create unique index firms_firm_nip_key on public.firms using btree firm_nip",
+    "firms_pkey": "create unique index firms_pkey on public.firms using btree id",
+    "firms_slug_key": "create unique index firms_slug_key on public.firms using btree slug",
+    "idx_audit_client": "create index idx_audit_client on public.audit_log using btree client_nip, created_at",
+    "idx_clients_firm": "create index idx_clients_firm on public.clients using btree firm_id",
+    "idx_document_requests_token": "create index idx_document_requests_token on public.document_requests using btree token",
+    "idx_invoices_client_nip": "create index idx_invoices_client_nip on public.invoices using btree client_nip",
+    "idx_invoices_direction": "create index idx_invoices_direction on public.invoices using btree direction",
+    "idx_invoices_firm": "create index idx_invoices_firm on public.invoices using btree firm_id",
+    "idx_invoices_jpk_period": "create index idx_invoices_jpk_period on public.invoices using btree jpk_period",
+    "idx_invoices_ksef_number": "create index idx_invoices_ksef_number on public.invoices using btree ksef_number",
+    "idx_invoices_processing_status": "create index idx_invoices_processing_status on public.invoices using btree processing_status",
+    "idx_jpk_preparations_firm": "create index idx_jpk_preparations_firm on public.jpk_preparations using btree firm_id",
+    "idx_jpk_test_submissions_firm_client_created": "create index idx_jpk_test_submissions_firm_client_created on public.jpk_test_submissions using btree firm_id, client_nip, created_at desc",
+    "idx_offline_invoices_firm": "create index idx_offline_invoices_firm on public.offline_invoices using btree firm_id",
+    "idx_offline_invoices_invoice_id": "create index idx_offline_invoices_invoice_id on public.offline_invoices using btree invoice_id",
+    "idx_offline_pending": "create index idx_offline_pending on public.offline_invoices using btree upload_deadline where uploaded_to_ksef = false",
+    "idx_operator_audit_created": "create index idx_operator_audit_created on public.operator_audit_log using btree created_at desc",
+    "idx_sessions_expires": "create index idx_sessions_expires on public.portal_sessions using btree expires_at",
+    "idx_sessions_token": "create index idx_sessions_token on public.portal_sessions using btree token",
+    "idx_zus_declaration_events_firm_created": "create index idx_zus_declaration_events_firm_created on public.zus_declaration_events using btree firm_id, created_at desc",
+    "idx_zus_declarations_firm_created": "create index idx_zus_declarations_firm_created on public.zus_declarations using btree firm_id, created_at desc",
+    "invitations_pkey": "create unique index invitations_pkey on public.invitations using btree id",
+    "invitations_token_key": "create unique index invitations_token_key on public.invitations using btree token",
+    "invoices_ksef_number_key": "create unique index invoices_ksef_number_key on public.invoices using btree ksef_number",
+    "invoices_pkey": "create unique index invoices_pkey on public.invoices using btree id",
+    "jpk_preparations_firm_client_period_key": "create unique index jpk_preparations_firm_client_period_key on public.jpk_preparations using btree firm_id, client_nip, period",
+    "jpk_preparations_pkey": "create unique index jpk_preparations_pkey on public.jpk_preparations using btree id",
+    "jpk_test_submissions_pkey": "create unique index jpk_test_submissions_pkey on public.jpk_test_submissions using btree id",
+    "ocr_queue_pkey": "create unique index ocr_queue_pkey on public.ocr_queue using btree id",
+    "offline_invoices_pkey": "create unique index offline_invoices_pkey on public.offline_invoices using btree id",
+    "operator_audit_log_pkey": "create unique index operator_audit_log_pkey on public.operator_audit_log using btree id",
+    "operators_email_key": "create unique index operators_email_key on public.operators using btree email",
+    "operators_pkey": "create unique index operators_pkey on public.operators using btree id",
+    "portal_sessions_pkey": "create unique index portal_sessions_pkey on public.portal_sessions using btree id",
+    "portal_sessions_token_key": "create unique index portal_sessions_token_key on public.portal_sessions using btree token",
+    "system_health_pkey": "create unique index system_health_pkey on public.system_health using btree id",
+    "zus_declaration_events_pkey": "create unique index zus_declaration_events_pkey on public.zus_declaration_events using btree id",
+    "zus_declarations_firm_id_client_nip_period_sha256_key": "create unique index zus_declarations_firm_id_client_nip_period_sha256_key on public.zus_declarations using btree firm_id, client_nip, period, sha256",
+    "zus_declarations_pkey": "create unique index zus_declarations_pkey on public.zus_declarations using btree id"
+  },
+  "seed": {
+    "business_days": 1096
+  },
+  "tables": {
+    "activity_log": {
+      "columns": {
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "description": {
+          "default": null,
+          "notNull": true,
+          "type": "text"
+        },
+        "event_type": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(50)"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'activity_log_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "activity_log_pkey": "primary key id"
+      }
+    },
+    "audit_log": {
+      "columns": {
+        "action": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(50)"
+        },
+        "client_nip": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "details": {
+          "default": null,
+          "notNull": false,
+          "type": "jsonb"
+        },
+        "error_message": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "execution_id": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'audit_log_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "success": {
+          "default": null,
+          "notNull": true,
+          "type": "boolean"
+        },
+        "workflow_name": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(100)"
+        }
+      },
+      "constraints": {
+        "audit_log_firm_id_fkey": "foreign key firm_id references firmsid",
+        "audit_log_pkey": "primary key id"
+      }
+    },
+    "auth_rate_limits": {
+      "columns": {
+        "attempts": {
+          "default": "1",
+          "notNull": true,
+          "type": "integer"
+        },
+        "scope": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(40)"
+        },
+        "subject_hash": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(64)"
+        },
+        "window_started_at": {
+          "default": null,
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "auth_rate_limits_pkey": "primary key scope, subject_hash"
+      }
+    },
+    "business_days": {
+      "columns": {
+        "date": {
+          "default": null,
+          "notNull": true,
+          "type": "date"
+        },
+        "holiday_name": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(100)"
+        },
+        "is_business_day": {
+          "default": null,
+          "notNull": true,
+          "type": "boolean"
+        }
+      },
+      "constraints": {
+        "business_days_pkey": "primary key date"
+      }
+    },
+    "clients": {
+      "columns": {
+        "anonymized_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "auth_method": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "birth_date": {
+          "default": null,
+          "notNull": false,
+          "type": "date"
+        },
+        "certificate_expiry": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "certificate_id": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "city": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "client_name": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(512)"
+        },
+        "contact_email": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "contact_person": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "contact_phone": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(20)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        },
+        "first_name": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "hwm_purchases": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "hwm_sales": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": "nextval'clients_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ksef_token_encrypted": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "last_name": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "last_sync_error": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "last_sync_success": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "monthly_invoice_volume": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(10)"
+        },
+        "notes": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "permission_level": {
+          "default": "'read_write'",
+          "notNull": true,
+          "type": "character varying(50)"
+        },
+        "postal_code": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        },
+        "preferred_session_mode": {
+          "default": "'interactive'",
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "street": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "sync_enabled": {
+          "default": "true",
+          "notNull": true,
+          "type": "boolean"
+        },
+        "tags": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(500)"
+        },
+        "tax_office_code": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "taxpayer_type": {
+          "default": "'company'",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "clients_auth_method_check": "check auth_method = any array'token', 'certificate'",
+        "clients_firm_id_fkey": "foreign key firm_id references firmsid",
+        "clients_firm_id_nip_key": "unique firm_id, nip",
+        "clients_pkey": "primary key id",
+        "clients_preferred_session_mode_check": "check preferred_session_mode = any array'interactive', 'batch'",
+        "clients_tax_office_code_check": "check tax_office_code is null or tax_office_code ~ '^0-9{4}$'",
+        "clients_taxpayer_type_check": "check taxpayer_type = any array'company', 'individual'"
+      }
+    },
+    "document_requests": {
+      "columns": {
+        "client_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "expires_at": {
+          "default": null,
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'document_requests_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "message": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "token": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(64)"
+        }
+      },
+      "constraints": {
+        "document_requests_client_id_fkey": "foreign key client_id references clientsid on delete cascade",
+        "document_requests_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "document_requests_pkey": "primary key id",
+        "document_requests_token_key": "unique token"
+      }
+    },
+    "firm_imap_settings": {
+      "columns": {
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "host": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "mailbox": {
+          "default": "'inbox'",
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "password_encrypted": {
+          "default": null,
+          "notNull": true,
+          "type": "text"
+        },
+        "port": {
+          "default": "993",
+          "notNull": true,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "now",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "use_tls": {
+          "default": "true",
+          "notNull": true,
+          "type": "boolean"
+        },
+        "username": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        }
+      },
+      "constraints": {
+        "firm_imap_settings_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "firm_imap_settings_pkey": "primary key firm_id",
+        "firm_imap_settings_port_check": "check port >= 1 and port <= 65535"
+      }
+    },
+    "firm_users": {
+      "columns": {
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "email": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "full_name": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "id": {
+          "default": "nextval'firm_users_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "is_active": {
+          "default": "true",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "password_hash": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "reset_token": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(64)"
+        },
+        "reset_token_expires_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "role": {
+          "default": "'member'",
+          "notNull": false,
+          "type": "character varying(20)"
+        }
+      },
+      "constraints": {
+        "firm_users_firm_id_email_key": "unique firm_id, email",
+        "firm_users_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "firm_users_pkey": "primary key id"
+      }
+    },
+    "firms": {
+      "columns": {
+        "admin_email": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "admin_password_hash": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "firm_name": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(512)"
+        },
+        "firm_nip": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        },
+        "id": {
+          "default": "nextval'firms_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "is_active": {
+          "default": "true",
+          "notNull": true,
+          "type": "boolean"
+        },
+        "max_clients": {
+          "default": "15",
+          "notNull": true,
+          "type": "integer"
+        },
+        "onboarding_complete": {
+          "default": "false",
+          "notNull": true,
+          "type": "boolean"
+        },
+        "reset_token": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(64)"
+        },
+        "reset_token_expires_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "slug": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(100)"
+        },
+        "stripe_customer_id": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "stripe_subscription_id": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "subscription_status": {
+          "default": "'trial'",
+          "notNull": false,
+          "type": "character varying(30)"
+        },
+        "subscription_tier": {
+          "default": "'start'",
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "trial_expires_at": {
+          "default": "now + '14 days'::interval",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "firms_admin_email_key": "unique admin_email",
+        "firms_firm_nip_key": "unique firm_nip",
+        "firms_pkey": "primary key id",
+        "firms_slug_key": "unique slug",
+        "firms_subscription_status_check": "check subscription_status = any array'trial', 'active', 'past_due', 'canceled', 'paused'",
+        "firms_subscription_tier_check": "check subscription_tier = any array'start', 'biznes', 'pro', 'enterprise'"
+      }
+    },
+    "invitations": {
+      "columns": {
+        "accepted": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "email": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "expires_at": {
+          "default": null,
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'invitations_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "role": {
+          "default": "'member'",
+          "notNull": false,
+          "type": "character varying(20)"
+        },
+        "token": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(64)"
+        }
+      },
+      "constraints": {
+        "invitations_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "invitations_pkey": "primary key id",
+        "invitations_token_key": "unique token"
+      }
+    },
+    "invoices": {
+      "columns": {
+        "buyer_city": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "buyer_name": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(512)"
+        },
+        "buyer_nip": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(20)"
+        },
+        "buyer_postal_code": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        },
+        "buyer_street": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "classification_confidence": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(3,2)"
+        },
+        "client_nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(10)"
+        },
+        "correction_reason": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "corrects_invoice_id": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        },
+        "cost_category": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(100)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "currency": {
+          "default": "'pln'",
+          "notNull": false,
+          "type": "character varying(3)"
+        },
+        "delivery_date": {
+          "default": null,
+          "notNull": false,
+          "type": "date"
+        },
+        "direction": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(10)"
+        },
+        "due_date": {
+          "default": null,
+          "notNull": false,
+          "type": "date"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "gross_amount": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(15,2)"
+        },
+        "id": {
+          "default": "nextval'invoices_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "invoice_lines": {
+          "default": null,
+          "notNull": false,
+          "type": "jsonb"
+        },
+        "invoice_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(256)"
+        },
+        "invoice_type": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(20)"
+        },
+        "issue_date": {
+          "default": null,
+          "notNull": false,
+          "type": "date"
+        },
+        "jpk_correction_done": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "jpk_correction_needed": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "jpk_counterparty_country": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "jpk_doc_type": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "jpk_gtu": {
+          "default": "'{}'",
+          "notNull": true,
+          "type": "text[]"
+        },
+        "jpk_import": {
+          "default": "false",
+          "notNull": true,
+          "type": "boolean"
+        },
+        "jpk_margin_gross": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(14,2)"
+        },
+        "jpk_margin_method": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "jpk_margin_taxable_gross": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(14,2)"
+        },
+        "jpk_margin_vat_rate": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "jpk_marker": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        },
+        "jpk_period": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(7)"
+        },
+        "jpk_procedures": {
+          "default": "'{}'",
+          "notNull": true,
+          "type": "text[]"
+        },
+        "kpir_column": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(5)"
+        },
+        "ksef_acquisition_date": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "ksef_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(40)"
+        },
+        "ksef_permanent_storage_date": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "ksef_rejection_reason": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "ksef_session_reference_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(64)"
+        },
+        "ksef_submission_date": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "net_amount": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(15,2)"
+        },
+        "paid_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "payment_status": {
+          "default": "'unpaid'",
+          "notNull": false,
+          "type": "character varying(20)"
+        },
+        "processing_status": {
+          "default": "'new'",
+          "notNull": true,
+          "type": "character varying(30)"
+        },
+        "raw_xml": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "seller_name": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(512)"
+        },
+        "seller_nip": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(20)"
+        },
+        "updated_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "upo_hash": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(64)"
+        },
+        "upo_reference_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(64)"
+        },
+        "upo_retrieved_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "upo_xml": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "vat_amount": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(15,2)"
+        },
+        "vat_deductible": {
+          "default": null,
+          "notNull": false,
+          "type": "boolean"
+        },
+        "vat_register_field": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        }
+      },
+      "constraints": {
+        "invoices_corrects_invoice_id_fkey": "foreign key corrects_invoice_id references invoicesid",
+        "invoices_direction_check": "check direction = any array'sales', 'purchase'",
+        "invoices_firm_client_fkey": "foreign key firm_id, client_nip references clientsfirm_id, nip",
+        "invoices_firm_id_fkey": "foreign key firm_id references firmsid",
+        "invoices_jpk_counterparty_country_check": "check jpk_counterparty_country is null or jpk_counterparty_country ~ '^a-z{2}$'",
+        "invoices_jpk_doc_type_check": "check jpk_doc_type is null or jpk_doc_type = any array'ro', 'wew', 'fp', 'mk', 'vat_rr'",
+        "invoices_jpk_gtu_check": "check jpk_gtu <@ array'gtu_01', 'gtu_02', 'gtu_03', 'gtu_04', 'gtu_05', 'gtu_06', 'gtu_07', 'gtu_08', 'gtu_09', 'gtu_10', 'gtu_11', 'gtu_12', 'gtu_13'",
+        "invoices_jpk_margin_method_check": "check jpk_margin_method is null or jpk_margin_method = any array'individual', 'sum'",
+        "invoices_jpk_margin_vat_rate_check": "check jpk_margin_vat_rate is null or jpk_margin_vat_rate = any array'5', '8', '23'",
+        "invoices_jpk_marker_check": "check jpk_marker = any array'nrksef', 'off', 'bfk', 'di'",
+        "invoices_jpk_procedures_check": "check jpk_procedures <@ array'wsto_ee', 'ied', 'tp', 'tt_wnt', 'tt_d', 'mr_t', 'mr_uz', 'i_42', 'i_63', 'b_spv', 'b_spv_dostawa', 'b_mpv_prowizja'",
+        "invoices_ksef_number_key": "unique ksef_number",
+        "invoices_pkey": "primary key id",
+        "invoices_processing_status_check": "check processing_status = any array'new', 'classified', 'sent', 'rejected', 'exported_jpk', 'error', 'duplicate'"
+      }
+    },
+    "jpk_preparations": {
+      "columns": {
+        "bfk_count": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "client_nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(10)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "di_count": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "di_resolved_count": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "export_data": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "exported_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "generated_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": "nextval'jpk_preparations_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "nr_ksef_count": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "off_count": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "period": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(7)"
+        },
+        "status": {
+          "default": "'pending'",
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "total_invoices": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "jpk_preparations_firm_client_fkey": "foreign key firm_id, client_nip references clientsfirm_id, nip",
+        "jpk_preparations_firm_client_period_key": "unique firm_id, client_nip, period",
+        "jpk_preparations_firm_id_fkey": "foreign key firm_id references firmsid",
+        "jpk_preparations_pkey": "primary key id",
+        "jpk_preparations_status_check": "check status = any array'pending', 'in_progress', 'ready', 'exported', 'correction_needed'"
+      }
+    },
+    "jpk_test_submissions": {
+      "columns": {
+        "client_nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "completed_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "gateway_code": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        },
+        "gateway_description": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "gateway_details": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "gateway_upo": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "id": {
+          "default": "nextval'jpk_test_submissions_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "period": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(7)"
+        },
+        "reference_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(128)"
+        },
+        "requested_by": {
+          "default": null,
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        }
+      },
+      "constraints": {
+        "jpk_test_submissions_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "jpk_test_submissions_period_check": "check period ~ '^\\\\d{4}-\\\\d{2}$'",
+        "jpk_test_submissions_pkey": "primary key id",
+        "jpk_test_submissions_status_check": "check status = any array'submitting', 'processing', 'accepted', 'rejected', 'error'"
+      }
+    },
+    "ocr_queue": {
+      "columns": {
+        "client_nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(10)"
+        },
+        "confidence_score": {
+          "default": null,
+          "notNull": false,
+          "type": "numeric(3,2)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "error_message": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "extracted_data": {
+          "default": null,
+          "notNull": false,
+          "type": "jsonb"
+        },
+        "file_path": {
+          "default": null,
+          "notNull": true,
+          "type": "text"
+        },
+        "file_type": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(10)"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'ocr_queue_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "matched_ksef_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(40)"
+        },
+        "ocr_status": {
+          "default": "'queued'",
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "processed_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "retry_count": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "source_type": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        }
+      },
+      "constraints": {
+        "ocr_queue_firm_client_fkey": "foreign key firm_id, client_nip references clientsfirm_id, nip",
+        "ocr_queue_firm_id_fkey": "foreign key firm_id references firmsid",
+        "ocr_queue_ocr_status_check": "check ocr_status = any array'queued', 'processing', 'completed', 'failed', 'manual_review'",
+        "ocr_queue_pkey": "primary key id",
+        "ocr_queue_source_type_check": "check source_type = any array'email', 'upload', 'webhook'"
+      }
+    },
+    "offline_invoices": {
+      "columns": {
+        "alert_sent_1h": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "alert_sent_4h": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "alert_sent_overdue": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "client_nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(10)"
+        },
+        "client_notified_1h": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "client_notified_4h": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "client_notified_overdue": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'offline_invoices_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "invoice_id": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        },
+        "invoice_number": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(256)"
+        },
+        "issue_timestamp": {
+          "default": null,
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "ksef_number": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(40)"
+        },
+        "last_attempt_error": {
+          "default": null,
+          "notNull": false,
+          "type": "text"
+        },
+        "offline_mode": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "updated_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "upload_attempts": {
+          "default": "0",
+          "notNull": false,
+          "type": "integer"
+        },
+        "upload_deadline": {
+          "default": null,
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "uploaded_to_ksef": {
+          "default": "false",
+          "notNull": false,
+          "type": "boolean"
+        }
+      },
+      "constraints": {
+        "offline_invoices_firm_client_fkey": "foreign key firm_id, client_nip references clientsfirm_id, nip",
+        "offline_invoices_firm_id_fkey": "foreign key firm_id references firmsid",
+        "offline_invoices_invoice_id_fkey": "foreign key invoice_id references invoicesid",
+        "offline_invoices_pkey": "primary key id"
+      }
+    },
+    "operator_audit_log": {
+      "columns": {
+        "action": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(50)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "details": {
+          "default": null,
+          "notNull": false,
+          "type": "jsonb"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'operator_audit_log_id_seq'",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "ip": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(64)"
+        },
+        "operator_email": {
+          "default": null,
+          "notNull": false,
+          "type": "character varying(255)"
+        },
+        "operator_id": {
+          "default": null,
+          "notNull": false,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "operator_audit_log_operator_id_fkey": "foreign key operator_id references operatorsid",
+        "operator_audit_log_pkey": "primary key id"
+      }
+    },
+    "operators": {
+      "columns": {
+        "created_at": {
+          "default": "now",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "email": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "id": {
+          "default": "nextval'operators_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "is_active": {
+          "default": "true",
+          "notNull": true,
+          "type": "boolean"
+        },
+        "last_login_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "password_hash": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        }
+      },
+      "constraints": {
+        "operators_email_key": "unique email",
+        "operators_pkey": "primary key id"
+      }
+    },
+    "portal_sessions": {
+      "columns": {
+        "created_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "expires_at": {
+          "default": null,
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'portal_sessions_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "token": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        }
+      },
+      "constraints": {
+        "portal_sessions_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "portal_sessions_pkey": "primary key id",
+        "portal_sessions_token_key": "unique token"
+      }
+    },
+    "system_health": {
+      "columns": {
+        "check_type": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(50)"
+        },
+        "checked_at": {
+          "default": "now",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "details": {
+          "default": null,
+          "notNull": false,
+          "type": "jsonb"
+        },
+        "id": {
+          "default": "nextval'system_health_id_seq'",
+          "notNull": true,
+          "type": "integer"
+        },
+        "status": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        }
+      },
+      "constraints": {
+        "system_health_pkey": "primary key id"
+      }
+    },
+    "zus_declaration_events": {
+      "columns": {
+        "created_at": {
+          "default": "now",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "declaration_id": {
+          "default": null,
+          "notNull": true,
+          "type": "bigint"
+        },
+        "event_type": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(32)"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'zus_declaration_events_id_seq'",
+          "notNull": true,
+          "type": "bigint"
+        }
+      },
+      "constraints": {
+        "zus_declaration_events_declaration_id_fkey": "foreign key declaration_id references zus_declarationsid on delete cascade",
+        "zus_declaration_events_event_type_check": "check event_type = any array'imported', 'downloaded'",
+        "zus_declaration_events_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "zus_declaration_events_pkey": "primary key id"
+      }
+    },
+    "zus_declarations": {
+      "columns": {
+        "client_nip": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(20)"
+        },
+        "created_at": {
+          "default": "now",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "document_types": {
+          "default": null,
+          "notNull": true,
+          "type": "text[]"
+        },
+        "exported_at": {
+          "default": null,
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "firm_id": {
+          "default": null,
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": "nextval'zus_declarations_id_seq'",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "period": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(7)"
+        },
+        "sha256": {
+          "default": null,
+          "notNull": true,
+          "type": "character(64)"
+        },
+        "source_filename": {
+          "default": null,
+          "notNull": true,
+          "type": "character varying(255)"
+        },
+        "source_xml": {
+          "default": null,
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": "'imported'",
+          "notNull": true,
+          "type": "character varying(24)"
+        }
+      },
+      "constraints": {
+        "zus_declarations_document_types_check": "check cardinalitydocument_types > 0",
+        "zus_declarations_firm_id_client_nip_period_sha256_key": "unique firm_id, client_nip, period, sha256",
+        "zus_declarations_firm_id_fkey": "foreign key firm_id references firmsid on delete cascade",
+        "zus_declarations_period_check": "check period ~ '^0-9{4}-01-9|10-2$'",
+        "zus_declarations_pkey": "primary key id",
+        "zus_declarations_status_check": "check status = any array'imported', 'ready_for_export', 'exported'"
+      }
+    }
+  }
+}

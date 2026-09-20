@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { applyBaseline } from '@/lib/__tests__/helpers/baseline';
 
 // settings/ksef/route.ts referenced clients.ksef_auth_method, a column that
 // has never existed - the real column (ksef-schema.sql) is auth_method. Every
@@ -24,9 +25,7 @@ describe('settings/ksef/route.ts SQL shapes against the real schema', () => {
 
     beforeAll(async () => {
         db = new PGlite();
-        for (const file of ['ksef-schema.sql', 'ksef-schema-migration.sql', 'ksef-schema-migration-v2.sql']) {
-            await db.exec(readFileSync(join(ROOT, file), 'utf8'));
-        }
+        await applyBaseline(db);
         const firmRes = await db.query<{ id: number }>(
             `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash) VALUES ('Firm A', 'firm-a', 'a@example.com', 'x') RETURNING id`
         );
