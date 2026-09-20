@@ -44,7 +44,8 @@ describe('client notification jobs', () => {
         expect(result).toMatchObject({ processed: 1, failures: [] });
         expect(sendOffline24Warning).toHaveBeenCalledOnce();
         const update = ctx.query.mock.calls.find(([sql]) => String(sql).includes('UPDATE offline_invoices'));
-        expect(update?.[1]).toEqual([7, 'overdue']);
+        expect(update?.[1]).toEqual([7, 'overdue', 3]);
+        expect(String(update?.[0])).toContain('AND firm_id = $3');
         expect(String(update?.[0])).toContain('client_notified_overdue');
     });
 

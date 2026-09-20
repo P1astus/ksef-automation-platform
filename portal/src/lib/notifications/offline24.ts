@@ -70,8 +70,8 @@ export async function notifyOffline24(ctx: NotificationRunContext): Promise<JobR
                     SET client_notified_4h = CASE WHEN $2 = '4h' THEN true ELSE client_notified_4h END,
                         client_notified_1h = CASE WHEN $2 = '1h' THEN true ELSE client_notified_1h END,
                         client_notified_overdue = CASE WHEN $2 = 'overdue' THEN true ELSE client_notified_overdue END
-                  WHERE id = $1`,
-                [row.id, tier]
+                  WHERE id = $1 AND firm_id = $3`,
+                [row.id, tier, row.firm_id]
             );
             processed++;
         } catch (error) {
