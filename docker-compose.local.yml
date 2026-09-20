@@ -1,0 +1,45 @@
+# Secure LAN-install overlay. Use only together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+# `!reset`/`!override` require Docker Compose v2.24.4 or newer. They are intentional:
+# no base-file port publication or n8n dependency may leak into the local edition.
+services:
+  portal:
+    environment:
+      - DEPLOYMENT_MODE=local
+      - ACCESS_PROVIDER=${ACCESS_PROVIDER:-unmetered}
+      - EMAIL_TRANSPORT=${EMAIL_TRANSPORT:-smtp}
+      - NEXT_TELEMETRY_DISABLED=1
+      # Vendor services are off unless an administrator deliberately edits this overlay.
+      - RESEND_API_KEY=
+      - ANTHROPIC_API_KEY=
+      - STRIPE_SECRET_KEY=
+      - STRIPE_WEBHOOK_SECRET=
+      - N8N_SYNC_WEBHOOK_URL=
+    ports: !reset []
+
+  nginx:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    volumes: !override
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+      - ./certificates/local:/etc/nginx/local-tls:ro
+    depends_on: !override
+      - portal
+
+  ksef_db:
+    ports: !reset []
+
+  xades-sidecar:
+    ports: !reset []
+
+  # The TypeScript worker replaces scheduling. Keep the legacy workflow engine
+  # available for explicit migration/debug work, but do not start it by default.
+  postgres:
+    profiles: ["legacy-n8n"]
+    ports: !reset []
+
+  n8n:
+    profiles: ["legacy-n8n"]
+    ports: !reset []
