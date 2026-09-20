@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getSession } from '@/lib/auth';
+import { getSession, sessionRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
@@ -81,8 +81,9 @@ export default async function DashboardLayout({
         { href: '/dashboard/settings',         label: 'Ustawienia',   Icon: Settings },
         { href: '/dashboard/settings/team',    label: 'Zespół',       Icon: UsersRound },
         { href: '/dashboard/settings/ksef',    label: 'Tokeny KSeF',  Icon: Zap },
+        { href: '/dashboard/health',             label: 'Automatyzacja', Icon: Bell, ownerOnly: true },
         { href: '/dashboard/help',            label: 'Pomoc',        Icon: HelpCircle },
-    ].filter(item => billing || item.href !== '/dashboard/billing');
+    ].filter(item => (billing || item.href !== '/dashboard/billing') && (!item.ownerOnly || sessionRole(session) === 'owner'));
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)' }}>
