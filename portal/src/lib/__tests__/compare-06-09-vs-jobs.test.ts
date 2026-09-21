@@ -1,5 +1,5 @@
 /** Opt-in retirement report. Run with COMPARE_06_09_PORT against a disposable fixture DB. */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import pg from 'pg';
@@ -7,6 +7,10 @@ import { jpkPreparationJob } from '@/lib/jobs/jpk-preparation';
 import { clientNotificationsOffline24Job, clientNotificationsReceivablesJob } from '@/lib/jobs/client-notifications';
 import { offlineUrgency } from '@/lib/offline-markers';
 import type { JobContext } from '@/lib/jobs/types';
+import { isValidTaxOfficeCode } from '@/lib/tax-office-codes';
+
+const { sentMail } = vi.hoisted(() => ({ sentMail: [] as any[] }));
+vi.mock('@/lib/mail-transport', () => ({ sendMail: async (message: any) => { sentMail.push(message); } }));
 
 const ROOT = join(__dirname, '..', '..', '..', '..');
 const enabled = Boolean(process.env.COMPARE_06_09_PORT);
@@ -93,5 +97,68 @@ describe('workflow 06/09 retirement comparison on stress fixtures', () => {
             console.log('WORKFLOW_06_09_RETIREMENT_REPORT ' + JSON.stringify({ fixture: 'stress fixtures with one rollback-only overdue receivable', period, legacyClients: legacyClients.rows.length, jpk: { processed: jpk.processed, failures: jpk.failures?.length, firstFailure: jpk.failures?.[0]?.error.slice(0, 130) }, offline, receivables, differences }));
             expect(jpk.processed! + (jpk.failures?.length || 0)).toBe(legacyClients.rows.length);
         } finally { await db.query('ROLLBACK'); await db.end(); }
+    }, 120000);
+});
+
+describe('workflow 06 versus JPK preparation with valid tax data', () => {
+    testIfEnabled('compares file content and every client outcome without delivery', async () => {
+        const db = new pg.Client({ host: '127.0.0.1', port: Number(process.env.COMPARE_06_09_PORT), user: 'ksef_app', database: 'ksef_platform', password: fixturePassword() });
+        await db.connect();
+        sentMail.length = 0;
+        await db.query('BEGIN');
+        try {
+            await db.query(readFileSync(join(ROOT, 'compare-06-realistic.sql'), 'utf8'));
+            const clients = await db.query(`SELECT c.nip, c.tax_office_code, c.taxpayer_type FROM clients c JOIN firms f ON f.id=c.firm_id WHERE f.slug='codex-compare-06' ORDER BY c.nip`);
+            expect(clients.rows).toHaveLength(3);
+            expect(clients.rows.every(c => isValidTaxOfficeCode(c.tax_office_code))).toBe(true);
+            expect(clients.rows.some(c => c.taxpayer_type === 'individual')).toBe(true);
+            const w06 = workflow('06-jpk-vat-preparation.json');
+            const period = '2026-02';
+            const oldClients = await db.query<{ client_nip: string; firm_id: number }>(node(w06, 'Get Clients for Period').parameters.query.slice(1), [period, '2026-02-01', '2026-02-28']);
+            const legacy = new Map<string, any[]>();
+            for (const c of oldClients.rows) {
+                const rows = await db.query(node(w06, 'Get Client Invoices').parameters.query.slice(1), [c.client_nip, c.firm_id, period, '2026-02-01', '2026-02-28']);
+                legacy.set(c.client_nip, rows.rows);
+            }
+            const now = new Date('2026-03-05T07:00:00Z');
+            const ctx: JobContext = { db, now: () => now, scheduledFor: now, shadow: false, signal: new AbortController().signal, alerts: { raise: async () => ({ recorded: false, delivered: false }) }, log: () => {} };
+            const result = await jpkPreparationJob.run(ctx);
+            expect(result.failures).toEqual([]);
+            expect(result.processed).toBe(3);
+            expect(sentMail).toHaveLength(3);
+            const prepared = await db.query(`SELECT p.client_nip, p.period, p.export_data, p.status, p.total_invoices, p.nr_ksef_count, p.off_count, p.bfk_count, p.di_count
+                FROM jpk_preparations p JOIN firms f ON f.id=p.firm_id WHERE f.slug='codex-compare-06' ORDER BY p.client_nip`);
+            expect(prepared.rows).toHaveLength(3);
+            const expected: Record<string, [number, number, number, number, number, string]> = {
+                '2043321812': [2, 1, 1, 0, 0, 'ready'],
+                '3654235114': [2, 1, 0, 1, 0, 'correction_needed'],
+                '9386379401': [2, 1, 0, 0, 1, 'in_progress'],
+            };
+            const report: any[] = [];
+            for (const p of prepared.rows) {
+                const [total, nr, off, bfk, di, status] = expected[p.client_nip];
+                expect([p.total_invoices, p.nr_ksef_count, p.off_count, p.bfk_count, p.di_count, p.status]).toEqual([total, nr, off, bfk, di, status]);
+                expect(p.period).toBe(period);
+                expect(p.export_data).toContain('<tns:Rok>2026</tns:Rok>');
+                expect(p.export_data).toContain('<tns:Miesiac>2</tns:Miesiac>');
+                const attachment = sentMail.find(m => m.subject.includes(p.client_nip) || m.attachments?.[0]?.filename.includes(p.client_nip))?.attachments?.[0];
+                expect(attachment?.filename).toBe(`JPK_VAT_${p.client_nip}_${period}.csv`);
+                const csv = attachment.content.toString('utf8');
+                expect(csv).toContain('Numer_faktury;Data;NIP_kontrahenta;Kwota_netto;Kwota_VAT;Kwota_brutto;NrKSeF;OFF;BFK;DI;Numer_KSeF');
+                expect(csv.split('\r\n').filter((line: string) => line && !line.includes('Numer_faktury'))).toHaveLength(total);
+                const old = legacy.get(p.client_nip)!;
+                report.push({ nip: p.client_nip, oldRows: old.length, jobRows: total, status, markers: { nr, off, bfk, di }, csvAttachedByOld: Boolean(node(w06, 'Send JPK Email').parameters.options?.attachments), csvAttachedByJob: true });
+            }
+            expect(legacy.get('9386379401')?.map(i => i.invoice_number)).toContain('G-OVERRIDE-OUT');
+            expect(prepared.rows.find(p => p.client_nip === '9386379401')?.export_data).not.toContain('G-OVERRIDE-OUT');
+            expect(prepared.rows.find(p => p.client_nip === '9386379401')?.export_data).toContain('G-OVERRIDE-IN');
+            expect(prepared.rows.find(p => p.client_nip === '2043321812')?.export_data).toContain('<tns:OFF>1</tns:OFF>');
+            expect(prepared.rows.find(p => p.client_nip === '3654235114')?.export_data).toContain('<tns:BFK>1</tns:BFK>');
+            expect(prepared.rows.find(p => p.client_nip === '9386379401')?.export_data).toContain('<tns:DI>1</tns:DI>');
+            console.log('WORKFLOW_06_CONTENT_REPORT ' + JSON.stringify(report));
+        } finally {
+            await db.query('ROLLBACK');
+            await db.end();
+        }
     }, 120000);
 });
