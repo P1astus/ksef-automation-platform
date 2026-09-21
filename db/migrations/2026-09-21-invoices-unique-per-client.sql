@@ -7,7 +7,7 @@
 --
 -- Expand-only (safe for an older application still serving during an upgrade): this ADDS a constraint. The old global
 -- UNIQUE (ksef_number) stays until db/contract/2026-09-21-drop-global-ksef-number-unique.sql is promoted, because n8n's
--- workflow 04 and the stress-test fixtures still use ON CONFLICT (ksef_number), which needs that index to exist.
+-- workflow 04 still uses the old conflict target, which needs that index to exist.
 --
 -- STOPS AND REPORTS on existing duplicates. It never deduplicates: which copy to keep is a decision about tax data.
 DO $$

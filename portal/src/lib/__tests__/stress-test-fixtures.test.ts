@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 // Round 4: "stress-test fixtures exist but were never fully exercised"
@@ -20,7 +20,7 @@ import { join } from 'path';
 // 'medium' and get 400 invoices each from the MEDIUM-VOLUME block first,
 // using the exact same ksef_number pattern for an overlapping `s` range;
 // every row the certificate block tried to insert collided with one that
-// already existed and ON CONFLICT (ksef_number) DO NOTHING ate all of them
+// already existed and the conflict handler ate all of them
 // silently. Fixed by giving that block its own ksef_number/invoice_number
 // prefix (STC/FVC).
 //
@@ -57,6 +57,7 @@ describe('stress-test fixtures actually run against the current schema', () => {
         ]) {
             await db.exec(readSql(file));
         }
+        await db.exec(readSql('db/migrations/2026-09-21-invoices-unique-per-client.sql'));
 
         // --- stress-test-clients.sql: replicate what psql's \gset does ---
         const clientsSql = readSql('stress-test-clients.sql');
@@ -131,4 +132,34 @@ describe('stress-test fixtures actually run against the current schema', () => {
         expect(result.rows.length).toBe(Number(expected.rows[0].cnt));
         expect(result.rows.length).toBe(59);
     });
+
+    it('reloads invoices after the contract step and accepts a second firm copy', async () => {
+        await db.exec(readSql('db/contract/2026-09-21-drop-global-ksef-number-unique.sql'));
+        await db.exec(readSql('stress-test-invoices.sql'));
+        const count = await db.query<{ n: string }>('SELECT count(*) AS n FROM invoices');
+        expect(Number(count.rows[0].n)).toBe(15400);
+        const firm = await db.query<{ id: number }>("INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash) VALUES ('Collision test', 'collision-test', 'collision@test.invalid', 'disabled') RETURNING id");
+        const otherFirmId = firm.rows[0].id;
+        await db.query("INSERT INTO clients (firm_id, nip, client_name, auth_method) VALUES ($1, '2043321812', 'Collision client', 'token')", [otherFirmId]);
+        const original = await db.query<{ ksef_number: string }>('SELECT ksef_number FROM invoices WHERE firm_id = $1 LIMIT 1', [stressFirmId]);
+        await db.query("INSERT INTO invoices (firm_id, client_nip, ksef_number, direction) VALUES ($1, '2043321812', $2, 'sales')", [otherFirmId, original.rows[0].ksef_number]);
+        const copies = await db.query<{ n: string }>('SELECT count(*) AS n FROM invoices WHERE ksef_number = $1', [original.rows[0].ksef_number]);
+        expect(Number(copies.rows[0].n)).toBe(2);
+    });
+});
+
+it('fixtures and runtime source never target the retired global KSeF conflict key', () => {
+    const files = readdirSync(ROOT).filter(name => /^stress-test-.*\.sql$/.test(name))
+        .map(name => join(ROOT, name));
+    const visit = (dir: string) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const path = join(dir, entry.name);
+            if (entry.isDirectory()) visit(path);
+            else if (/\.(sql|ts|tsx|js|mjs)$/.test(entry.name) && !path.endsWith('stress-test-fixtures.test.ts')) files.push(path);
+        }
+    };
+    visit(join(ROOT, 'portal', 'src'));
+    for (const file of files) {
+        expect(readFileSync(file, 'utf8'), file).not.toMatch(/ON\s+CONFLICT\s*\(\s*ksef_number\s*\)/i);
+    }
 });

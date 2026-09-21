@@ -65,7 +65,7 @@ CROSS JOIN LATERAL (
     FROM generate_series(1, 500) AS s
 ) inv
 WHERE ct.tier = 'high'
-ON CONFLICT (ksef_number) DO NOTHING;
+ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 -- ============================================================================
 -- PURCHASE INVOICES — high-volume clients: ~100 per month x 5 months = 500 each
@@ -112,7 +112,7 @@ CROSS JOIN LATERAL (
     FROM generate_series(1, 500) AS s
 ) inv
 WHERE ct.tier = 'high'
-ON CONFLICT (ksef_number) DO NOTHING;
+ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 -- ============================================================================
 -- SALES INVOICES — medium-volume clients: ~40 per month x 5 months = 200 each
@@ -159,7 +159,7 @@ CROSS JOIN LATERAL (
     FROM generate_series(1, 200) AS s
 ) inv
 WHERE ct.tier = 'medium'
-ON CONFLICT (ksef_number) DO NOTHING;
+ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 -- ============================================================================
 -- PURCHASE INVOICES — medium-volume clients: ~40 per month x 5 months = 200 each
@@ -206,7 +206,7 @@ CROSS JOIN LATERAL (
     FROM generate_series(1, 200) AS s
 ) inv
 WHERE ct.tier = 'medium'
-ON CONFLICT (ksef_number) DO NOTHING;
+ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 -- ============================================================================
 -- SALES + PURCHASE — low-volume clients: ~10 per month x 5 months = 50 each direction
@@ -248,7 +248,7 @@ CROSS JOIN LATERAL (
     FROM generate_series(1, 50) AS s
 ) inv
 WHERE ct.tier = 'low'
-ON CONFLICT (ksef_number) DO NOTHING;
+ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 -- ============================================================================
 -- CERTIFICATE AUTH clients: ~30 per month x 5 months = 150 each direction
@@ -260,7 +260,7 @@ ON CONFLICT (ksef_number) DO NOTHING;
 -- MEDIUM-VOLUME block, using the exact same ksef_number pattern
 -- ('ST' || nip || dir.code || LPAD(s, 6, '0')) for the same s range (1-150
 -- is a subset of that block's 1-200) - every row here collided with one
--- already inserted there and ON CONFLICT (ksef_number) DO NOTHING silently
+-- already inserted there and ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING silently
 -- ate all of them. Given a distinct prefix ('STC') so this block adds its
 -- own invoices instead of colliding with ones that already exist.
 -- ============================================================================
@@ -306,7 +306,7 @@ CROSS JOIN LATERAL (
     FROM generate_series(1, 150) AS s
 ) inv
 WHERE ct.nip IN ('7773602609','7474687236','5309805002','8882081216')
-ON CONFLICT (ksef_number) DO NOTHING;
+ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 COMMIT;
 
