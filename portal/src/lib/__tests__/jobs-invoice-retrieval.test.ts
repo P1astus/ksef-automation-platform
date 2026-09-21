@@ -302,6 +302,19 @@ describe('invoice-retrieval: windows and dedup', () => {
 });
 
 describe('invoice-retrieval: clients, credentials and shadow', () => {
+    it('manual client scope runs even when scheduled sync is disabled, without reading another firm', async () => {
+        const ownFirm = await firm('manual-own');
+        const otherFirm = await firm('manual-other');
+        const manualId = await client(ownFirm, '1111111111', { sync: false });
+        await client(otherFirm, '3333333333', { sync: false });
+        const { port } = fakeKsef(() => page([], { permanentStorageHwmDate: T(NOW.getTime() - 1000) }));
+        const scheduled = await job(port).run(ctx());
+        expect(scheduled.detail).toMatchObject({ clients: 0 });
+        const manual = await job(port).run({ ...ctx(), payload: { clientId: manualId, firmId: ownFirm } } as any);
+        expect(manual.detail).toMatchObject({ clients: 1 });
+        expect(port.authenticated).toEqual(['1111111111']);
+    });
+
     it('only sync-enabled clients are read; a scoped run (payload) reads just that client', async () => {
         const f = await firm('a');
         const c1 = await client(f, '1111111111'); await client(f, '3333333333'); await client(f, '4444444444', { sync: false });

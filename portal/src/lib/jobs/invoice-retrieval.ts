@@ -315,10 +315,11 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
         lookbackMinutes: 60,
         async run(ctx): Promise<JobResult> {
             const scope: RetrievalScope = (ctx.payload as RetrievalScope | null) ?? {};
+            // A client-specific, firm-scoped manual run overrides the scheduled-sync switch.
             const clients = await ctx.db.query(
                 `SELECT id, nip, firm_id, client_name, auth_method, ksef_token_encrypted, hwm_sales, hwm_purchases, last_sync_error
                    FROM clients
-                  WHERE sync_enabled = true
+                  WHERE (sync_enabled = true OR ($1::int IS NOT NULL AND $2::int IS NOT NULL))
                     AND ($1::int IS NULL OR id = $1::int)
                     AND ($2::int IS NULL OR firm_id = $2::int)
                   ORDER BY firm_id, id`,
