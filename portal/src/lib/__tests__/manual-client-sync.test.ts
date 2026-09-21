@@ -55,6 +55,7 @@ describe('a queued client sync reaches the job scoped to that client', () => {
             query: vi.fn(async () => ({ invoices: [], hasMore: false, isTruncated: false, permanentStorageHwmDate: new Date(NOW.getTime() - 1000).toISOString() })),
             terminate: vi.fn(async () => {}),
         };
+        await pg.query('UPDATE clients SET sync_enabled = false WHERE id = $1', [ids[1]]);
         await enqueueClientSync(db, { clientId: ids[1], firmId: f, now: NOW });
         const summary = await tickOnce({ db, jobs: [invoiceRetrievalJob({ ksef, decryptToken: s => s })], enabled: ['invoice-retrieval'], workerId: 'w1', now: () => NOW, log: () => {} });
         expect(summary.ran.some(r => r.job === 'invoice-retrieval')).toBe(true);
@@ -64,7 +65,7 @@ describe('a queued client sync reaches the job scoped to that client', () => {
         const scheduled = rows.find(r => !r.occurrence_key.startsWith('manual:'));
         expect(manual.result.detail.clients).toBe(1);
         expect(manual.result.detail.perClient.map((c: any) => c.nip)).toEqual(['3333333333']);
-        expect(scheduled.result.detail.clients).toBe(2);
+        expect(scheduled.result.detail.clients).toBe(1);
         expect(authenticated).toContain('3333333333');
     });
 });
