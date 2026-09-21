@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inspectZusDeclarationXml, safeZusFilename, ZusDeclarationValidationError } from '@/lib/zus-declarations';
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 describe('ZUS declaration import inspection', () => {
@@ -35,6 +35,8 @@ describe('ZUS declaration migration', () => {
         const root = join(__dirname, '..', '..', '..', '..');
         await db.exec('CREATE TABLE firms (id INTEGER PRIMARY KEY, firm_name TEXT NOT NULL, slug TEXT NOT NULL, admin_email TEXT NOT NULL, admin_password_hash TEXT NOT NULL)');
         await db.exec(readFileSync(join(root, 'migrations', '2026-09-19-zus-declarations.sql'), 'utf8'));
+        const immutableMigration = join(root, 'db', 'migrations', '2026-09-22-zus-source-immutable.sql');
+        if (existsSync(immutableMigration)) await db.exec(readFileSync(immutableMigration, 'utf8'));
         await db.exec("INSERT INTO firms (id, firm_name, slug, admin_email, admin_password_hash) VALUES (1, 'A', 'a', 'a@x.pl', 'x'), (2, 'B', 'b', 'b@x.pl', 'x')");
     });
 
@@ -47,5 +49,14 @@ describe('ZUS declaration migration', () => {
         await db.query('INSERT INTO zus_declaration_events (declaration_id, firm_id, event_type) VALUES ($1, 1, $2)', [first.rows[0].id, 'imported']);
         const events = await db.query('SELECT id FROM zus_declaration_events WHERE firm_id = 1');
         expect(events.rows).toHaveLength(1);
+    });
+
+    it('rejects direct source XML and hash updates while allowing application metadata writes', async () => {
+        const values = ['1234567890', '2026-10', ['DRA'], 'dra.xml', '<KEDU><ZUS_DRA/></KEDU>', 'b'.repeat(64)];
+        const inserted = await db.query<{ id: number }>('INSERT INTO zus_declarations (firm_id, client_nip, period, document_types, source_filename, source_xml, sha256) VALUES (1, $1, $2, $3, $4, $5, $6) RETURNING id', values);
+        const id = inserted.rows[0].id;
+        await expect(db.query('UPDATE zus_declarations SET source_xml = $1 WHERE id = $2', ['<KEDU/>', id])).rejects.toThrow('immutable');
+        await expect(db.query('UPDATE zus_declarations SET sha256 = $1 WHERE id = $2', ['c'.repeat(64), id])).rejects.toThrow('immutable');
+        await expect(db.query('UPDATE zus_declarations SET source_filename = $1 WHERE id = $2', ['renamed.xml', id])).resolves.toBeDefined();
     });
 });
