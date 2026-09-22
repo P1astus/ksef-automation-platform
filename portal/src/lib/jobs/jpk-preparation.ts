@@ -3,6 +3,7 @@ import { sendMail } from '@/lib/mail-transport';
 import type { Job, JobFailure, JobResult } from './types';
 
 type Client = {
+    client_id: number;
     firm_id: number;
     client_nip: string;
     client_name: string;
@@ -15,6 +16,26 @@ type Client = {
     firm_name: string;
     accountant_email: string;
 };
+
+const AUDIT_ACTION = 'jpk_vat_preparation';
+const AUDIT_WORKFLOW = 'KSeF - JPK_VAT Preparation';
+
+async function writeClientAudit(
+    db: { query: (text: string, params?: unknown[]) => Promise<unknown> },
+    client: Client,
+    period: string,
+    success: boolean,
+    details: Record<string, unknown>,
+    error: string | null = null
+) {
+    await db.query(
+        `INSERT INTO audit_log
+            (firm_id, client_nip, action, workflow_name, details, success, error_message, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [client.firm_id, client.client_nip, AUDIT_ACTION, AUDIT_WORKFLOW,
+            { period, client_id: client.client_id, ...details }, success, error]
+    );
+}
 
 function abortIfNeeded(signal: AbortSignal) {
     if (!signal.aborted) return;
@@ -69,13 +90,13 @@ export const jpkPreparationJob: Job = {
     timeoutMs: 60 * 60_000,
     maxAttempts: 3,
     lookbackMinutes: 2880,
-    // IDEMPOTENCY BOUNDARY: UNIQUE (firm_id, client_nip, period) makes the preparation an upsert. There is no mail
-    // delivery marker in the current schema, so a crash after SMTP acceptance can repeat the attachment on retry.
+    // IDEMPOTENCY BOUNDARY: UNIQUE (firm_id, client_nip, period) makes the preparation an upsert. Per-client audit rows
+    // are append-only evidence, and there is no mail delivery marker, so a retry can add another audit and repeat mail.
     async run(ctx): Promise<JobResult> {
         abortIfNeeded(ctx.signal);
         const { period, start, end } = preparationPeriod(ctx.scheduledFor ? new Date(ctx.scheduledFor) : ctx.now());
         const clients = await ctx.db.query(
-            `SELECT DISTINCT i.firm_id, i.client_nip, c.client_name, c.tax_office_code, c.contact_email,
+            `SELECT DISTINCT c.id AS client_id, i.firm_id, i.client_nip, c.client_name, c.tax_office_code, c.contact_email,
                     c.taxpayer_type, c.first_name, c.last_name, c.birth_date,
                     f.firm_name, f.admin_email AS accountant_email
                FROM invoices i
@@ -117,10 +138,15 @@ export const jpkPreparationJob: Job = {
                 const status = determineJpkStatus(invoices);
                 const stats = {
                     total: invoices.length,
-                    nrKsef: invoices.filter(i => Boolean(i.ksef_number)).length,
+                    nrksef: invoices.filter(i => Boolean(i.ksef_number)).length,
                     off: invoices.filter(i => !i.ksef_number && i.jpk_marker === 'OFF').length,
                     bfk: invoices.filter(i => !i.ksef_number && i.jpk_marker === 'BFK').length,
                     di: invoices.filter(i => !i.ksef_number && i.jpk_marker === 'DI').length,
+                };
+                const financials = {
+                    totalNet: invoices.reduce((sum, invoice) => sum + Number(invoice.net_amount || 0), 0).toFixed(2),
+                    totalVat: invoices.reduce((sum, invoice) => sum + Number(invoice.vat_amount || 0), 0).toFixed(2),
+                    totalGross: invoices.reduce((sum, invoice) => sum + Number(invoice.gross_amount || 0), 0).toFixed(2),
                 };
                 const csv = csvReport(invoices);
                 if (ctx.shadow) {
@@ -138,7 +164,7 @@ export const jpkPreparationJob: Job = {
                         total_invoices = EXCLUDED.total_invoices, nr_ksef_count = EXCLUDED.nr_ksef_count,
                         off_count = EXCLUDED.off_count, bfk_count = EXCLUDED.bfk_count,
                         di_count = EXCLUDED.di_count, generated_at = NOW()`,
-                    [client.firm_id, client.client_nip, period, xml, status, stats.total, stats.nrKsef, stats.off, stats.bfk, stats.di]
+                    [client.firm_id, client.client_nip, period, xml, status, stats.total, stats.nrksef, stats.off, stats.bfk, stats.di]
                 );
                 abortIfNeeded(ctx.signal);
                 await sendMail({
@@ -151,12 +177,18 @@ export const jpkPreparationJob: Job = {
                         contentType: 'text/csv; charset=utf-8',
                     }],
                 });
+                await writeClientAudit(ctx.db, client, period, true, { status, stats, financials });
                 processed++;
             } catch (error) {
                 abortIfNeeded(ctx.signal);
+                const message = error instanceof Error ? error.message : String(error);
+                if (!ctx.shadow) {
+                    await writeClientAudit(ctx.db, client, period, false, { status: 'failed', error: message }, message)
+                        .catch(auditError => ctx.log(`could not record JPK audit failure for ${client.client_nip}: ${auditError instanceof Error ? auditError.message : String(auditError)}`));
+                }
                 failures.push({
                     subject: `JPK preparation for ${client.client_name} (${client.client_nip})`,
-                    error: error instanceof Error ? error.message : String(error),
+                    error: message,
                     firmId: client.firm_id,
                     clientNip: client.client_nip,
                 });

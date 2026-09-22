@@ -9,7 +9,7 @@ vi.mock('../mail-transport', () => ({ sendMail }));
 vi.mock('../jpk-generator', () => ({ generateJpkV7M, determineJpkStatus }));
 
 const client = {
-    firm_id: 4, client_nip: '1234567890', client_name: 'Klient A', tax_office_code: '1471',
+    client_id: 17, firm_id: 4, client_nip: '1234567890', client_name: 'Klient A', tax_office_code: '1471',
     contact_email: 'client@example.com', taxpayer_type: 'company', first_name: null, last_name: null,
     birth_date: null, firm_name: 'Biuro', accountant_email: 'accountant@example.com',
 };
@@ -77,6 +77,12 @@ describe('jpk-preparation job', () => {
         const csv = message.attachments[0].content.toString();
         expect(csv).toContain('Numer_faktury;Data;');
         expect(csv).toContain('"FV;""9"""');
+        const audit = ctx.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO audit_log'));
+        expect(audit?.[1]).toEqual([
+            4, '1234567890', 'jpk_vat_preparation', 'KSeF - JPK_VAT Preparation',
+            { period: '2026-08', client_id: 17, status: 'correction_needed', stats: { total: 1, nrksef: 0, off: 0, bfk: 1, di: 0 }, financials: { totalNet: '100.00', totalVat: '23.00', totalGross: '123.00' } },
+            true, null,
+        ]);
         expect(result).toMatchObject({ processed: 1, failures: [] });
     });
 
@@ -86,6 +92,7 @@ describe('jpk-preparation job', () => {
         const result = await jpkPreparationJob.run(ctx);
         expect(generateJpkV7M).toHaveBeenCalledOnce();
         expect(ctx.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO jpk_preparations'))).toBe(false);
+        expect(ctx.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO audit_log'))).toBe(false);
         expect(sendMail).not.toHaveBeenCalled();
         expect(result).toMatchObject({ processed: 1, skipped: 1, failures: [] });
     });
@@ -103,6 +110,10 @@ describe('jpk-preparation job', () => {
         expect(sendMail).toHaveBeenCalledTimes(2);
         expect(result.processed).toBe(1);
         expect(result.failures).toEqual([{ subject: 'JPK preparation for Klient A (1234567890)', error: 'smtp down', firmId: 4, clientNip: '1234567890' }]);
+        const audits = ctx.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO audit_log'));
+        expect(audits).toHaveLength(2);
+        expect(audits[0][1]).toEqual([4, '1234567890', 'jpk_vat_preparation', 'KSeF - JPK_VAT Preparation', { period: '2026-08', client_id: 17, status: 'failed', error: 'smtp down' }, false, 'smtp down']);
+        expect(audits[1][1]?.[4]).toMatchObject({ period: '2026-08', client_id: 17, status: 'correction_needed' });
     });
 
     it('honours an already-aborted signal before querying', async () => {

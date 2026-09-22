@@ -89,12 +89,12 @@ describe('workflow 06/09 retirement comparison on stress fixtures', () => {
                 { what: 'JPK output', old: `${legacyClients.rows.length} CSV/preparation email attempts (${legacyInvoiceCount} selected invoice rows)`, job: `${jpk.processed || 0} validated JPK outputs; ${jpk.failures?.length || 0} client failures`, right: 'job: a tax file must fail closed when required taxpayer details or valid JPK data are missing' },
                 { what: 'JPK selection', old: 'jpk_period match OR issue_date in period', job: 'jpk_period match OR (null period AND issue_date in period)', right: 'job: an explicit JPK period must override issue date' },
                 { what: 'JPK artifact', old: 'CSV email plus summary upsert', job: 'validated JPK XML preparation plus CSV attachment', right: 'job: the tax XML is validated and CSV is only a supporting attachment' },
-                { what: 'JPK per-client audit', old: 'audit_log row for each processed client', job: 'durable job occurrence but no per-client audit_log row', right: 'old per-client audit requirement; add tenant-scoped equivalent before retirement' },
                 { what: 'JPK email recipient', old: 'hardcoded workflow mailbox', job: 'firm admin_email', right: 'job: firm isolation' },
                 { what: '09 offline warnings', old: legacyOffline, job: offline.processed, right: 'same route logic; equal' },
                 { what: '09 receivables digests', old: Number(legacyReceivables.rows[0].n), job: receivables.processed, right: 'same route logic; equal' },
             ];
-            console.log('WORKFLOW_06_09_RETIREMENT_REPORT ' + JSON.stringify({ fixture: 'stress fixtures with one rollback-only overdue receivable', period, legacyClients: legacyClients.rows.length, jpk: { processed: jpk.processed, failures: jpk.failures?.length, firstFailure: jpk.failures?.[0]?.error.slice(0, 130) }, offline, receivables, differences }));
+            const closedDifferences = [{ what: 'JPK per-client audit', old: 'one row per processed client', job: 'one tenant-scoped success/failure row per processed client in real mode; zero rows in shadow', result: 'closed' }];
+            console.log('WORKFLOW_06_09_RETIREMENT_REPORT ' + JSON.stringify({ fixture: 'stress fixtures with one rollback-only overdue receivable', period, legacyClients: legacyClients.rows.length, jpk: { processed: jpk.processed, failures: jpk.failures?.length, firstFailure: jpk.failures?.[0]?.error.slice(0, 130) }, offline, receivables, closedDifferences, remainingDifferences: differences }));
             expect(jpk.processed! + (jpk.failures?.length || 0)).toBe(legacyClients.rows.length);
         } finally { await db.query('ROLLBACK'); await db.end(); }
     }, 120000);
@@ -108,7 +108,7 @@ describe('workflow 06 versus JPK preparation with valid tax data', () => {
         await db.query('BEGIN');
         try {
             await db.query(readFileSync(join(ROOT, 'compare-06-realistic.sql'), 'utf8'));
-            const clients = await db.query(`SELECT c.nip, c.tax_office_code, c.taxpayer_type FROM clients c JOIN firms f ON f.id=c.firm_id WHERE f.slug='codex-compare-06' ORDER BY c.nip`);
+            const clients = await db.query(`SELECT c.nip, c.tax_office_code, c.taxpayer_type, c.firm_id FROM clients c JOIN firms f ON f.id=c.firm_id WHERE f.slug='codex-compare-06' ORDER BY c.nip`);
             expect(clients.rows).toHaveLength(3);
             expect(clients.rows.every(c => isValidTaxOfficeCode(c.tax_office_code))).toBe(true);
             expect(clients.rows.some(c => c.taxpayer_type === 'individual')).toBe(true);
@@ -118,17 +118,23 @@ describe('workflow 06 versus JPK preparation with valid tax data', () => {
             const legacy = new Map<string, any[]>();
             for (const c of oldClients.rows) {
                 const rows = await db.query(node(w06, 'Get Client Invoices').parameters.query.slice(1), [c.client_nip, c.firm_id, period, '2026-02-01', '2026-02-28']);
-                legacy.set(c.client_nip, rows.rows);
+                legacy.set(`${c.firm_id}:${c.client_nip}`, rows.rows);
             }
             const now = new Date('2026-03-05T07:00:00Z');
             const ctx: JobContext = { db, now: () => now, scheduledFor: now, shadow: false, signal: new AbortController().signal, alerts: { raise: async () => ({ recorded: false, delivered: false }) }, log: () => {} };
             const result = await jpkPreparationJob.run(ctx);
-            expect(result.failures).toEqual([]);
+            const realisticFirmId = clients.rows[0].firm_id;
+            expect(result.failures?.filter(failure => failure.firmId === realisticFirmId)).toEqual([]);
             expect(result.processed).toBe(3);
             expect(sentMail).toHaveLength(3);
-            const prepared = await db.query(`SELECT p.client_nip, p.period, p.export_data, p.status, p.total_invoices, p.nr_ksef_count, p.off_count, p.bfk_count, p.di_count
+            const prepared = await db.query(`SELECT p.firm_id, p.client_nip, p.period, p.export_data, p.status, p.total_invoices, p.nr_ksef_count, p.off_count, p.bfk_count, p.di_count
                 FROM jpk_preparations p JOIN firms f ON f.id=p.firm_id WHERE f.slug='codex-compare-06' ORDER BY p.client_nip`);
             expect(prepared.rows).toHaveLength(3);
+            const audits = await db.query(`SELECT a.client_nip, a.firm_id, a.success, a.error_message, a.details
+                FROM audit_log a JOIN firms f ON f.id=a.firm_id
+                WHERE f.slug='codex-compare-06' AND a.action='jpk_vat_preparation' ORDER BY a.client_nip`);
+            expect(audits.rows).toHaveLength(3);
+            expect(audits.rows.every(a => a.success === true && a.error_message === null && a.details.period === period && Number.isInteger(a.details.client_id))).toBe(true);
             const expected: Record<string, [number, number, number, number, number, string]> = {
                 '2043321812': [2, 1, 1, 0, 0, 'ready'],
                 '3654235114': [2, 1, 0, 1, 0, 'correction_needed'],
@@ -146,16 +152,18 @@ describe('workflow 06 versus JPK preparation with valid tax data', () => {
                 const csv = attachment.content.toString('utf8');
                 expect(csv).toContain('Numer_faktury;Data;NIP_kontrahenta;Kwota_netto;Kwota_VAT;Kwota_brutto;NrKSeF;OFF;BFK;DI;Numer_KSeF');
                 expect(csv.split('\r\n').filter((line: string) => line && !line.includes('Numer_faktury'))).toHaveLength(total);
-                const old = legacy.get(p.client_nip)!;
-                report.push({ nip: p.client_nip, oldRows: old.length, jobRows: total, status, markers: { nr, off, bfk, di }, csvAttachedByOld: Boolean(node(w06, 'Send JPK Email').parameters.options?.attachments), csvAttachedByJob: true });
+                const old = legacy.get(`${p.firm_id}:${p.client_nip}`)!;
+                const audit = audits.rows.find(a => a.client_nip === p.client_nip);
+                expect(audit?.details).toMatchObject({ period, status, stats: { total, nrksef: nr, off, bfk, di } });
+                report.push({ nip: p.client_nip, oldRows: old.length, jobRows: total, status, markers: { nr, off, bfk, di }, perClientAudit: 'parity closed', csvAttachedByOld: Boolean(node(w06, 'Send JPK Email').parameters.options?.attachments), csvAttachedByJob: true });
             }
-            expect(legacy.get('9386379401')?.map(i => i.invoice_number)).toContain('G-OVERRIDE-OUT');
+            expect(legacy.get(`${realisticFirmId}:9386379401`)?.map(i => i.invoice_number)).toContain('G-OVERRIDE-OUT');
             expect(prepared.rows.find(p => p.client_nip === '9386379401')?.export_data).not.toContain('G-OVERRIDE-OUT');
             expect(prepared.rows.find(p => p.client_nip === '9386379401')?.export_data).toContain('G-OVERRIDE-IN');
             expect(prepared.rows.find(p => p.client_nip === '2043321812')?.export_data).toContain('<tns:OFF>1</tns:OFF>');
             expect(prepared.rows.find(p => p.client_nip === '3654235114')?.export_data).toContain('<tns:BFK>1</tns:BFK>');
             expect(prepared.rows.find(p => p.client_nip === '9386379401')?.export_data).toContain('<tns:DI>1</tns:DI>');
-            console.log('WORKFLOW_06_CONTENT_REPORT ' + JSON.stringify(report));
+            console.log('WORKFLOW_06_CONTENT_REPORT ' + JSON.stringify({ fixture: 'realistic JPK plus any preloaded stress data', clients: report, unrelatedFixtureFailures: result.failures?.length || 0, closedDifference: 'per-client audit parity' }));
         } finally {
             await db.query('ROLLBACK');
             await db.end();
