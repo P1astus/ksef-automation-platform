@@ -5,6 +5,13 @@ export async function register() {
         import('@/lib/deployment'),
         import('@/lib/mail-transport'),
     ]);
+    if (capabilities().accessProvider === 'licence') {
+        const { assertLicenceStartup, refreshLicenceStates } = await import('@/lib/licence');
+        await assertLicenceStartup();
+        await refreshLicenceStates();
+        const timer = setInterval(() => { refreshLicenceStates().catch(error => console.error('Licence refresh failed:', error)); }, 60_000);
+        timer.unref();
+    }
     if (capabilities().emailTransport !== 'smtp') return;
 
     try {

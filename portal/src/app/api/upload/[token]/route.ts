@@ -1,3 +1,4 @@
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { saveUploadedFile, shortFileType, MAX_UPLOAD_BYTES, UPLOAD_TOO_LARGE_MESSAGE } from '@/lib/file-storage';
@@ -33,6 +34,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const { token } = await params;
     const doc = await resolveRequest(token);
     if (!doc) return NextResponse.json({ error: 'Link jest nieprawidłowy lub wygasł' }, { status: 404 });
+    const licenceError = await requireLicenceWrite(doc.firm_id);
+    if (licenceError) return licenceError;
 
     const formData = await request.formData().catch(() => null);
     const file = formData?.get('file') as File | null;

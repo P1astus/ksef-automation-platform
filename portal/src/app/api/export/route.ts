@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireFeature } from '@/lib/entitlements';
+import { requireReadFeature } from '@/lib/entitlements';
 import { getSession } from '@/lib/auth';
 import pool from '@/lib/db';
 import { generateOptimaXml, OptimaExportError } from '@/lib/optima-mapper';
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
         if (!session) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
-        const planError = await requireFeature(session.firmId, 'exports');
+        const planError = await requireReadFeature(session.firmId, 'exports');
         if (planError) return planError;
 
         const body = await request.json();

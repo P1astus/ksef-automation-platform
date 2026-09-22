@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import ImapSettings from './ImapSettings';
+import LicenceSettings from './LicenceSettings';
 
 interface FirmData {
     firm_name: string;
@@ -13,6 +14,7 @@ interface FirmData {
     max_clients: number;
     role: 'owner' | 'admin' | 'member' | 'readonly';
     isOwner: boolean;
+    licenceMode?: boolean;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -110,6 +112,8 @@ export default function SettingsPage() {
         <div style={{ maxWidth: 640, padding: '28px 0' }}>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>Ustawienia konta</h1>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 32px' }}>Zarządzaj danymi biura i bezpieczeństwem konta.</p>
+
+            {data.isOwner && data.licenceMode && <LicenceSettings />}
 
             {canManageFirm && (
                 <Section title="Dane biura">

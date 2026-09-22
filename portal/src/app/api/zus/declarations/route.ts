@@ -1,3 +1,4 @@
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -25,6 +26,8 @@ export async function POST(request: Request) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const roleError = await requireRole(session, ['owner', 'admin', 'member']);
     if (roleError) return roleError;
+    const licenceError = await requireLicenceWrite(session.firmId);
+    if (licenceError) return licenceError;
 
     const form = await request.formData().catch(() => null);
     const file = form?.get('file');

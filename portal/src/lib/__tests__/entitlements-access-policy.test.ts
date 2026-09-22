@@ -6,7 +6,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const queryMock = vi.fn();
 vi.mock('../db', () => ({ query: (...a: unknown[]) => queryMock(...a) }));
 
-import { evaluateEntitlements, loadEntitlements, requireFeature, requireActiveSubscription } from '../entitlements';
+import { evaluateEntitlements, loadEntitlements, requireFeature, requireActiveSubscription, requireReadFeature } from '../entitlements';
 import { resetDeploymentCache } from '../deployment';
 import type { Feature } from '../plans';
 
@@ -101,5 +101,30 @@ describe('loadEntitlements / require* take the policy from the deployment', () =
         const denied = await requireFeature(1, 'team');
         expect(denied?.status).toBe(403);
         expect((await denied?.json()).code).toBe('PLAN_UPGRADE_REQUIRED');
+    });
+});
+
+describe('read-only features after licence expiry', () => {
+    afterEach(() => {
+        delete process.env.DEPLOYMENT_MODE;
+        delete process.env.ACCESS_PROVIDER;
+        resetDeploymentCache();
+        queryMock.mockReset();
+    });
+
+    it('keeps a purchased export feature while preserving the tier check', async () => {
+        process.env.DEPLOYMENT_MODE = 'local';
+        process.env.ACCESS_PROVIDER = 'licence';
+        resetDeploymentCache();
+        const licence = await import('../licence');
+        const spy = vi.spyOn(licence, 'loadFirmLicence').mockResolvedValue({
+            payload: null,
+            state: 'licence_expired',
+        });
+        queryMock.mockResolvedValue({ rows: [{ subscription_tier: 'biznes', subscription_status: 'canceled' }] });
+        expect(await requireReadFeature(1, 'exports')).toBeNull();
+        queryMock.mockResolvedValue({ rows: [{ subscription_tier: 'start', subscription_status: 'canceled' }] });
+        expect((await requireReadFeature(1, 'exports'))?.status).toBe(403);
+        spy.mockRestore();
     });
 });

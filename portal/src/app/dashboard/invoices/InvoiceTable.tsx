@@ -1,5 +1,5 @@
 'use client';
-import { readApiFailure, BILLING_HREF } from '@/lib/plan-errors';
+import { readApiFailure, BILLING_HREF, LICENCE_HREF } from '@/lib/plan-errors';
 
 import { useState } from 'react';
 import { FileText, CheckCircle, Circle, Eye } from 'lucide-react';
@@ -57,7 +57,10 @@ export default function InvoiceTable({ invoices, onRefresh }: InvoiceTableProps)
             if (!resp.ok) {
                 const failure = await readApiFailure(resp, `Błąd eksportu do ${exportSystem}`);
                 if (failure.isPlanError) {
-                    if (confirm(`❌ ${failure.message}\n\nPrzejść do zakładki Rozliczenia?`)) window.location.href = BILLING_HREF;
+                    const isLicence = failure.state?.startsWith('licence_');
+                    if (confirm(`❌ ${failure.message}\n\n${isLicence ? 'Przejść do Ustawień?' : 'Przejść do zakładki Rozliczenia?'}`)) {
+                        window.location.href = isLicence ? LICENCE_HREF : BILLING_HREF;
+                    }
                 } else {
                     alert(`❌ ${failure.message}`);
                 }

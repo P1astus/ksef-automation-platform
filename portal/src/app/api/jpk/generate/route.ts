@@ -169,6 +169,13 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const clientNip = searchParams.get('clientNip');
+    const downloadPeriod = searchParams.get('downloadPeriod');
+    if (downloadPeriod) {
+        if (!clientNip || !/^\d{4}-(0[1-9]|1[0-2])$/.test(downloadPeriod)) return NextResponse.json({ error: 'Wymagane: clientNip i poprawny downloadPeriod' }, { status: 400 });
+        const saved = await query('SELECT export_data FROM jpk_preparations WHERE firm_id = $1 AND client_nip = $2 AND period = $3', [session.firmId, clientNip, downloadPeriod]);
+        if (!saved.rows[0]) return NextResponse.json({ error: 'Nie znaleziono JPK' }, { status: 404 });
+        return new NextResponse(saved.rows[0].export_data, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="JPK_V7M_${clientNip}_${downloadPeriod}.xml"`, 'Cache-Control': 'private, no-store' } });
+    }
 
     const q = clientNip
         ? `SELECT firm_id, client_nip, period, status, created_at FROM jpk_preparations WHERE firm_id = $1 AND client_nip = $2 ORDER BY created_at DESC LIMIT 20`

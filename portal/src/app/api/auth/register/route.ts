@@ -42,6 +42,10 @@ export async function POST(request: Request) {
             );
         }
 
+        if (capabilities().accessProvider === 'licence' && !firm_nip) {
+            return NextResponse.json({ error: 'NIP firmy jest wymagany do aktywacji licencji' }, { status: 400 });
+        }
+
         // Local edition: registration is closed. The FIRST firm may only be created by the holder of the one-time setup
         // token (printed by the installer), in one transaction with a "no firm yet" re-check. The hosted branch below
         // is unchanged.

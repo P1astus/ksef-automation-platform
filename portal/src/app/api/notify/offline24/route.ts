@@ -1,3 +1,5 @@
+import { capabilities } from '@/lib/deployment';
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { safeEqual } from '@/lib/auth';
@@ -23,6 +25,10 @@ export async function POST(request: Request) {
     }
     if (!safeEqual(auth || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (capabilities().accessProvider === 'licence') {
+        const firm = await query('SELECT id FROM firms WHERE is_active = true LIMIT 1');
+        if (firm.rows[0]) { const licenceError = await requireLicenceWrite(firm.rows[0].id); if (licenceError) return licenceError; }
     }
     try {
         assertMailTransportConfigured();

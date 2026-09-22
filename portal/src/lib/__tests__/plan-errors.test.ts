@@ -20,6 +20,13 @@ describe('interpretApiFailure', () => {
         expect(f.status).toBe(402);
     });
 
+    it('recognizes a licence expiry as a structured plan error with settings recovery', async () => {
+        const res = subscriptionInactiveResponse('licence_expired');
+        const f = await readApiFailure(res as unknown as Response, 'x');
+        expect(f).toMatchObject({ status: 402, isPlanError: true, state: 'licence_expired' });
+        expect(f.message).toMatch(/Licencja wygasła/);
+    });
+
     it('does not treat an unrelated 403 as a plan error', () => {
         const f = interpretApiFailure(403, { error: 'Brak uprawnień' }, 'x');
         expect(f.isPlanError).toBe(false);

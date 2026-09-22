@@ -1,3 +1,4 @@
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -86,6 +87,8 @@ export async function DELETE() {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const roleError = await requireRole(session, ['owner', 'admin']);
     if (roleError) return roleError;
+    const licenceError = await requireLicenceWrite(session.firmId);
+    if (licenceError) return licenceError;
     await query('DELETE FROM firm_imap_settings WHERE firm_id = $1', [session.firmId]);
     return NextResponse.json({ success: true });
 }

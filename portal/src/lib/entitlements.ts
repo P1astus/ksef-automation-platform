@@ -8,8 +8,9 @@ import { NextResponse } from 'next/server';
 import { query } from './db';
 import { Feature, PlanId, cheapestPlanWith, planForTier, planHasFeature, PLANS } from './plans';
 import { AccessProvider, capabilities } from './deployment';
+import { loadFirmLicence } from './licence';
 
-export type AccessState = 'ok' | 'trial_expired' | 'canceled' | 'paused';
+export type AccessState = 'ok' | 'trial_expired' | 'canceled' | 'paused' | 'licence_missing' | 'licence_expired';
 
 export interface FirmEntitlements {
     plan: PlanId | null;
@@ -61,16 +62,21 @@ export function evaluateEntitlements(
 }
 
 export async function loadEntitlements(firmId: number): Promise<FirmEntitlements> {
+    const policy = capabilities().accessProvider;
+    const licence = policy === 'licence' ? await loadFirmLicence(firmId) : null;
     const res = await query(
         'SELECT subscription_tier, subscription_status, trial_expires_at FROM firms WHERE id = $1',
         [firmId]
     );
-    return evaluateEntitlements(res.rows[0], new Date(), capabilities().accessProvider);
+    const ent = evaluateEntitlements(res.rows[0], new Date(), policy);
+    if (!licence || !res.rows[0]) return ent;
+    if (licence.state !== 'ok') return { ...ent, accessState: licence.state, has: () => false };
+    return ent;
 }
 
 export function subscriptionInactiveResponse(state: AccessState) {
     return NextResponse.json(
-        { error: 'Subskrypcja jest nieaktywna. Wybierz plan w zakładce Płatności.', code: 'SUBSCRIPTION_INACTIVE', state },
+        { error: state === 'licence_missing' ? 'Brak licencji. Zainstaluj licencję w Ustawieniach.' : state === 'licence_expired' ? 'Licencja wygasła. Dostęp tylko do odczytu; zainstaluj nową licencję.' : 'Subskrypcja jest nieaktywna. Wybierz plan w zakładce Płatności.', code: 'SUBSCRIPTION_INACTIVE', state },
         { status: 402 }
     );
 }
@@ -96,4 +102,21 @@ export async function requireFeature(firmId: number, feature: Feature): Promise<
     if (ent.accessState !== 'ok') return subscriptionInactiveResponse(ent.accessState);
     if (!ent.has(feature)) return upgradeRequiredResponse(feature);
     return null;
+}
+
+/**
+ * Read-only paid capability. An expired signed licence keeps export access for a tier that bought it;
+ * a missing licence has no trusted tier, and hosted behavior stays identical to requireFeature().
+ */
+export async function requireReadFeature(firmId: number, feature: Feature): Promise<NextResponse | null> {
+    const ent = await loadEntitlements(firmId);
+    const expiredLicence = capabilities().accessProvider === 'licence' && ent.accessState === 'licence_expired';
+    if (ent.accessState !== 'ok' && !expiredLicence) return subscriptionInactiveResponse(ent.accessState);
+    if (ent.plan === null || !planHasFeature(ent.plan, feature)) return upgradeRequiredResponse(feature);
+    return null;
+}
+
+/** Guards routes that historically had no subscription gate, without altering hosted behavior. */
+export async function requireLicenceWrite(firmId: number): Promise<NextResponse | null> {
+    return capabilities().accessProvider === 'licence' ? requireActiveSubscription(firmId) : null;
 }

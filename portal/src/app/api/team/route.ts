@@ -1,3 +1,4 @@
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { requireFeature } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
@@ -114,6 +115,8 @@ export async function DELETE(request: Request) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const roleError = await requireRole(session, ['owner', 'admin']);
     if (roleError) return roleError;
+    const licenceError = await requireLicenceWrite(session.firmId);
+    if (licenceError) return licenceError;
 
     const { searchParams } = new URL(request.url);
     const memberId = searchParams.get('memberId');

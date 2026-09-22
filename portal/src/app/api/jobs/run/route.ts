@@ -1,3 +1,4 @@
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { getSession, sessionRole } from '@/lib/auth';
 import { getOperatorSession } from '@/lib/operator-auth';
@@ -15,6 +16,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: tenant ? 'Brak uprawnień do tej operacji' : 'Unauthorized' }, { status: tenant ? 403 : 401 });
     }
 
+
+    const licenceError = tenant ? await requireLicenceWrite(tenant.firmId) : null;
+    if (licenceError) return licenceError;
     if (!operator && resolveDeployment(process.env).operatorConsole) {
         return NextResponse.json({ error: 'Global jobs require an operator session; use client sync for your firm' }, { status: 403 });
     }

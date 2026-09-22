@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { capabilities } from '@/lib/deployment';
+import { loadFirmLicence, licenceWarningDays } from '@/lib/licence';
 import LogoutButton from './LogoutButton';
 import TrialBanner from './TrialBanner';
 import PaywallOverlay from './PaywallOverlay';
@@ -63,6 +64,9 @@ export default async function DashboardLayout({
     const billing = capabilities().billingProvider === 'stripe';
     const showPaywall = billing && (trialExpired || canceled) && !isBillingPage;
     const paywallReason: 'expired' | 'canceled' = canceled ? 'canceled' : 'expired';
+
+    const licence = capabilities().accessProvider === 'licence' ? await loadFirmLicence(session.firmId) : null;
+    const licenceDays = licence?.payload ? licenceWarningDays(licence.payload) : null;
 
     const initials = firmName
         .split(' ')
@@ -159,6 +163,16 @@ export default async function DashboardLayout({
 
             {/* ── Main area ── */}
             <div style={{ marginLeft: 'var(--sidebar-width)', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
+                {licence && (licence.state !== 'ok' || licenceDays !== null) && (
+                    <div role="alert" style={{ padding: '12px 28px', background: licence.state === 'ok' ? '#fff3cd' : '#fee2e2', color: '#551111' }}>
+                        {licence.state === 'licence_missing'
+                            ? 'Brak licencji. Dostęp tylko do odczytu. Właściciel może zainstalować licencję w Ustawieniach.'
+                            : licence.state === 'licence_expired'
+                                ? 'Licencja wygasła. Dostęp tylko do odczytu. Właściciel może ją odnowić w Ustawieniach.'
+                                : `Licencja wygasa za ${licenceDays} dni (${licence.payload?.expires_on}).`}
+                    </div>
+                )}
 
                 {/* Top bar */}
                 <header style={{

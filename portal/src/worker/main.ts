@@ -1,5 +1,7 @@
 // The job worker: the process that replaces n8n's scheduler. Same image as the portal, different command
 // (`node worker.js`, bundled by esbuild - see the Dockerfile). Inert unless JOBS_ENABLED / JOBS_SHADOW name jobs.
+import { capabilities } from '@/lib/deployment';
+import { assertLicenceStartup, loadFirmLicence } from '@/lib/licence';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import pool from '@/lib/db';
@@ -17,6 +19,7 @@ const log = (m: string) => console.log(`[worker] ${m}`);
 const db: Db = { query: (text, params) => pool.query(text, params as any[]) as any };
 
 async function main() {
+    if (capabilities().accessProvider === 'licence') await assertLicenceStartup();
     const jobs = buildJobs(process.env);
     const enabled = parseJobList(process.env.JOBS_ENABLED);
     const shadow = parseJobList(process.env.JOBS_SHADOW);
@@ -33,6 +36,12 @@ async function main() {
     let lastPrune = 0;
     while (!stopping) {
         try {
+            if (capabilities().accessProvider === 'licence') {
+                const firms = await pool.query('SELECT id FROM firms WHERE is_active = true');
+                let licensed = true;
+                for (const firm of firms.rows) if ((await loadFirmLicence(firm.id)).state !== 'ok') licensed = false;
+                if (!licensed) { log('licence missing or expired: job tick skipped'); await new Promise(r => setTimeout(r, TICK_MS)); continue; }
+            }
             const s = await tickOnce({
                 db, jobs, enabled, shadow, workerId, sendMail,
                 alertEmail: process.env.ALERT_EMAIL?.trim() || undefined,

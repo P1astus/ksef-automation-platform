@@ -7,6 +7,7 @@ import { AlertCircle, KeyRound, ShieldCheck, Zap } from 'lucide-react';
 export default function SetupForm() {
     const [setupToken, setSetupToken] = useState('');
     const [firmName, setFirmName] = useState('');
+    const [firmNip, setFirmNip] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -24,6 +25,7 @@ export default function SetupForm() {
                 body: JSON.stringify({
                     setup_token: setupToken,
                     firm_name: firmName,
+                    firm_nip: firmNip,
                     admin_email: email,
                     password,
                 }),
@@ -68,6 +70,10 @@ export default function SetupForm() {
                     <label style={{ display: 'grid', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
                         Nazwa firmy
                         <input name="firm_name" value={firmName} onChange={e => setFirmName(e.target.value)} required style={{ padding: '11px 12px', borderRadius: 7 }} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
+                        NIP firmy (wymagany dla licencji)
+                        <input name="firm_nip" value={firmNip} onChange={e => setFirmNip(e.target.value)} pattern="[0-9]{10}" placeholder="10 cyfr" style={{ padding: '11px 12px', borderRadius: 7 }} />
                     </label>
                     <label style={{ display: 'grid', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
                         E-mail administratora

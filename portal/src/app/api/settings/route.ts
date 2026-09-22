@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { getSession, requireRole, sessionRole, invalidateFirmActiveCache } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
+import { capabilities } from '@/lib/deployment';
+import { requireActiveSubscription } from '@/lib/entitlements';
 
 export async function GET() {
     const session = await getSession();
@@ -16,7 +18,12 @@ export async function GET() {
     // The frontend needs to know whether this session can manage firm-level
     // settings at all (owner/admin) before rendering those sections — a
     // member/readonly session would otherwise see forms that 403 on submit.
-    return NextResponse.json({ ...result.rows[0], role: sessionRole(session), isOwner: session.userId == null });
+    return NextResponse.json({
+        ...result.rows[0],
+        role: sessionRole(session),
+        isOwner: session.userId == null,
+        licenceMode: capabilities().accessProvider === 'licence',
+    });
 }
 
 export async function PATCH(request: Request) {
@@ -31,6 +38,14 @@ export async function PATCH(request: Request) {
     if (action === 'update_firm') {
         const roleError = await requireRole(session, ['owner', 'admin']);
         if (roleError) return roleError;
+        if (capabilities().accessProvider === 'licence') {
+            const block = await requireActiveSubscription(session.firmId);
+            if (block) return block;
+            return NextResponse.json({
+                error: 'Nazwa i NIP biura są związane z licencją; zmiana wymaga nowej licencji.',
+                code: 'LICENCE_IDENTITY_LOCKED',
+            }, { status: 409 });
+        }
         const { firm_name, firm_nip } = body;
         if (!firm_name?.trim()) {
             return NextResponse.json({ error: 'Nazwa firmy jest wymagana' }, { status: 400 });
@@ -51,6 +66,10 @@ export async function PATCH(request: Request) {
     if (action === 'update_email') {
         const roleError = await requireRole(session, ['owner']);
         if (roleError) return roleError;
+        if (capabilities().accessProvider === 'licence') {
+            const block = await requireActiveSubscription(session.firmId);
+            if (block) return block;
+        }
         const { new_email } = body;
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!new_email || !emailRegex.test(new_email)) {

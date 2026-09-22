@@ -1,3 +1,4 @@
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
 
     if (!invRes.rows[0]) return NextResponse.json({ error: 'Zaproszenie nieważne lub wygasło' }, { status: 404 });
     const inv = invRes.rows[0];
+    const licenceError = await requireLicenceWrite(inv.firm_id);
+    if (licenceError) return licenceError;
     if (!tierHasFeature(inv.subscription_tier, 'team')) {
         return NextResponse.json({ error: 'Plan tego biura nie obejmuje kont zespołu', code: 'PLAN_UPGRADE_REQUIRED', feature: 'team' }, { status: 403 });
     }

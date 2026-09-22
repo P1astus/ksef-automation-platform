@@ -5,17 +5,20 @@
 // user should be pointed at the billing page.
 
 export const BILLING_HREF = '/dashboard/billing';
+export const LICENCE_HREF = '/dashboard/settings';
 
 export interface ApiFailure {
     message: string;
     /** True for 402/403 plan errors - the caller should offer a link to BILLING_HREF. */
     isPlanError: boolean;
     status: number;
+    state?: string;
 }
 
 interface ErrorBody {
     error?: unknown;
     code?: unknown;
+    state?: unknown;
 }
 
 export function interpretApiFailure(status: number, body: unknown, fallback: string): ApiFailure {
@@ -24,7 +27,7 @@ export function interpretApiFailure(status: number, body: unknown, fallback: str
     const isPlanError =
         (status === 402 && b.code === 'SUBSCRIPTION_INACTIVE') ||
         (status === 403 && b.code === 'PLAN_UPGRADE_REQUIRED');
-    return { message, isPlanError, status };
+    return { message, isPlanError, status, ...(b.state === 'licence_missing' || b.state === 'licence_expired' ? { state: b.state } : {}) };
 }
 
 /** Reads a non-OK Response (tolerating a non-JSON body) and interprets it. */

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { sendDailyDigest } from '@/lib/email';
 import { safeEqual } from '@/lib/auth';
+import { capabilities } from '@/lib/deployment';
+import { requireLicenceWrite } from '@/lib/entitlements';
 
 // Called by n8n cron at 7:00 AM daily
 // Or manually: POST /api/digest
@@ -17,6 +19,14 @@ export async function POST(request: Request) {
     }
     if (!process.env.RESEND_API_KEY) {
         return NextResponse.json({ error: 'RESEND_API_KEY is not configured' }, { status: 503 });
+    }
+
+    if (capabilities().accessProvider === 'licence') {
+        const firm = await query('SELECT id FROM firms WHERE is_active = true LIMIT 1');
+        if (firm.rows[0]) {
+            const licenceError = await requireLicenceWrite(firm.rows[0].id);
+            if (licenceError) return licenceError;
+        }
     }
 
     const firmsRes = await query(`

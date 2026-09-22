@@ -1,3 +1,5 @@
+import { capabilities } from '@/lib/deployment';
+import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { safeEqual } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -8,6 +10,10 @@ export async function POST(request: Request) {
     if (!secret) return NextResponse.json({ error: 'JOB_SECRET is not configured' }, { status: 503 });
     if (!safeEqual(request.headers.get('authorization') || '', `Bearer ${secret}`)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (capabilities().accessProvider === 'licence') {
+        const firm = await query('SELECT id FROM firms WHERE is_active = true LIMIT 1');
+        if (firm.rows[0]) { const licenceError = await requireLicenceWrite(firm.rows[0].id); if (licenceError) return licenceError; }
     }
     const body = await request.json().catch(() => ({}));
     if (typeof body.jobName !== 'string' || !body.jobName) {
