@@ -20,6 +20,10 @@
     {
       "version": "2026-09-22-zus-source-immutable",
       "file": "2026-09-22-zus-source-immutable.sql"
+    },
+    {
+      "version": "2026-09-22-firm-licences",
+      "file": "2026-09-22-firm-licences.sql"
     }
   ]
 }
