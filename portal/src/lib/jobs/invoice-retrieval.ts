@@ -18,6 +18,8 @@ import type { Db } from './queue';
 //     UNIQUE (firm_id, client_nip, ksef_number) + ON CONFLICT DO NOTHING.
 //   * It opened a KSeF online session per client that nothing used. Querying needs only the access token.
 //   * Sales and purchases share nothing: each has its own mark (`hwm_sales`, `hwm_purchases`) and window.
+//   * Deliberate workflow 04 divergence: deactivated firms and firms without active subscription access are excluded.
+//     They are counted/logged, not treated as client failures and never sent to KSeF.
 //
 // IDEMPOTENCY BOUNDARY: safe to re-run. Rows already stored are skipped by the unique key; the mark is a compare-and-set,
 // so a repeat cannot move it backwards or past unread data. A crash between fetch and commit loses nothing: the mark did
@@ -272,6 +274,21 @@ export interface RetrievalScope {
     firmId?: number;
 }
 
+type FirmAccessRow = {
+    firm_is_active: boolean;
+    subscription_status: string | null;
+    trial_expires_at: string | Date | null;
+};
+
+// Mirrors entitlements.ts's hosted AccessState policy. This job deliberately applies commercial inactivity even in
+// an unmetered local edition: a firm explicitly marked canceled/paused/deactivated must not keep syncing in background.
+function firmCanSync(row: FirmAccessRow, now: Date): boolean {
+    if (!row.firm_is_active) return false;
+    if (row.subscription_status === 'active' || row.subscription_status === 'past_due') return true;
+    if (row.subscription_status !== 'trial') return false;
+    return !row.trial_expires_at || new Date(row.trial_expires_at) > now;
+}
+
 export async function retrieveForClient(ctx: JobContext, deps: InvoiceRetrievalDeps, client: ClientRow) {
     if (client.auth_method === 'certificate') throw new RetrievalError(CERTIFICATE_SYNC_UNSUPPORTED);
     if (!client.ksef_token_encrypted) {
@@ -316,21 +333,27 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
         async run(ctx): Promise<JobResult> {
             const scope: RetrievalScope = (ctx.payload as RetrievalScope | null) ?? {};
             // A client-specific, firm-scoped manual run overrides the scheduled-sync switch.
-            const clients = await ctx.db.query(
-                `SELECT id, nip, firm_id, client_name, auth_method, ksef_token_encrypted, hwm_sales, hwm_purchases, last_sync_error
-                   FROM clients
-                  WHERE (sync_enabled = true OR ($1::int IS NOT NULL AND $2::int IS NOT NULL))
-                    AND ($1::int IS NULL OR id = $1::int)
-                    AND ($2::int IS NULL OR firm_id = $2::int)
-                  ORDER BY firm_id, id`,
+            const candidates = await ctx.db.query(
+                `SELECT c.id, c.nip, c.firm_id, c.client_name, c.auth_method, c.ksef_token_encrypted,
+                        c.hwm_sales, c.hwm_purchases, c.last_sync_error,
+                        f.is_active AS firm_is_active, f.subscription_status, f.trial_expires_at
+                   FROM clients c
+                   JOIN firms f ON f.id = c.firm_id
+                  WHERE (c.sync_enabled = true OR ($1::int IS NOT NULL AND $2::int IS NOT NULL))
+                    AND ($1::int IS NULL OR c.id = $1::int)
+                    AND ($2::int IS NULL OR c.firm_id = $2::int)
+                  ORDER BY c.firm_id, c.id`,
                 [scope.clientId ?? null, scope.firmId ?? null]
             );
+            const clients = candidates.rows.filter(client => firmCanSync(client, ctx.now()));
+            const excluded = candidates.rows.length - clients.length;
+            if (excluded) ctx.log(`invoice-retrieval: excluded ${excluded} client(s) belonging to inactive firms`);
 
             const failures: JobFailure[] = [];
             const perClient: unknown[] = [];
             let processed = 0;
             let skipped = 0;
-            for (const client of clients.rows as ClientRow[]) {
+            for (const client of clients as ClientRow[]) {
                 if (ctx.signal.aborted) throw new Error('invoice-retrieval aborted (timeout or lost lease)');
                 try {
                     if (client.auth_method === 'certificate') {
@@ -356,7 +379,7 @@ export function invoiceRetrievalJob(deps: InvoiceRetrievalDeps): Job {
                     }
                 }
             }
-            return { processed, skipped, failures, detail: { clients: clients.rows.length, perClient } };
+            return { processed, skipped, failures, detail: { clients: clients.length, excluded, perClient } };
         },
     };
 }

@@ -13,6 +13,8 @@ import { offlineUrgency, type OfflineUrgency } from '../offline-markers';
 //     hold the same KSeF number, as buyer and seller can)
 //   * "mark uploaded" and "set the marker" are ONE statement, so a crash cannot leave an invoice uploaded with no marker
 //   * a failing row is a RESULT (one alert per failure by the runner); it does not stop the other rows
+//   * unlike workflow 05, deactivated firms and firms without active subscription access are excluded and counted;
+//     intentional exclusions do not raise an alert or appear as failures
 //
 // Like the workflow, the alert_sent_* flags are written but never read: an unresolved invoice re-alerts on every run.
 // (Kept 1:1 on purpose; whether to alert once per tier is a product decision, see HANDOVER.)
@@ -61,15 +63,27 @@ export function offline24MonitorJob(): Job {
         maxAttempts: 3,
         lookbackMinutes: 180,
         async run(ctx): Promise<JobResult> {
-            const pending = await ctx.db.query(
-                `SELECT id, firm_id, invoice_number, client_nip, upload_deadline
-                   FROM offline_invoices WHERE uploaded_to_ksef = false ORDER BY upload_deadline ASC`
+            const scope = await ctx.db.query(
+                `SELECT oi.id, oi.firm_id, oi.invoice_number, oi.client_nip, oi.upload_deadline,
+                        f.is_active AS firm_is_active, f.subscription_status, f.trial_expires_at
+                   FROM offline_invoices oi
+                   JOIN firms f ON f.id = oi.firm_id
+                  WHERE oi.uploaded_to_ksef = false
+                  ORDER BY oi.upload_deadline ASC`
             );
+            // Same active-access states as entitlements.ts: active, past_due grace, or a live trial. Canceled, paused,
+            // expired-trial and deactivated firms are intentional exclusions, including in unmetered local installs.
+            const pending = scope.rows.filter(row => row.firm_is_active && (
+                row.subscription_status === 'active' || row.subscription_status === 'past_due' ||
+                row.subscription_status === 'trial' && (!row.trial_expires_at || new Date(row.trial_expires_at) > ctx.now())
+            ));
+            const excluded = scope.rows.length - pending.length;
+            if (excluded) ctx.log(`offline24-monitor: excluded ${excluded} invoice(s) belonging to inactive firms`);
             const failures: JobFailure[] = [];
             const counts = { found: 0, overdue: 0, urgent_1h: 0, urgent_4h: 0, ok: 0 };
             let processed = 0;
 
-            for (const row of pending.rows) {
+            for (const row of pending) {
                 if (ctx.signal.aborted) throw new Error('offline24-monitor aborted (timeout or lost lease)');
                 const subject = `offline invoice ${row.invoice_number} (id ${row.id})`;
                 const who = { firmId: row.firm_id, clientNip: row.client_nip };
@@ -116,7 +130,7 @@ export function offline24MonitorJob(): Job {
                     failures.push({ subject, error: err?.message ?? String(err), ...who });
                 }
             }
-            return { processed, failures, detail: { pending: pending.rows.length, ...counts } };
+            return { processed, failures, detail: { pending: pending.length, excluded, ...counts } };
         },
     };
 }

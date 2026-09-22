@@ -22,9 +22,11 @@ const ctx = (over: Partial<JobContext> = {}, sendMail = vi.fn().mockResolvedValu
     alerts: createAlerts({ db, sendMail, alertEmail: 'ops@example.invalid', log: () => {} }), log: () => {}, ...over,
 });
 
-async function firm(name: string): Promise<number> {
+async function firm(name: string, over: { active?: boolean; status?: string } = {}): Promise<number> {
     const r = await pg.query<any>(
-        `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash) VALUES ($1::text, $1::text, $1::text || '@x.invalid', 'x') RETURNING id`, [name]);
+        `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash, is_active, subscription_status)
+         VALUES ($1::text, $1::text, $1::text || '@x.invalid', 'x', $2, $3) RETURNING id`,
+        [name, over.active ?? true, over.status ?? 'trial']);
     return r.rows[0].id;
 }
 async function client(firmId: number, nip: string) {
@@ -95,6 +97,28 @@ describe('offline24-monitor job (port of workflow 05)', () => {
         expect(job.schedule).toEqual({ kind: 'cron', expr: '0 */2 * * *', timezone: 'Europe/Warsaw' });
     });
 
+    it('excludes deactivated and canceled firms without markers, failures or alerts', async () => {
+        const active = await firm('eligible', { status: 'active' });
+        const deactivated = await firm('deactivated', { active: false, status: 'active' });
+        const canceled = await firm('canceled', { status: 'canceled' });
+        for (const [firmId, nip] of [[active, '1111111111'], [deactivated, '2222222222'], [canceled, '3333333333']] as const) {
+            await client(firmId, nip);
+            await offline(firmId, nip, `FV/${nip}`, at(Date.now() + 6 * H));
+            await invoice(firmId, nip, `FV/${nip}`, `${nip}-20260921-AAAAAA-01`);
+        }
+        const log = vi.fn();
+        const result = await offline24MonitorJob().run(ctx({ log }));
+        const rows = await pg.query<any>('SELECT firm_id, uploaded_to_ksef FROM offline_invoices ORDER BY firm_id');
+        expect(rows.rows).toEqual([
+            { firm_id: active, uploaded_to_ksef: true },
+            { firm_id: deactivated, uploaded_to_ksef: false },
+            { firm_id: canceled, uploaded_to_ksef: false },
+        ]);
+        expect(result).toMatchObject({ processed: 1, failures: [], detail: { pending: 1, excluded: 2 } });
+        expect(log).toHaveBeenCalledWith('offline24-monitor: excluded 2 invoice(s) belonging to inactive firms');
+        expect(await alerts()).toEqual([]);
+    });
+
     it('found in KSeF and uploaded after the deadline: uploaded, marker BFK', async () => {
         const f = await firm('a'); await client(f, '1111111111');
         const o = await offline(f, '1111111111', 'FV/1', at(Date.now() - 6 * H));
@@ -157,7 +181,7 @@ describe('offline24-monitor job (port of workflow 05)', () => {
         const inv = await invoice(f, '1111111111', 'FV/1', '1111111111-20260921-AAAAAA-01', 'OFF');
         const racing: Db = { query: async (t, p) => {
             const res = await db.query(t, p);
-            if (t.includes('ORDER BY upload_deadline')) await pg.query('UPDATE offline_invoices SET uploaded_to_ksef = true WHERE id = $1', [o]);
+            if (t.includes('ORDER BY oi.upload_deadline')) await pg.query('UPDATE offline_invoices SET uploaded_to_ksef = true WHERE id = $1', [o]);
             return res;
         } };
         await offline24MonitorJob().run(ctx({ db: racing }));

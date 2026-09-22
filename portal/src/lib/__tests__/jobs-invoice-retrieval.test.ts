@@ -47,8 +47,9 @@ const ctx = (over: Partial<JobContext> = {}): JobContext => ({
 });
 const job = (port: KsefPort, over: any = {}) => invoiceRetrievalJob({ ksef: port, decryptToken: (s: string) => `token:${s}`, ...over });
 
-async function firm(n: string) {
-    return (await pg.query<any>(`INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash) VALUES ($1::text, $1::text, $1::text || '@x.invalid', 'x') RETURNING id`, [n])).rows[0].id as number;
+async function firm(n: string, over: { active?: boolean; status?: string } = {}) {
+    return (await pg.query<any>(`INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash, is_active, subscription_status)
+        VALUES ($1::text, $1::text, $1::text || '@x.invalid', 'x', $2, $3) RETURNING id`, [n, over.active ?? true, over.status ?? 'trial'])).rows[0].id as number;
 }
 async function client(firmId: number, nip: string, over: { hwm_sales?: string | null; hwm_purchases?: string | null; token?: string | null; sync?: boolean; auth?: string } = {}) {
     return (await pg.query<any>(
@@ -302,6 +303,22 @@ describe('invoice-retrieval: windows and dedup', () => {
 });
 
 describe('invoice-retrieval: clients, credentials and shadow', () => {
+    it('excludes deactivated and canceled firms without KSeF calls, failures or alerts', async () => {
+        const active = await firm('eligible', { status: 'active' });
+        const deactivated = await firm('deactivated', { active: false, status: 'active' });
+        const canceled = await firm('canceled', { status: 'canceled' });
+        await client(active, '1111111111');
+        await client(deactivated, '3333333333');
+        await client(canceled, '5555555555');
+        const { port } = fakeKsef(() => page([], { permanentStorageHwmDate: T(NOW.getTime() - 1000) }));
+        const log = vi.fn();
+        const result = await job(port).run(ctx({ log }));
+        expect(port.authenticated).toEqual(['1111111111']);
+        expect(result).toMatchObject({ processed: 1, failures: [], detail: { clients: 1, excluded: 2 } });
+        expect(log).toHaveBeenCalledWith('invoice-retrieval: excluded 2 client(s) belonging to inactive firms');
+        expect((await pg.query<any>('SELECT count(*)::int n FROM system_alerts')).rows[0].n).toBe(0);
+    });
+
     it('manual client scope runs even when scheduled sync is disabled, without reading another firm', async () => {
         const ownFirm = await firm('manual-own');
         const otherFirm = await firm('manual-other');
