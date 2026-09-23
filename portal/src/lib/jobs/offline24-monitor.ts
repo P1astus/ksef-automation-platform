@@ -16,11 +16,11 @@ import { offlineUrgency, type OfflineUrgency } from '../offline-markers';
 //   * unlike workflow 05, deactivated firms and firms without active subscription access are excluded and counted;
 //     intentional exclusions do not raise an alert or appear as failures
 //
-// Like the workflow, the alert_sent_* flags are written but never read: an unresolved invoice re-alerts on every run.
-// (Kept 1:1 on purpose; whether to alert once per tier is a product decision, see HANDOVER.)
+// Unresolved invoices alert once per urgency tier. Each tier's durable alert_sent_* flag is checked before sending
+// and written only after the alert is recorded, so a failed recording remains retryable.
 //
-// IDEMPOTENCY BOUNDARY: safe to re-run. Marking uploaded is guarded by `uploaded_to_ksef = false`, so a repeat is a
-// no-op; a repeat of an alert only sends the same alert again and re-sets the same flag.
+// IDEMPOTENCY BOUNDARY: safe to re-run. Marking uploaded is guarded by `uploaded_to_ksef = false`; each alert tier is
+// skipped after its flag is set, while a higher urgency tier can still alert once as the deadline approaches.
 // SHADOW: reads and classifies only. No marker, no flag, no alert (the alerts module also refuses in shadow).
 
 const ALERT_FLAG: Record<Exclude<OfflineUrgency, 'ok'>, 'alert_sent_overdue' | 'alert_sent_1h' | 'alert_sent_4h'> = {
@@ -64,7 +64,8 @@ export function offline24MonitorJob(): Job {
         lookbackMinutes: 180,
         async run(ctx): Promise<JobResult> {
             const scope = await ctx.db.query(
-                `SELECT oi.id, oi.firm_id, oi.invoice_number, oi.client_nip, oi.upload_deadline,
+        `SELECT oi.id, oi.firm_id, oi.invoice_number, oi.client_nip, oi.upload_deadline,
+                        oi.alert_sent_overdue, oi.alert_sent_1h, oi.alert_sent_4h,
                         f.is_active AS firm_is_active, f.subscription_status, f.trial_expires_at
                    FROM offline_invoices oi
                    JOIN firms f ON f.id = oi.firm_id
@@ -109,6 +110,7 @@ export function offline24MonitorJob(): Job {
                     const reading = offlineUrgency(row.upload_deadline, ctx.now().getTime());
                     counts[reading.urgency]++;
                     if (reading.urgency === 'ok') { processed++; continue; }
+                    if (row[ALERT_FLAG[reading.urgency]]) { processed++; continue; }
 
                     const msg = MESSAGES[reading.urgency];
                     const res = await ctx.alerts.raise({

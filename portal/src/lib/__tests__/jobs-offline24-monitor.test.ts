@@ -206,6 +206,29 @@ describe('offline24-monitor job (port of workflow 05)', () => {
         for (const other of ['alert_sent_overdue', 'alert_sent_1h', 'alert_sent_4h'].filter(x => x !== flag)) expect(row[other]).toBe(false);
     });
 
+    it('sends at most one alert per urgency tier for an unresolved invoice', async () => {
+        const f = await firm('a'); await client(f, '1111111111');
+        const o = await offline(f, '1111111111', 'FV/9', at(NOW.getTime() - 2 * H));
+        await offline24MonitorJob().run(ctx());
+        await offline24MonitorJob().run(ctx());
+        expect(await alerts()).toHaveLength(1);
+        expect((await off(o)).alert_sent_overdue).toBe(true);
+    });
+
+    it('allows one alert as an unresolved invoice advances through each urgency tier', async () => {
+        const f = await firm('a'); await client(f, '1111111111');
+        const deadline = NOW.getTime() + 2 * H;
+        const o = await offline(f, '1111111111', 'FV/10', at(deadline));
+        await offline24MonitorJob().run(ctx());
+        await offline24MonitorJob().run(ctx({ now: () => new Date(deadline - 30 * 60_000) }));
+        await offline24MonitorJob().run(ctx({ now: () => new Date(deadline + H) }));
+        await offline24MonitorJob().run(ctx({ now: () => new Date(deadline + H) }));
+        expect(await alerts()).toHaveLength(3);
+        expect((await off(o)).alert_sent_4h).toBe(true);
+        expect((await off(o)).alert_sent_1h).toBe(true);
+        expect((await off(o)).alert_sent_overdue).toBe(true);
+    });
+
     it('more than 4h left: no alert, no flag', async () => {
         const f = await firm('a'); await client(f, '1111111111');
         const o = await offline(f, '1111111111', 'FV/9', at(NOW.getTime() + 10 * H));
