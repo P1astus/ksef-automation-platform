@@ -279,7 +279,6 @@ describe('invoice-retrieval: windows and dedup', () => {
 
     it('one KSeF invoice between two clients of the SAME firm is stored for both (a sale and a purchase)', async () => {
         // Post-contract schema: only UNIQUE (firm_id, client_nip, ksef_number) remains (db/contract/...).
-        await pg.query('ALTER TABLE invoices DROP CONSTRAINT invoices_ksef_number_key');
         const f = await firm('a');
         await client(f, '1111111111'); await client(f, '2222222222');
         const shared = meta(num(7), T(NOW.getTime() - 3600_000)); // seller 1111111111, buyer 2222222222
@@ -291,14 +290,15 @@ describe('invoice-retrieval: windows and dedup', () => {
             .toEqual(['1111111111:sales', '2222222222:purchase']);
     });
 
-    it('a KSeF number another firm already stores fails loudly (never silently dropped) while the old global unique exists', async () => {
+    it('a KSeF number another firm stores is retained after the global unique contract step', async () => {
         const a = await firm('a'); const b = await firm('b');
         await client(a, '1111111111', { sync: false }); await client(b, '1111111111');
         await pg.query(`INSERT INTO invoices (firm_id, client_nip, ksef_number, invoice_number, direction) VALUES ($1, '1111111111', $2, 'FV/1', 'sales')`, [a, num(1)]);
         const { port } = fakeKsef((c) => c.subject === 'Subject1' ? page([meta(num(1), T(NOW.getTime() - 3600_000))]) : page([]));
         const r = await job(port).run(ctx());
-        expect(r.failures).toHaveLength(1);
-        expect(r.failures![0].error).toMatch(/unique|duplicate/i);
+        expect(r.failures).toEqual([]);
+        const copies = (await invoices()).filter(x => x.ksef_number === num(1));
+        expect(copies.map(x => x.firm_id).sort()).toEqual([a, b].sort());
     });
 });
 

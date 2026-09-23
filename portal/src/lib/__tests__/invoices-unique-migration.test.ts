@@ -52,10 +52,11 @@ describe('2026-09-21-invoices-unique-per-client', () => {
         await expect(pg.exec(MIGRATION)).resolves.not.toThrow();
     });
 
-    it('is listed in the manifest, after the job-harness migration; the contract step is NOT', () => {
+    it('lists the expand migration followed by the promoted global-unique contract step', () => {
         const manifest = JSON.parse(readFileSync(join(DB_DIR, 'migrations', 'manifest.json'), 'utf8')).migrations.map((m: any) => m.file);
         expect(manifest).toContain('2026-09-21-invoices-unique-per-client.sql');
-        expect(manifest.join()).not.toContain('drop-global-ksef-number-unique');
+        expect(manifest).toContain('2026-09-23-drop-global-ksef-number-unique.sql');
         expect(manifest.indexOf('2026-09-21-invoices-unique-per-client.sql')).toBeGreaterThan(manifest.indexOf('2026-09-20-job-harness.sql'));
+        expect(manifest.indexOf('2026-09-23-drop-global-ksef-number-unique.sql')).toBeGreaterThan(manifest.indexOf('2026-09-21-invoices-unique-per-client.sql'));
     });
 });
