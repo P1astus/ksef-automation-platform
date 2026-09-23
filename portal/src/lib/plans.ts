@@ -2,9 +2,8 @@
 // UI surface that shows or acts on them (dashboard/billing/page.tsx,
 // dashboard/PaywallOverlay.tsx). Keep this in sync with billing/route.ts's
 // PLAN_DETAILS (price/tier/maxClients — that's what Stripe checkout actually
-// charges) and PricingSection.tsx (the public marketing page, which needs
-// its own shape for the monthly/annual toggle and isn't a good fit to share
-// this type, but should still quote the same monthly prices).
+// charges). PricingSection.tsx has its own marketing copy but uses this
+// type and the same monthly prices.
 export type PlanId = 'start' | 'biznes' | 'pro';
 
 // Paid capabilities a plan can grant. Start is deliberately a read-only

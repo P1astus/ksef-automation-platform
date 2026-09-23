@@ -38,7 +38,7 @@ Usługodawca nie świadczy usług doradztwa podatkowego ani prawnego. Odpowiedzi
 • Biznes — 399 PLN/mies. — do 50 klientów KSeF (dodatkowo: wystawianie i wysyłka faktur do KSeF, eksporty do systemów księgowych, klasyfikacja AI, zarządzanie zespołem)
 • Pro — 799 PLN/mies. — do 999 klientów KSeF (funkcje planu Biznes)
 
-Płatności są obsługiwane przez Stripe Inc. Opłaty są pobierane z góry za każdy okres rozliczeniowy (miesięcznie lub rocznie). Faktury VAT za subskrypcję są wysyłane automatycznie na adres e-mail konta.
+Płatności są obsługiwane przez Stripe Inc. Opłaty są pobierane z góry za każdy miesięczny okres rozliczeniowy. Faktury VAT za subskrypcję są wysyłane automatycznie na adres e-mail konta.
 
 Okres próbny: 14 dni od rejestracji (bez karty płatniczej). Po upływie okresu próbnego dostęp do Platformy wymaga aktywnego planu.`,
         },
