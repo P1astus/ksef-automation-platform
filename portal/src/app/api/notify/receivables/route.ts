@@ -6,7 +6,7 @@ import { safeEqual } from '@/lib/auth';
 import { assertMailTransportConfigured } from '@/lib/mail-transport';
 import { notifyReceivables } from '@/lib/notifications/receivables';
 
-// Called weekly by workflows/09-client-notifications.json. Same shared-
+// Protected compatibility endpoint for the weekly receivables digest. Same shared-
 // secret pattern as digest/route.ts and notify/offline24/route.ts.
 //
 // Informational only — a periodic summary of the client's own overdue

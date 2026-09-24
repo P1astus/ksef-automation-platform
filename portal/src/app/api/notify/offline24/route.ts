@@ -6,7 +6,7 @@ import { safeEqual } from '@/lib/auth';
 import { assertMailTransportConfigured } from '@/lib/mail-transport';
 import { notifyOffline24 } from '@/lib/notifications/offline24';
 
-// Called by workflows/09-client-notifications.json every 2 hours. Protected
+// Protected compatibility endpoint for the client-facing Offline24 notification.
 // by a shared secret exactly like digest/route.ts: Authorization: Bearer
 // <NOTIFY_SECRET>.
 //

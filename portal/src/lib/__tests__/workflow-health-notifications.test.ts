@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { clientNotificationsOffline24Job, clientNotificationsReceivablesJob } from '@/lib/jobs/client-notifications';
 
 const root = join(__dirname, '..', '..', '..', '..');
 
@@ -26,10 +27,11 @@ describe('health and notification workflow failure handling', () => {
         }
     });
 
-    it('does not convert notification delivery failures into successful workflow output', () => {
-        const workflow = JSON.parse(readFileSync(join(root, 'workflows', '09-client-notifications.json'), 'utf8'));
-        const calls = workflow.nodes.filter((node: { name: string }) => node.name.startsWith('Call Notify'));
-        expect(calls).toHaveLength(2);
-        expect(calls.every((node: { onError: string }) => node.onError === 'stopWorkflow')).toBe(true);
+    it('retires workflow 09 while retaining both scheduled notification jobs and API routes', () => {
+        expect(existsSync(join(root, 'workflows', '09-client-notifications.json'))).toBe(false);
+        expect(clientNotificationsOffline24Job.schedule).toEqual({ kind: 'cron', expr: '0 */2 * * *', timezone: 'Europe/Warsaw' });
+        expect(clientNotificationsReceivablesJob.schedule).toEqual({ kind: 'cron', expr: '0 8 * * 1', timezone: 'Europe/Warsaw' });
+        expect(existsSync(join(root, 'portal', 'src', 'app', 'api', 'notify', 'offline24', 'route.ts'))).toBe(true);
+        expect(existsSync(join(root, 'portal', 'src', 'app', 'api', 'notify', 'receivables', 'route.ts'))).toBe(true);
     });
 });
