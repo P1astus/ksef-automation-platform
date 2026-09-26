@@ -46,6 +46,7 @@ export default function SettingsPage() {
     const [firmName, setFirmName] = useState('');
     const [firmNip, setFirmNip] = useState('');
     const [newEmail, setNewEmail] = useState('');
+    const [emailPw, setEmailPw] = useState('');
     const [currentPw, setCurrentPw] = useState('');
     const [newPw, setNewPw] = useState('');
     const [confirmPw, setConfirmPw] = useState('');
@@ -146,7 +147,12 @@ export default function SettingsPage() {
                         <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nowy adres e-mail</label>
                         <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
                     </div>
-                    <button onClick={() => patch('email', { action: 'update_email', new_email: newEmail }, 'email')} className="btn-primary" style={{ marginTop: 16, opacity: loading['email'] ? 0.7 : 1 }}>
+                    <div style={{ marginTop: 14 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Obecne hasło</label>
+                        <input type="password" value={emailPw} onChange={e => setEmailPw(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0 0' }}>Po zmianie adresu wszystkie inne sesje zostaną wylogowane.</p>
+                    <button onClick={() => patch('email', { action: 'update_email', new_email: newEmail, current_password: emailPw }, 'email')} className="btn-primary" style={{ marginTop: 16, opacity: loading['email'] ? 0.7 : 1 }}>
                         {loading['email'] ? 'Zapisywanie...' : 'Zmień e-mail'}
                     </button>
                     {msgs.email && <StatusMsg msg={msgs.email.text} ok={msgs.email.ok} />}

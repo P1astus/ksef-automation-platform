@@ -6,6 +6,10 @@ import { appUrl } from '@/lib/app-url';
 import { sendPasswordReset } from '@/lib/email';
 import { assertMailTransportConfigured } from '@/lib/mail-transport';
 import { consumeRateLimit, rateLimitResponse, requestIp } from '@/lib/rate-limit';
+import { revokeSessions } from '@/lib/auth';
+
+// Only a SHA-256 of a reset token is stored; the raw token exists in the e-mailed link alone.
+const hashResetToken = (token: string) => crypto.createHash('sha256').update(token, 'utf8').digest('hex');
 
 export async function POST(request: Request) {
     try {
@@ -54,9 +58,9 @@ export async function POST(request: Request) {
                     const token = crypto.randomBytes(32).toString('hex');
                     const expires = new Date(Date.now() + 60 * 60 * 1000);
                     if (target.account_type === 'owner') {
-                        await query('UPDATE firms SET reset_token = $1, reset_token_expires_at = $2 WHERE id = $3', [token, expires, target.id]);
+                        await query('UPDATE firms SET reset_token = $1, reset_token_expires_at = $2 WHERE id = $3', [hashResetToken(token), expires, target.id]);
                     } else {
-                        await query('UPDATE firm_users SET reset_token = $1, reset_token_expires_at = $2 WHERE id = $3', [token, expires, target.id]);
+                        await query('UPDATE firm_users SET reset_token = $1, reset_token_expires_at = $2 WHERE id = $3', [hashResetToken(token), expires, target.id]);
                     }
                     const resetUrl = `${base}/reset-password/${token}`;
                     resetUrls.push(resetUrl);
@@ -90,12 +94,12 @@ export async function POST(request: Request) {
             if (!confirmLimit.allowed) return rateLimitResponse(confirmLimit);
 
             const result = await query(
-                `SELECT 'owner' AS account_type, id FROM firms
+                `SELECT 'owner' AS account_type, id, id AS firm_id FROM firms
                  WHERE reset_token = $1 AND reset_token_expires_at > NOW()
                  UNION ALL
-                 SELECT 'member' AS account_type, id FROM firm_users
+                 SELECT 'member' AS account_type, id, firm_id FROM firm_users
                  WHERE reset_token = $1 AND reset_token_expires_at > NOW()`,
-                [token]
+                [hashResetToken(String(token))]
             );
 
             if (result.rows.length === 0) {
@@ -113,11 +117,13 @@ export async function POST(request: Request) {
                     `UPDATE firms SET admin_password_hash = $1, reset_token = NULL, reset_token_expires_at = NULL WHERE id = $2`,
                     [hash, target.id]
                 );
+                await revokeSessions(target.id, null);
             } else {
                 await query(
                     `UPDATE firm_users SET password_hash = $1, reset_token = NULL, reset_token_expires_at = NULL WHERE id = $2`,
                     [hash, target.id]
                 );
+                await revokeSessions(target.firm_id, target.id);
             }
 
             return NextResponse.json({ success: true });

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getSession, requireRole, sessionRole, invalidateFirmActiveCache } from '@/lib/auth';
+import { getSession, requireRole, sessionRole, invalidateFirmActiveCache, createSession, revokeSessions } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { capabilities } from '@/lib/deployment';
@@ -70,16 +70,27 @@ export async function PATCH(request: Request) {
             const block = await requireActiveSubscription(session.firmId);
             if (block) return block;
         }
-        const { new_email } = body;
+        const { new_email, current_password } = body;
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!new_email || !emailRegex.test(new_email)) {
             return NextResponse.json({ error: 'Nieprawidłowy adres e-mail' }, { status: 400 });
+        }
+        // The login e-mail is where password resets go: changing it with only
+        // a session (e.g. a copied cookie) would hand over the account.
+        if (!current_password) {
+            return NextResponse.json({ error: 'Podaj obecne hasło, aby zmienić adres e-mail' }, { status: 400 });
+        }
+        const owner = await query('SELECT admin_password_hash FROM firms WHERE id = $1', [session.firmId]);
+        if (!await bcrypt.compare(String(current_password), owner.rows[0]?.admin_password_hash || '')) {
+            return NextResponse.json({ error: 'Nieprawidłowe obecne hasło' }, { status: 401 });
         }
         const existing = await query('SELECT id FROM firms WHERE admin_email = $1 AND id != $2', [new_email.toLowerCase(), session.firmId]);
         if (existing.rows.length > 0) {
             return NextResponse.json({ error: 'Ten adres e-mail jest już zajęty' }, { status: 409 });
         }
         await query('UPDATE firms SET admin_email = $1 WHERE id = $2', [new_email.toLowerCase(), session.firmId]);
+        const version = await revokeSessions(session.firmId, null);
+        await createSession(session.firmId, new_email.toLowerCase(), 'owner', null, version);
         return NextResponse.json({ success: true });
     }
 
@@ -109,6 +120,9 @@ export async function PATCH(request: Request) {
             }
             const hash = await bcrypt.hash(new_password, 10);
             await query('UPDATE firm_users SET password_hash = $1 WHERE id = $2', [hash, session.userId]);
+            // Every other session of this member ends; this one is re-issued.
+            const version = await revokeSessions(session.firmId, session.userId);
+            await createSession(session.firmId, session.adminEmail, sessionRole(session), session.userId, version);
             return NextResponse.json({ success: true });
         }
 
@@ -120,6 +134,8 @@ export async function PATCH(request: Request) {
 
         const hash = await bcrypt.hash(new_password, 10);
         await query('UPDATE firms SET admin_password_hash = $1 WHERE id = $2', [hash, session.firmId]);
+        const version = await revokeSessions(session.firmId, null);
+        await createSession(session.firmId, session.adminEmail, 'owner', null, version);
         return NextResponse.json({ success: true });
     }
 

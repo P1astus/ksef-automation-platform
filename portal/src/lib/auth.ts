@@ -70,10 +70,13 @@ export async function createSession(
     firmId: number,
     adminEmail: string,
     role: SessionRole = 'owner',
-    userId: number | null = null
+    userId: number | null = null,
+    sessionVersion = 0
 ) {
     const expires = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 hours
-    const session = await encrypt({ firmId, adminEmail, role, userId, expires });
+    // sv = the account's session_version at sign-in; getSession() rejects the
+    // token once the account's version moves past it (see revokeSessions()).
+    const session = await encrypt({ firmId, adminEmail, role, userId, sv: sessionVersion, expires });
 
     const cookieStore = await cookies();
     cookieStore.set('session', session, {
@@ -112,22 +115,27 @@ export async function requireRole(session: { role?: SessionRole } | null, allowe
 // is a single container); settings/route.ts's deactivate_account clears its own
 // entry, any other way of flipping the flag lags by at most the TTL.
 const FIRM_ACTIVE_TTL_MS = 30_000;
-const firmActiveCache = new Map<number, { active: boolean; tier: unknown; at: number }>();
+const firmActiveCache = new Map<number, { active: boolean; tier: unknown; sessionVersion: number; at: number }>();
 
 export function invalidateFirmActiveCache(firmId?: number) {
     if (firmId === undefined) firmActiveCache.clear();
     else firmActiveCache.delete(firmId);
 }
 
-async function loadFirmAccess(firmId: number): Promise<{ active: boolean; tier: unknown }> {
+async function loadFirmAccess(firmId: number): Promise<{ active: boolean; tier: unknown; sessionVersion: number }> {
     const hit = firmActiveCache.get(firmId);
     if (hit && Date.now() - hit.at < FIRM_ACTIVE_TTL_MS) return hit;
     // Lazy import keeps `pg` out of middleware's bundle, which only needs
     // getSessionUnchecked(). A DB error propagates on purpose: failing open
     // here would let a deactivated firm's sessions through during an outage.
     const { query } = await import('./db');
-    const res = await query('SELECT is_active, subscription_tier FROM firms WHERE id = $1', [firmId]);
-    const entry = { active: res.rows[0]?.is_active === true, tier: res.rows[0]?.subscription_tier, at: Date.now() };
+    const res = await query('SELECT is_active, subscription_tier, session_version FROM firms WHERE id = $1', [firmId]);
+    const entry = {
+        active: res.rows[0]?.is_active === true,
+        tier: res.rows[0]?.subscription_tier,
+        sessionVersion: Number(res.rows[0]?.session_version ?? 0),
+        at: Date.now(),
+    };
     firmActiveCache.set(firmId, entry);
     return entry;
 }
@@ -151,6 +159,9 @@ export async function getSession() {
     if (!session) return null;
     const access = await loadFirmAccess(session.firmId);
     if (!access.active) return null;
+    const tokenVersion = Number(session.sv ?? 0);
+    // The owner's sessions are revoked through firms.session_version.
+    if (session.userId == null && tokenVersion !== access.sessionVersion) return null;
     // Team seats are a Biznes+ feature. Invited members (userId set) of a firm
     // that has since downgraded lose their session here; the owner never does.
     // Shares the 30 s cache above, so a webhook-driven downgrade lags by at
@@ -164,13 +175,26 @@ export async function getSession() {
     if (session.userId != null) {
         const { query } = await import('./db');
         const member = await query(
-            'SELECT id, role FROM firm_users WHERE id = $1 AND firm_id = $2 AND is_active = true',
+            'SELECT id, role, session_version FROM firm_users WHERE id = $1 AND firm_id = $2 AND is_active = true',
             [session.userId, session.firmId]
         );
         if (!member.rows[0]) return null;
+        if (tokenVersion !== Number(member.rows[0].session_version ?? 0)) return null;
         session.role = member.rows[0].role;
     }
     return session;
+}
+
+// Invalidates every existing session of one account (the owner when userId is
+// null, otherwise that team member) and returns the new version, so the caller
+// can re-issue its own cookie with createSession(..., newVersion).
+export async function revokeSessions(firmId: number, userId: number | null): Promise<number> {
+    const { query } = await import('./db');
+    const res = userId == null
+        ? await query('UPDATE firms SET session_version = session_version + 1 WHERE id = $1 RETURNING session_version', [firmId])
+        : await query('UPDATE firm_users SET session_version = session_version + 1 WHERE id = $1 AND firm_id = $2 RETURNING session_version', [userId, firmId]);
+    invalidateFirmActiveCache(firmId);
+    return Number(res.rows[0]?.session_version ?? 0);
 }
 
 export async function logout() {

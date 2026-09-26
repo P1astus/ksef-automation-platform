@@ -31,13 +31,19 @@ describe('team-member password reset and dev URL safety', () => {
     afterEach(() => vi.unstubAllEnvs());
 
     it('resets a firm_users password when the token belongs to a member', async () => {
-        mocks.query.mockResolvedValueOnce({ rows: [{ account_type: 'member', id: 44 }] });
+        mocks.query.mockResolvedValueOnce({ rows: [{ account_type: 'member', id: 44, firm_id: 3 }] });
         mocks.query.mockResolvedValueOnce({ rows: [] });
+        mocks.query.mockResolvedValueOnce({ rows: [{ session_version: 1 }] });
         const response = await POST(request({ action: 'confirm', token: 'valid-token', newPassword: 'new-password' }));
         expect(response.status).toBe(200);
-        expect(mocks.query).toHaveBeenLastCalledWith(
+        expect(mocks.query).toHaveBeenCalledWith(
             expect.stringContaining('UPDATE firm_users SET password_hash'),
             ['new-hash', 44]
+        );
+        // The member's existing sessions end with the reset.
+        expect(mocks.query).toHaveBeenLastCalledWith(
+            expect.stringContaining('UPDATE firm_users SET session_version = session_version + 1'),
+            [44, 3]
         );
     });
 

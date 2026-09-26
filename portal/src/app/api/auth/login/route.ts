@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
         // Find the firm by admin email — the owner login path.
         const result = await query(
-            'SELECT id, admin_password_hash, is_active FROM firms WHERE admin_email = $1',
+            'SELECT id, admin_password_hash, is_active, session_version FROM firms WHERE admin_email = $1',
             [email]
         );
 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
                 );
             }
 
-            await createSession(firm.id, email, 'owner', null);
+            await createSession(firm.id, email, 'owner', null, Number(firm.session_version ?? 0));
             return NextResponse.json({ success: true, redirectUrl: '/dashboard' });
         }
 
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
         // (and stay logged in, since nothing re-checks per request) after a
         // billing lapse or ops deactivation indefinitely.
         const memberResult = await query(
-            `SELECT fu.id, fu.firm_id, fu.password_hash, fu.role, fu.is_active, f.subscription_tier
+            `SELECT fu.id, fu.firm_id, fu.password_hash, fu.role, fu.is_active, fu.session_version, f.subscription_tier
              FROM firm_users fu JOIN firms f ON f.id = fu.firm_id
              WHERE fu.email = $1 AND f.is_active = true`,
             [email]
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
                 continue;
             }
             if (await bcrypt.compare(password, member.password_hash)) {
-                await createSession(member.firm_id, email, member.role, member.id);
+                await createSession(member.firm_id, email, member.role, member.id, Number(member.session_version ?? 0));
                 return NextResponse.json({ success: true, redirectUrl: '/dashboard' });
             }
         }

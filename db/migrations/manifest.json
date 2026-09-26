@@ -28,6 +28,10 @@
     {
       "version": "2026-09-23-drop-global-ksef-number-unique",
       "file": "2026-09-23-drop-global-ksef-number-unique.sql"
+    },
+    {
+      "version": "2026-09-26-session-version",
+      "file": "2026-09-26-session-version.sql"
     }
   ]
 }
