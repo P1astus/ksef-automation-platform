@@ -64,7 +64,8 @@ export async function GET(request: Request) {
             })),
         });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        console.error('KSeF settings read failed:', err);
+        return NextResponse.json({ error: 'Nie udało się odczytać ustawień KSeF' }, { status: 500 });
     }
 }
 
@@ -153,6 +154,7 @@ export async function POST(request: Request) {
         if (err instanceof MissingCredentialKeyError) {
             return NextResponse.json({ error: 'Szyfrowanie danych uwierzytelniających nie jest skonfigurowane' }, { status: 503 });
         }
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        console.error('KSeF settings save failed:', err);
+        return NextResponse.json({ error: 'Nie udało się zapisać ustawień KSeF' }, { status: 500 });
     }
 }

@@ -119,6 +119,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ url: checkoutSession.url });
     } catch (err: any) {
         console.error('Billing POST error:', err);
-        return NextResponse.json({ error: err?.message || 'Błąd serwera' }, { status: 500 });
+        return NextResponse.json({ error: 'Nie udało się rozpocząć płatności. Spróbuj ponownie później.' }, { status: 500 });
     }
 }

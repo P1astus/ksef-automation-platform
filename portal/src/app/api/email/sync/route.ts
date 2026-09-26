@@ -164,6 +164,6 @@ export async function POST(request: Request) {
         if (e.code === 'ECONNREFUSED' || e.code === 'ENOTFOUND') {
             return NextResponse.json({ error: 'Niewłaściwe dane logowania IMAP lub serwer poczty jest niedostępny.' }, { status: 500 });
         }
-        return NextResponse.json({ error: 'Failed to sync emails: ' + e.message }, { status: 500 });
+        return NextResponse.json({ error: 'Synchronizacja poczty nie powiodła się. Sprawdź ustawienia skrzynki IMAP.' }, { status: 500 });
     }
 }

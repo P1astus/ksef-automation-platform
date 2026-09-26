@@ -71,6 +71,6 @@ export async function GET(request: Request) {
         });
     } catch (err: any) {
         console.error('Invoices GET error:', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: 'Nie udało się pobrać listy faktur' }, { status: 500 });
     }
 }

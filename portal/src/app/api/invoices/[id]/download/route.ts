@@ -45,6 +45,6 @@ export async function GET(
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('Download error:', msg);
-        return NextResponse.json({ error: `Błąd pobierania: ${msg}` }, { status: 500 });
+        return NextResponse.json({ error: 'Błąd pobierania faktury' }, { status: 500 });
     }
 }
