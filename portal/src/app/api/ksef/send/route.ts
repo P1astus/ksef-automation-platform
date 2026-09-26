@@ -94,6 +94,15 @@ export async function pollAndStoreUpo(
     return pending; // whatever's left never reached a terminal status in time
 }
 
+const MAX_INVOICES_PER_REQUEST = 100;
+const ALREADY_SUBMITTED = new Set(['sent', 'exported_jpk']);
+
+function ineligibleReason(inv: { direction?: string; processing_status?: string | null; ksef_number?: string | null }): string | null {
+    if (inv.direction !== 'sales') return 'Do KSeF wysyła się tylko faktury sprzedaży';
+    if (inv.ksef_number || ALREADY_SUBMITTED.has(inv.processing_status ?? '')) return 'Faktura została już wysłana do KSeF';
+    return null;
+}
+
 export async function POST(request: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -107,6 +116,9 @@ export async function POST(request: Request) {
     if (!invoiceIds.length) {
         return NextResponse.json({ error: 'Brak faktur do wysłania' }, { status: 400 });
     }
+    if (invoiceIds.length > MAX_INVOICES_PER_REQUEST || !invoiceIds.every(id => Number.isSafeInteger(id) && id > 0)) {
+        return NextResponse.json({ error: `Nieprawidłowa lista faktur (maksymalnie ${MAX_INVOICES_PER_REQUEST} identyfikatorów)` }, { status: 400 });
+    }
 
     // Fetch invoices with client token — must belong to this firm. The join
     // is scoped by firm_id on both sides: a NIP can now belong to more than
@@ -114,8 +126,8 @@ export async function POST(request: Request) {
     // client row and send that firm's invoice using this firm's token.
     const placeholders = invoiceIds.map((_, i) => `$${i + 2}`).join(',');
     const invRes = await query(
-        `SELECT i.id, i.invoice_number, i.raw_xml, i.direction,
-                c.id AS client_id, c.nip, c.client_name, c.ksef_token_encrypted
+        `SELECT i.id, i.invoice_number, i.raw_xml, i.direction, i.processing_status, i.ksef_number,
+                c.id AS client_id, c.nip, c.client_name, c.ksef_token_encrypted, c.auth_method
          FROM invoices i
          JOIN clients c ON i.client_nip = c.nip AND i.firm_id = c.firm_id
          WHERE i.id IN (${placeholders}) AND i.firm_id = $1`,
@@ -160,8 +172,23 @@ export async function POST(request: Request) {
 
     const results: { id: number; ksefReferenceNumber?: string; error?: string; upoPending?: boolean }[] = [];
 
-    for (const [nip, invoices] of byClient) {
-        const { ksef_token_encrypted, client_name, client_id } = invoices[0];
+    for (const [nip, candidates] of byClient) {
+        const { ksef_token_encrypted, client_name, client_id, auth_method } = candidates[0];
+        // Only this firm's own, not-yet-submitted sales invoices go to KSeF.
+        const invoices = candidates.filter(inv => {
+            const reason = ineligibleReason(inv);
+            if (reason) results.push({ id: inv.id, error: reason });
+            return !reason;
+        });
+        if (invoices.length === 0) continue;
+        // A certificate client's stored credential is a PKCS#12 bundle, not a
+        // KSeF token; it must never be sent to KSeF as one.
+        if (auth_method === 'certificate') {
+            for (const inv of invoices) {
+                results.push({ id: inv.id, error: `Klient ${client_name} używa certyfikatu - wysyłka z certyfikatem nie jest jeszcze obsługiwana` });
+            }
+            continue;
+        }
         if (!ksef_token_encrypted) {
             for (const inv of invoices) {
                 results.push({ id: inv.id, error: `Brak tokenu KSeF dla ${client_name}` });
