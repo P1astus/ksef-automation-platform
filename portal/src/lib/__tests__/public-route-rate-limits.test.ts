@@ -9,7 +9,7 @@ vi.mock('@/lib/rate-limit', async () => {
     const actual = await vi.importActual<typeof import('@/lib/rate-limit')>('@/lib/rate-limit');
     return { ...actual, consumeRateLimit: (...a: unknown[]) => consumeRateLimit(...a) };
 });
-const queryMock = vi.fn(async (sql: string) => (/FROM document_requests/.test(sql)
+const queryMock = vi.fn(async (sql: string, _params?: unknown[]) => (/FROM document_requests/.test(sql)
     ? { rows: [{ firm_id: 1, client_id: 2, expires_at: new Date(Date.now() + 3600_000), client_nip: '1234563218', client_name: 'C' }] }
     : { rows: [] }));
 vi.mock('@/lib/db', () => ({ query: (sql: string, p?: unknown[]) => queryMock(sql, p), default: { connect: vi.fn() } }));
