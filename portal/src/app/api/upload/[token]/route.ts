@@ -1,6 +1,7 @@
 import { requireLicenceWrite } from '@/lib/entitlements';
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { consumeRateLimit, rateLimitResponse, requestIp } from '@/lib/rate-limit';
 import { saveUploadedFile, shortFileType, MAX_UPLOAD_BYTES, UPLOAD_TOO_LARGE_MESSAGE } from '@/lib/file-storage';
 
 // Public, no-login route — the whole point of a document request is that
@@ -36,6 +37,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (!doc) return NextResponse.json({ error: 'Link jest nieprawidłowy lub wygasł' }, { status: 404 });
     const licenceError = await requireLicenceWrite(doc.firm_id);
     if (licenceError) return licenceError;
+    // The link is public and valid for days: bound what one link, or one
+    // address, can write to the upload volume.
+    const tokenLimit = await consumeRateLimit('upload-token', token, 20, 60 * 60 * 1000);
+    if (!tokenLimit.allowed) return rateLimitResponse(tokenLimit);
+    const ipLimit = await consumeRateLimit('upload-ip', requestIp(request), 60, 60 * 60 * 1000);
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit);
 
     const formData = await request.formData().catch(() => null);
     const file = formData?.get('file') as File | null;

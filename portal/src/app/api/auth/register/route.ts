@@ -6,6 +6,7 @@ import { sendWelcome } from '@/lib/email';
 import { PLAN_MAX_CLIENTS } from '@/lib/plans';
 import pool from '@/lib/db';
 import { capabilities } from '@/lib/deployment';
+import { consumeRateLimit, rateLimitResponse, requestIp } from '@/lib/rate-limit';
 import { FirstRunClosedError, InvalidSetupTokenError, generateFirmSlug, registerFirstFirm } from '@/lib/first-run';
 
 export async function POST(request: Request) {
@@ -41,6 +42,9 @@ export async function POST(request: Request) {
                 { status: 400 }
             );
         }
+
+        const ipLimit = await consumeRateLimit('register-ip', requestIp(request), 10, 60 * 60 * 1000);
+        if (!ipLimit.allowed) return rateLimitResponse(ipLimit);
 
         if (capabilities().accessProvider === 'licence' && !firm_nip) {
             return NextResponse.json({ error: 'NIP firmy jest wymagany do aktywacji licencji' }, { status: 400 });
