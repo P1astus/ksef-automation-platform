@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { requireActiveSubscription } from '@/lib/entitlements';
@@ -8,6 +9,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     // Fetch invoice and verify firm ownership directly against invoices.firm_id
     // (not via a clients join on client_nip, which a shared NIP could defeat)
@@ -38,6 +40,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (subscriptionError) return subscriptionError;
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
     const body = await request.json().catch(() => ({}));
     const { processing_status } = body;
 

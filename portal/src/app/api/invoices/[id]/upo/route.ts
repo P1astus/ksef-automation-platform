@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { initInteractiveSession, downloadUpoByKsefNumber } from '@/lib/ksef-client';
@@ -9,6 +10,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     // Ownership check directly against invoices.firm_id, matching every
     // other per-invoice route (xml, download, payment) — see those for why

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
@@ -16,6 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (roleError) return roleError;
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     const check = await query('SELECT id, client_name FROM clients WHERE id = $1 AND firm_id = $2', [id, session.firmId]);
     const client = check.rows[0];

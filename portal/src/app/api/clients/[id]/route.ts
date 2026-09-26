@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { requireActiveSubscription } from '@/lib/entitlements';
@@ -9,6 +10,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     const clientRes = await query(
         `SELECT c.id, c.client_name, c.nip, c.auth_method, c.certificate_id,
@@ -56,6 +58,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (subscriptionError) return subscriptionError;
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
     const body = await request.json();
 
     const check = await query('SELECT id FROM clients WHERE id = $1 AND firm_id = $2', [id, session.firmId]);

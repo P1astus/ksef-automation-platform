@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { buildInvoicePdf, type InvoicePdfLine } from '@/lib/invoice-pdf';
@@ -27,6 +28,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     const res = await query(
         `SELECT invoice_number, ksef_number, direction, issue_date,

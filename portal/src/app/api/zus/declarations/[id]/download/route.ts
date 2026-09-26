@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 
@@ -8,6 +9,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const roleError = await requireRole(session, ['owner', 'admin', 'member', 'readonly']);
     if (roleError) return roleError;
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator.' }, { status: 400 });
 
     const result = await query(

@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
@@ -16,6 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (entitlements.accessState !== 'ok') return subscriptionInactiveResponse(entitlements.accessState);
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     const clientRes = await query(
         'SELECT id, nip, client_name, auth_method, ksef_token_encrypted FROM clients WHERE id = $1 AND firm_id = $2',

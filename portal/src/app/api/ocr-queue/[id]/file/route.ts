@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises';
+import { isRouteId } from '@/lib/route-id';
 import { basename } from 'path';
 import { NextResponse } from 'next/server';
 import { getSession, requireRole } from '@/lib/auth';
@@ -19,6 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     if (roleError) return roleError;
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
 
     const result = await query(

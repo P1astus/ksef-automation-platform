@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
@@ -24,6 +25,7 @@ export async function PATCH(
     if (subscriptionError) return subscriptionError;
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
     const body = await request.json().catch(() => ({}));
 
     // Code validation needs no DB, so bad input is refused before any lookup.

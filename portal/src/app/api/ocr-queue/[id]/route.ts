@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRouteId } from '@/lib/route-id';
 import { requireActiveSubscription } from '@/lib/entitlements';
 import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -19,6 +20,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (planError) return planError;
 
     const { id } = await params;
+    if (!isRouteId(id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator' }, { status: 400 });
     const body = await request.json().catch(() => ({}));
     const { action } = body;
 
