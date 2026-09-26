@@ -1,0 +1,22 @@
+# HTTPS for the hosted edition. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Before the first start:
+#   1. Point your domain's DNS at this server.
+#   2. Put the certificate chain and key in certificates/hosted/tls.crt and
+#      certificates/hosted/tls.key (chmod 600 the key), e.g. from Let's Encrypt:
+#      certbot certonly --webroot -w <the acme_webroot volume path> -d <domain>
+#   3. Set NEXT_PUBLIC_APP_URL=https://<domain> in .env (e-mailed links use it).
+# `!override` requires Docker Compose v2.24.4 or newer.
+services:
+  nginx:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    volumes: !override
+      - ./nginx/nginx.tls.conf:/etc/nginx/nginx.conf:ro
+      - ./certificates/hosted:/etc/nginx/tls:ro
+      - acme_webroot:/var/www/acme:ro
+
+volumes:
+  acme_webroot:

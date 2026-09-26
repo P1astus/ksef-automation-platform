@@ -52,3 +52,32 @@ describe('portal image', () => {
         expect(dockerfile).toContain('--target=node24');
     });
 });
+
+describe('hosted HTTPS overlay (docker-compose.tls.yml + nginx/nginx.tls.conf)', () => {
+    const conf = read('nginx/nginx.tls.conf');
+    const overlay = read('docker-compose.tls.yml');
+
+    it('redirects HTTP to HTTPS except the ACME challenge path', () => {
+        expect(conf).toMatch(/listen 80;[\s\S]*location \/\.well-known\/acme-challenge\/[\s\S]*return 308 https:\/\/\$host\$request_uri;/);
+    });
+
+    it('serves only modern TLS with HSTS and no client-supplied forwarding headers', () => {
+        expect(conf).toMatch(/listen 443 ssl;/);
+        expect(conf).toMatch(/ssl_protocols TLSv1\.2 TLSv1\.3;/);
+        expect(conf).toMatch(/Strict-Transport-Security "max-age=31536000"/);
+        expect(conf).toContain('proxy_set_header X-Real-IP $remote_addr;');
+        expect(conf).toContain('proxy_set_header X-Forwarded-Proto https;');
+        expect(conf).not.toMatch(/n8n|location \/webhook/);
+    });
+
+    it('resolves the portal per request', () => {
+        expect(conf).toMatch(/resolver 127\.0\.0\.11/);
+        expect(conf).toContain('proxy_pass $portal_upstream;');
+    });
+
+    it('mounts the certificate directory read-only from the git-ignored certificates folder', () => {
+        expect(overlay).toContain('./certificates/hosted:/etc/nginx/tls:ro');
+        expect(overlay).toContain('./nginx/nginx.tls.conf:/etc/nginx/nginx.conf:ro');
+        expect(read('.gitignore')).toMatch(/^certificates\/$/m);
+    });
+});
