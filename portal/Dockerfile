@@ -1,7 +1,7 @@
 # Build context is the REPOSITORY ROOT (docker-compose.yml: build.context: .), not ./portal, so the image can
 # carry the schema (db/) and the migration runner. The root .dockerignore is a whitelist: only portal/ and db/
 # enter the context, so certificates, .env files and backups can never leak into an image layer.
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -26,7 +26,7 @@ RUN npm run build
 
 # The job worker (src/worker/main.ts): one self-contained file, so it needs neither the Next.js standalone trace nor
 # node_modules (croner is used only by the worker and would not be traced). pg-native is an optional pg addon.
-RUN npx esbuild src/worker/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=worker.js --external:pg-native
+RUN npx esbuild src/worker/main.ts --bundle --platform=node --target=node24 --format=cjs --outfile=worker.js --external:pg-native
 
 # Production image, copy all the files and run next
 FROM base AS runner

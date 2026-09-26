@@ -44,3 +44,11 @@ describe('xades-sidecar', () => {
         expect(read('xades-sidecar/src/main/resources/application.yml')).toMatch(/show-details:\s*never/);
     });
 });
+
+describe('portal image', () => {
+    it('builds on a supported Node LTS (Node 20 reached end of life in April 2026)', () => {
+        const dockerfile = read('portal/Dockerfile');
+        expect(dockerfile).toMatch(/^FROM node:24-alpine AS base/m);
+        expect(dockerfile).toContain('--target=node24');
+    });
+});

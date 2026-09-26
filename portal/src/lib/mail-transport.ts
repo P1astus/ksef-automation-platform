@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 import { query } from '@/lib/db';
 import { capabilities, type EmailTransport } from '@/lib/deployment';
 
-// @ts-expect-error -- nodemailer does not publish TypeScript declarations.
 import nodemailer from 'nodemailer';
 
 type NodemailerTransport = {
