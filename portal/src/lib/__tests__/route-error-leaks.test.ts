@@ -21,6 +21,10 @@ vi.mock('@/lib/credential-crypto', () => ({
     MissingCredentialKeyError: class extends Error {},
 }));
 vi.mock('imap-simple', () => ({ default: { connect: vi.fn(async () => { throw new Error(`connect ECONNREFUSED ${INTERNAL}`); }) } }));
+vi.mock('@/lib/imap-host-policy', () => ({
+    resolveImapTarget: async (host: string) => ({ address: '203.0.113.10', servername: host }),
+    ImapHostNotAllowedError: class extends Error {},
+}));
 vi.mock('stripe', () => ({ default: class { customers = { create: async () => { throw new Error(INTERNAL); } }; } }));
 
 const queryMock = vi.fn();

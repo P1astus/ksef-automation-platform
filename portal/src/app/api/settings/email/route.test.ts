@@ -6,6 +6,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({ getSession: mocks.getSession, requireRole: mocks.requireRole }));
 vi.mock('@/lib/entitlements', () => ({ requireActiveSubscription: mocks.requireActiveSubscription }));
 vi.mock('@/lib/db', () => ({ query: mocks.query }));
+// Address policy is covered in imap-host-policy.test.ts; keep this test offline.
+vi.mock('@/lib/imap-host-policy', () => ({
+    resolveImapTarget: async (host: string) => ({ address: '203.0.113.10', servername: host }),
+    ImapHostNotAllowedError: class extends Error {},
+}));
+
 
 import { GET, POST } from './route';
 
