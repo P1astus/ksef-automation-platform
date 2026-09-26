@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
 
 export async function GET(request: Request) {
+    if (!await getSession()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = new URL(request.url);
     const nip = searchParams.get('nip')?.replace(/[-\s]/g, '');
 
