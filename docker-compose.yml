@@ -92,7 +92,6 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - portal
-      - n8n
   postgres:
     image: postgres:16-alpine
     container_name: n8n_postgres
@@ -104,7 +103,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U n8n" ]
       interval: 10s
@@ -124,7 +123,7 @@ services:
       # No docker-entrypoint-initdb.d mounts: initdb scripts ran only on an empty volume and covered only the
       # base schema, so a fresh install had no `firms` table. Schema is applied by ksef_migrate (db/).
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ksef_app -d ksef_platform" ]
       interval: 10s
@@ -194,7 +193,7 @@ services:
         condition: service_healthy
 
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:2.38.7
     container_name: n8n
     restart: unless-stopped
     environment:
@@ -235,7 +234,7 @@ services:
       # same 32-byte key as the portal; never rotate without re-encrypting rows.
       - "KSEF_CREDENTIALS_KEY=${KSEF_CREDENTIALS_KEY:-}"
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
     volumes:
       - n8n_data:/home/node/.n8n
       - n8n_files:/files
@@ -254,7 +253,7 @@ services:
     environment:
       - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
       # Round 4: this sidecar's crypto endpoints had no authentication at all
-      # and are published on 0.0.0.0:8090 - now required on every request
+      # and were published on 0.0.0.0:8090 (now loopback only) - now required on every request
       # except /actuator/health and /actuator/info (see SidecarApiKeyFilter). Refuses to start
       # without it, same as the portal's JWT_SECRET requirement above.
       - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
@@ -264,7 +263,7 @@ services:
       - "JPK_SIGNING_KEYSTORE_PATH=${JPK_SIGNING_KEYSTORE_PATH:-}"
       - "JPK_SIGNING_KEYSTORE_PASSWORD=${JPK_SIGNING_KEYSTORE_PASSWORD:-}"
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     volumes:
       - ./certificates:/app/certificates
 
