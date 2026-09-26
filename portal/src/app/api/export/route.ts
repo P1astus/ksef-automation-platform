@@ -6,6 +6,7 @@ import { generateOptimaXml, OptimaExportError } from '@/lib/optima-mapper';
 import { generateSymfoniaTxt } from '@/lib/symfonia-mapper';
 import { generateInsertEpp } from '@/lib/insert-mapper';
 import { logActivity } from '@/lib/activity';
+import { neutralizeSpreadsheetFormula } from '@/lib/text-safety';
 
 export async function POST(request: Request) {
     try {
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
                     'Kierunek', 'Kwota netto', 'Kwota VAT', 'Kwota brutto', 'Waluta',
                 ];
                 const escape = (v: unknown) => {
-                    const s = v == null ? '' : String(v);
+                    const s = neutralizeSpreadsheetFormula(v == null ? '' : String(v));
                     return s.includes(',') || s.includes('"') || s.includes('\n')
                         ? `"${s.replace(/"/g, '""')}"` : s;
                 };

@@ -1,5 +1,6 @@
 import { appUrl } from '@/lib/app-url';
 import { sendMail } from '@/lib/mail-transport';
+import { escapeHtml } from '@/lib/text-safety';
 
 async function send(to: string, subject: string, html: string) {
     await sendMail({ to, subject, html });
@@ -9,7 +10,7 @@ export async function sendPasswordReset(email: string, resetUrl: string) {
     await send(email, 'Reset hasła — KSeF Auto', `
         <h2>Reset hasła</h2>
         <p>Kliknij poniższy link, aby ustawić nowe hasło. Link jest ważny przez 1 godzinę.</p>
-        <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+        <a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
             Ustaw nowe hasło →
         </a>
         <p style="margin-top:24px;color:#94a3b8;font-size:13px;">
@@ -22,8 +23,8 @@ export async function sendTeamInvite(email: string, firmName: string, inviteUrl:
     await send(email, `Zaproszenie do ${firmName} w KSeF Auto`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#6366f1;font-size:22px">Zaproszenie do zespołu</h1>
-            <p style="color:#555;font-size:15px">Zostałeś zaproszony do biura <strong>${firmName}</strong> w KSeF Auto.</p>
-            <a href="${inviteUrl}" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Dołącz do zespołu →</a>
+            <p style="color:#555;font-size:15px">Zostałeś zaproszony do biura <strong>${escapeHtml(firmName)}</strong> w KSeF Auto.</p>
+            <a href="${escapeHtml(inviteUrl)}" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Dołącz do zespołu →</a>
             <p style="color:#999;font-size:12px;margin-top:24px">Link ważny 7 dni. KSeF Auto</p>
         </div>
     `);
@@ -33,7 +34,7 @@ export async function sendWelcome(email: string, firmName: string) {
     await send(email, `Witamy w KSeF Auto, ${firmName}!`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#6366f1;font-size:24px;margin-bottom:8px">Witamy w KSeF Auto!</h1>
-            <p style="color:#555;font-size:15px">Twoje konto dla biura <strong>${firmName}</strong> zostało utworzone.</p>
+            <p style="color:#555;font-size:15px">Twoje konto dla biura <strong>${escapeHtml(firmName)}</strong> zostało utworzone.</p>
             <p style="color:#555;font-size:15px">Masz <strong>14 dni za darmo</strong> — zacznij od dodania pierwszego klienta.</p>
             <a href="${appUrl()}/dashboard" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Przejdź do panelu →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
@@ -45,7 +46,7 @@ export async function sendTrialExpiry(email: string, firmName: string, daysLeft:
     await send(email, `Twój okres próbny wygasa za ${daysLeft} ${daysLeft === 1 ? 'dzień' : 'dni'}`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#f59e0b;font-size:22px;margin-bottom:8px">Okres próbny kończy się wkrótce</h1>
-            <p style="color:#555;font-size:15px">Hej ${firmName}, Twój bezpłatny okres próbny wygasa za <strong>${daysLeft} ${daysLeft === 1 ? 'dzień' : 'dni'}</strong>.</p>
+            <p style="color:#555;font-size:15px">Hej ${escapeHtml(firmName)}, Twój bezpłatny okres próbny wygasa za <strong>${daysLeft} ${daysLeft === 1 ? 'dzień' : 'dni'}</strong>.</p>
             <p style="color:#555;font-size:15px">Wybierz plan, aby nie stracić dostępu do faktur i danych Twoich klientów.</p>
             <a href="${appUrl()}/dashboard/billing" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Wybierz plan →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
@@ -57,9 +58,9 @@ export async function sendSyncFailed(email: string, firmName: string, clientName
     await send(email, `Błąd synchronizacji KSeF — ${clientName}`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#ef4444;font-size:22px;margin-bottom:8px">Synchronizacja nie powiodła się</h1>
-            <p style="color:#555;font-size:15px">Biuro: <strong>${firmName}</strong></p>
-            <p style="color:#555;font-size:15px">Klient: <strong>${clientName}</strong></p>
-            <p style="color:#555;font-size:15px">Błąd: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px">${errorMsg}</code></p>
+            <p style="color:#555;font-size:15px">Biuro: <strong>${escapeHtml(firmName)}</strong></p>
+            <p style="color:#555;font-size:15px">Klient: <strong>${escapeHtml(clientName)}</strong></p>
+            <p style="color:#555;font-size:15px">Błąd: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px">${escapeHtml(errorMsg)}</code></p>
             <a href="${appUrl()}/dashboard/clients" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:16px">Sprawdź klientów →</a>
             <p style="color:#999;font-size:12px;margin-top:32px">KSeF Auto · Automatyzacja KSeF dla biur rachunkowych</p>
         </div>
@@ -90,11 +91,11 @@ export async function sendOffline24Warning(
     await send(clientEmail, copy.title, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:${copy.color};font-size:22px;margin-bottom:8px">${copy.title}</h1>
-            <p style="color:#555;font-size:15px">${clientName},</p>
+            <p style="color:#555;font-size:15px">${escapeHtml(clientName)},</p>
             <p style="color:#555;font-size:15px">${copy.body}</p>
             <div style="background:#f9fafb;border-radius:10px;padding:16px;margin:16px 0">
                 <div style="font-size:13px;color:#666">Faktura</div>
-                <div style="font-size:16px;font-weight:700;color:#111">${invoiceNumber}</div>
+                <div style="font-size:16px;font-weight:700;color:#111">${escapeHtml(invoiceNumber)}</div>
                 <div style="font-size:13px;color:#666;margin-top:8px">Termin wysyłki</div>
                 <div style="font-size:16px;font-weight:700;color:#111">${new Date(deadline).toLocaleString('pl-PL')}</div>
             </div>
@@ -111,7 +112,7 @@ export async function sendReceivablesDigest(
     const total = invoices.reduce((s, i) => s + Number(i.gross_amount), 0);
     const rows = invoices.map(i => `
         <tr>
-            <td style="padding:8px 0;border-top:1px solid #eee">${i.invoice_number}</td>
+            <td style="padding:8px 0;border-top:1px solid #eee">${escapeHtml(i.invoice_number)}</td>
             <td style="padding:8px 0;border-top:1px solid #eee;color:#666">${new Date(i.due_date).toLocaleDateString('pl-PL')}</td>
             <td style="padding:8px 0;border-top:1px solid #eee;text-align:right;font-weight:600">${Number(i.gross_amount).toFixed(2)} PLN</td>
         </tr>
@@ -119,7 +120,7 @@ export async function sendReceivablesDigest(
     await send(clientEmail, `Przypomnienie o nieopłaconych fakturach (${invoices.length})`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#6366f1;font-size:22px;margin-bottom:8px">Nieopłacone faktury</h1>
-            <p style="color:#555;font-size:15px">${clientName},</p>
+            <p style="color:#555;font-size:15px">${escapeHtml(clientName)},</p>
             <p style="color:#555;font-size:15px">Poniżej znajduje się zestawienie Twoich faktur po terminie płatności — informacja poglądowa, nie wezwanie do zapłaty.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
                 <thead><tr style="text-align:left;color:#999;font-size:12px"><th>Faktura</th><th>Termin</th><th style="text-align:right">Kwota</th></tr></thead>
@@ -142,10 +143,10 @@ export async function sendDocumentRequest(
     await send(clientEmail, `${firmName} prosi o przesłanie dokumentów`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#6366f1;font-size:22px;margin-bottom:8px">Prośba o dokumenty</h1>
-            <p style="color:#555;font-size:15px">${clientName},</p>
-            <p style="color:#555;font-size:15px">Biuro <strong>${firmName}</strong> prosi o przesłanie dokumentów.</p>
-            ${message ? `<p style="color:#555;font-size:15px;background:#f9fafb;border-radius:8px;padding:12px 16px">${message}</p>` : ''}
-            <a href="${uploadUrl}" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:8px">Prześlij dokumenty →</a>
+            <p style="color:#555;font-size:15px">${escapeHtml(clientName)},</p>
+            <p style="color:#555;font-size:15px">Biuro <strong>${escapeHtml(firmName)}</strong> prosi o przesłanie dokumentów.</p>
+            ${message ? `<p style="color:#555;font-size:15px;background:#f9fafb;border-radius:8px;padding:12px 16px">${escapeHtml(message)}</p>` : ''}
+            <a href="${escapeHtml(uploadUrl)}" style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:8px">Prześlij dokumenty →</a>
             <p style="color:#999;font-size:12px;margin-top:16px">Link jest ważny do ${new Date(expiresAt).toLocaleDateString('pl-PL')} i nie wymaga logowania.</p>
             <p style="color:#999;font-size:12px;margin-top:32px">Wiadomość wysłana automatycznie przez system obsługujący Twoje biuro rachunkowe.</p>
         </div>
@@ -163,7 +164,7 @@ export async function sendDailyDigest(email: string, firmName: string, stats: {
     await send(email, `Raport dzienny KSeF Auto — ${new Date().toLocaleDateString('pl-PL')}`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
             <h1 style="color:#6366f1;font-size:22px;margin-bottom:4px">Raport dzienny</h1>
-            <p style="color:#999;font-size:13px;margin-top:0">${firmName} · ${new Date().toLocaleDateString('pl-PL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p style="color:#999;font-size:13px;margin-top:0">${escapeHtml(firmName)} · ${new Date().toLocaleDateString('pl-PL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:24px 0">
                 <div style="background:#f9fafb;border-radius:10px;padding:16px;text-align:center">
                     <div style="font-size:28px;font-weight:800;color:#111">${stats.invoicesYesterday}</div>

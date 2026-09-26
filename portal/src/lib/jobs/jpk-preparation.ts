@@ -1,5 +1,6 @@
 import { determineJpkStatus, generateJpkV7M, type JpkInvoiceRow } from '@/lib/jpk-generator';
 import { sendMail } from '@/lib/mail-transport';
+import { escapeHtml, neutralizeSpreadsheetFormula } from '@/lib/text-safety';
 import type { Job, JobFailure, JobResult } from './types';
 
 type Client = {
@@ -58,7 +59,7 @@ function preparationPeriod(now: Date): { period: string; start: string; end: str
 }
 
 function csvCell(value: unknown): string {
-    const text = value === null || value === undefined ? '' : String(value);
+    const text = neutralizeSpreadsheetFormula(value === null || value === undefined ? '' : String(value));
     return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -170,7 +171,7 @@ export const jpkPreparationJob: Job = {
                 await sendMail({
                     to: client.accountant_email,
                     subject: `JPK_VAT ${period} — ${client.client_name}`,
-                    html: `<p>Przygotowano JPK_VAT za <strong>${period}</strong> dla klienta <strong>${client.client_name}</strong>.</p><p>Status: ${status}. Faktury: ${stats.total}.</p>`,
+                    html: `<p>Przygotowano JPK_VAT za <strong>${period}</strong> dla klienta <strong>${escapeHtml(client.client_name)}</strong>.</p><p>Status: ${status}. Faktury: ${stats.total}.</p>`,
                     attachments: [{
                         filename: `JPK_VAT_${client.client_nip}_${period}.csv`,
                         content: Buffer.from(csv, 'utf8'),
