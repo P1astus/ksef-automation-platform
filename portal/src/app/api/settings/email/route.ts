@@ -4,6 +4,7 @@ import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { decryptSecret, encryptSecret, MissingCredentialKeyError } from '@/lib/credential-crypto';
 import { requireActiveSubscription } from '@/lib/entitlements';
+import { ImapHostNotAllowedError, resolveImapTarget } from '@/lib/imap-host-policy';
 
 const context = (firmId: number) => `firm:${firmId}:imap-password`;
 
@@ -48,6 +49,12 @@ export async function POST(request: Request) {
         const useTls = body.use_tls !== false;
         if (!host || !username || !mailbox || !Number.isInteger(port) || port < 1 || port > 65535) {
             return NextResponse.json({ error: 'Podaj poprawne ustawienia serwera IMAP' }, { status: 400 });
+        }
+        try {
+            await resolveImapTarget(host, port);
+        } catch (error) {
+            if (error instanceof ImapHostNotAllowedError) return NextResponse.json({ error: error.message }, { status: 400 });
+            throw error;
         }
 
         let passwordEncrypted: string;

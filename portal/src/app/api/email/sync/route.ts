@@ -8,6 +8,7 @@ import { simpleParser } from 'mailparser';
 import { extractTextFromFile, extractInvoiceFields, needsManualReview } from '@/lib/ocr-extraction';
 import { saveUploadedFile, shortFileType } from '@/lib/file-storage';
 import { decryptSecret } from '@/lib/credential-crypto';
+import { ImapHostNotAllowedError, resolveImapTarget } from '@/lib/imap-host-policy';
 
 // Routes an email attachment through ocr_queue exactly like ocr/route.ts's
 // manual upload path now does — a low-confidence extraction (see
@@ -94,13 +95,23 @@ export async function POST(request: Request) {
                 { status: 503 }
             );
         }
+        // Checked again at every sync (settings may predate the policy, DNS may
+        // have changed) and the connection goes to exactly the checked address.
+        let target: { address: string; servername: string };
+        try {
+            target = await resolveImapTarget(mailbox.host, Number(mailbox.port));
+        } catch (error) {
+            if (error instanceof ImapHostNotAllowedError) return NextResponse.json({ error: error.message }, { status: 400 });
+            throw error;
+        }
         const imapConfig = {
             imap: {
                 user: mailbox.username,
                 password: decryptSecret(mailbox.password_encrypted, `firm:${session.firmId}:imap-password`),
-                host: mailbox.host,
+                host: target.address,
                 port: mailbox.port,
                 tls: mailbox.use_tls,
+                tlsOptions: { servername: target.servername },
                 authTimeout: 3000
             }
         };
