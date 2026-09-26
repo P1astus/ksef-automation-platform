@@ -51,7 +51,7 @@ export function decryptSecret(stored: string, context: string): string {
         throw new Error('Unsupported encrypted credential format');
     }
     const [, , iv64, tag64, encrypted64] = parts;
-    const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv64, 'base64'));
+    const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv64, 'base64'), { authTagLength: 16 });
     decipher.setAAD(Buffer.from(context, 'utf8'));
     decipher.setAuthTag(Buffer.from(tag64, 'base64'));
     return Buffer.concat([decipher.update(Buffer.from(encrypted64, 'base64')), decipher.final()]).toString('utf8');
