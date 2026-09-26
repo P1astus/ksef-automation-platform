@@ -205,12 +205,22 @@ export async function logout() {
     });
 }
 
+// Renew only in the second half of the 8 h lifetime, and never from a
+// prefetch. Renewing on every request let a request already in flight with an
+// older cookie overwrite one the server had just rotated (password or e-mail
+// change), which signed the user out.
+const RENEW_WHEN_REMAINING_MS = 4 * 60 * 60 * 1000;
+
 export async function updateSession(request: NextRequest) {
     const session = request.cookies.get('session')?.value;
     if (!session) return;
 
     try {
         const parsed = await decrypt(session);
+        const isPrefetch = request.headers.get('next-router-prefetch') !== null || request.headers.get('purpose') === 'prefetch';
+        if (isPrefetch || typeof parsed.exp !== 'number' || parsed.exp * 1000 - Date.now() > RENEW_WHEN_REMAINING_MS) {
+            return NextResponse.next();
+        }
         const expires = new Date(Date.now() + 8 * 60 * 60 * 1000);
         parsed.expires = expires;
         const res = NextResponse.next();
