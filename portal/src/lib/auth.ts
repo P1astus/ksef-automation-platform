@@ -115,27 +115,22 @@ export async function requireRole(session: { role?: SessionRole } | null, allowe
 // is a single container); settings/route.ts's deactivate_account clears its own
 // entry, any other way of flipping the flag lags by at most the TTL.
 const FIRM_ACTIVE_TTL_MS = 30_000;
-const firmActiveCache = new Map<number, { active: boolean; tier: unknown; sessionVersion: number; at: number }>();
+const firmActiveCache = new Map<number, { active: boolean; tier: unknown; at: number }>();
 
 export function invalidateFirmActiveCache(firmId?: number) {
     if (firmId === undefined) firmActiveCache.clear();
     else firmActiveCache.delete(firmId);
 }
 
-async function loadFirmAccess(firmId: number): Promise<{ active: boolean; tier: unknown; sessionVersion: number }> {
+async function loadFirmAccess(firmId: number): Promise<{ active: boolean; tier: unknown }> {
     const hit = firmActiveCache.get(firmId);
     if (hit && Date.now() - hit.at < FIRM_ACTIVE_TTL_MS) return hit;
     // Lazy import keeps `pg` out of middleware's bundle, which only needs
     // getSessionUnchecked(). A DB error propagates on purpose: failing open
     // here would let a deactivated firm's sessions through during an outage.
     const { query } = await import('./db');
-    const res = await query('SELECT is_active, subscription_tier, session_version FROM firms WHERE id = $1', [firmId]);
-    const entry = {
-        active: res.rows[0]?.is_active === true,
-        tier: res.rows[0]?.subscription_tier,
-        sessionVersion: Number(res.rows[0]?.session_version ?? 0),
-        at: Date.now(),
-    };
+    const res = await query('SELECT is_active, subscription_tier FROM firms WHERE id = $1', [firmId]);
+    const entry = { active: res.rows[0]?.is_active === true, tier: res.rows[0]?.subscription_tier, at: Date.now() };
     firmActiveCache.set(firmId, entry);
     return entry;
 }
@@ -160,8 +155,15 @@ export async function getSession() {
     const access = await loadFirmAccess(session.firmId);
     if (!access.active) return null;
     const tokenVersion = Number(session.sv ?? 0);
-    // The owner's sessions are revoked through firms.session_version.
-    if (session.userId == null && tokenVersion !== access.sessionVersion) return null;
+    // Revocation (firms/firm_users.session_version) is read on every call,
+    // never from the firm cache above: Next.js can give route handlers and
+    // pages separate copies of this module, so one bundle clearing its cache
+    // does not clear another's.
+    if (session.userId == null) {
+        const { query } = await import('./db');
+        const owner = await query('SELECT session_version FROM firms WHERE id = $1', [session.firmId]);
+        if (tokenVersion !== Number(owner.rows[0]?.session_version ?? 0)) return null;
+    }
     // Team seats are a Biznes+ feature. Invited members (userId set) of a firm
     // that has since downgraded lose their session here; the owner never does.
     // Shares the 30 s cache above, so a webhook-driven downgrade lags by at

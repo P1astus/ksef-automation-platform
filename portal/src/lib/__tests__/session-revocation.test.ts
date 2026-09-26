@@ -152,3 +152,20 @@ describe('password reset', () => {
         expect(await sessionFor(token)).toBeNull();
     });
 });
+
+describe('session version is never served from a cache', () => {
+    // Next.js can give route handlers and pages separate copies of lib/auth, so
+    // one bundle clearing its firm cache does not clear another's. The version
+    // must therefore be read from the database on every call.
+    it('a warm firm cache neither keeps a revoked token alive nor rejects a re-issued one', async () => {
+        const token = await login(OWNER, 'owner-pass-1');
+        expect(await sessionFor(token)).not.toBeNull(); // warms the cache
+        const { getSession } = await import('../auth');
+        await db.query('UPDATE firms SET session_version = session_version + 1'); // another bundle revoked
+        jar.set('session', token);
+        expect(await getSession()).toBeNull(); // no invalidateFirmActiveCache() in between
+        const reissued = await login(OWNER, 'owner-pass-1');
+        jar.set('session', reissued);
+        expect(await getSession()).not.toBeNull();
+    });
+});
