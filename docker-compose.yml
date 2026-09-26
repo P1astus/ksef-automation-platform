@@ -169,6 +169,7 @@ services:
       - "SMTP_USER=${SMTP_USER:-}"
       - "SMTP_PASSWORD=${SMTP_PASSWORD:-}"
       - "SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}"
+      - "SMTP_CHECK_TO=${SMTP_CHECK_TO:-}"
     depends_on:
       ksef_db:
         condition: service_healthy
