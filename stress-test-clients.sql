@@ -20,12 +20,14 @@ RETURNING id AS stress_firm_id \gset
 
 BEGIN;
 
--- Clean previous synthetic data (preserve real test client NIP 1111111111)
-DELETE FROM audit_log WHERE client_nip != '1111111111';
-DELETE FROM jpk_preparations WHERE client_nip != '1111111111';
-DELETE FROM offline_invoices WHERE client_nip != '1111111111';
-DELETE FROM invoices WHERE client_nip != '1111111111';
-DELETE FROM clients WHERE nip != '1111111111';
+-- Clean previous synthetic data of the Stress Test Firm ONLY (and still
+-- preserve its real test client NIP 1111111111). Every other firm's rows are
+-- never touched: these statements used to run across all firms.
+DELETE FROM audit_log WHERE firm_id = :stress_firm_id AND client_nip IS DISTINCT FROM '1111111111';
+DELETE FROM jpk_preparations WHERE firm_id = :stress_firm_id AND client_nip != '1111111111';
+DELETE FROM offline_invoices WHERE firm_id = :stress_firm_id AND client_nip != '1111111111';
+DELETE FROM invoices WHERE firm_id = :stress_firm_id AND client_nip != '1111111111';
+DELETE FROM clients WHERE firm_id = :stress_firm_id AND nip != '1111111111';
 
 -- All NIPs are checksum-valid (weights [6,5,7,2,3,4,5,6,7], sum%11 = last digit)
 INSERT INTO clients (

@@ -2,8 +2,11 @@
 -- Run AFTER stress-test-clients.sql
 -- Run: docker exec -i ksef_db psql -U ksef_app -d ksef_platform < stress-test-offline.sql
 
--- Clean existing synthetic offline invoices (preserve NIP 1111111111)
-DELETE FROM offline_invoices WHERE client_nip != '1111111111';
+-- Clean existing synthetic offline invoices of the Stress Test Firm only
+-- (preserve NIP 1111111111; other firms are never touched)
+DELETE FROM offline_invoices
+WHERE firm_id = (SELECT id FROM firms WHERE slug = 'stress-test-firm')
+  AND client_nip != '1111111111';
 
 BEGIN;
 
@@ -21,7 +24,8 @@ BEGIN;
 WITH target_clients AS (
     SELECT nip, firm_id, client_name, ROW_NUMBER() OVER (ORDER BY nip) as rn
     FROM clients
-    WHERE sync_enabled = true AND nip != '1111111111'
+    WHERE firm_id = (SELECT id FROM firms WHERE slug = 'stress-test-firm')
+      AND sync_enabled = true AND nip != '1111111111'
     LIMIT 10
 )
 INSERT INTO offline_invoices (

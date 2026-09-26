@@ -15,7 +15,8 @@ SELECT c.nip, c.firm_id, c.client_name, c.monthly_invoice_volume,
         ELSE 'low'
     END AS tier
 FROM clients c
-WHERE c.sync_enabled = true AND c.nip != '1111111111';
+WHERE c.firm_id = (SELECT id FROM firms WHERE slug = 'stress-test-firm')
+  AND c.sync_enabled = true AND c.nip != '1111111111';
 
 -- ============================================================================
 -- SALES INVOICES — high-volume clients: ~100 per month x 5 months = 500 each
@@ -305,7 +306,8 @@ CROSS JOIN LATERAL (
     SELECT s, DATE '2025-10-01' + ((s - 1) % 150 * INTERVAL '1 day') AS base_date
     FROM generate_series(1, 150) AS s
 ) inv
-WHERE ct.nip IN ('7773602609','7474687236','5309805002','8882081216')
+WHERE ct.firm_id = (SELECT id FROM firms WHERE slug = 'stress-test-firm')
+  AND ct.nip IN ('7773602609','7474687236','5309805002','8882081216')
 ON CONFLICT (firm_id, client_nip, ksef_number) DO NOTHING;
 
 COMMIT;
