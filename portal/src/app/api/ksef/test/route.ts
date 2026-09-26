@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, requireRole } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { BASE_URL, getPublicKeyCertificate, getChallenge, sidecarHeaders } from '@/lib/ksef-client';
 import { clientCredentialContext, decryptSecret } from '@/lib/credential-crypto';
@@ -12,6 +12,8 @@ export async function GET(request: Request) {
 
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const roleError = await requireRole(session, ['owner', 'admin']);
+    if (roleError) return roleError;
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');
