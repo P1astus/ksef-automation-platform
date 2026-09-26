@@ -116,4 +116,26 @@ class SidecarApiKeyFilterTest {
         verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         verify(chain, never()).doFilter(request, response);
     }
+
+    @Test
+    void doesNotExemptPathsThatOnlyStartWithActuator() throws Exception {
+        SidecarApiKeyFilter filter = new SidecarApiKeyFilter("correct-key");
+        for (String uri : new String[] {
+                "/actuator/../generate-session-key",
+                "/actuator/..;/encrypt-invoice",
+                "/actuatorx/../encrypt-for-session",
+                "/actuator;/../sign-xades-bes" }) {
+            HttpServletRequest request = mock(HttpServletRequest.class);
+            HttpServletResponse response = mock(HttpServletResponse.class);
+            FilterChain chain = mock(FilterChain.class);
+            when(request.getRequestURI()).thenReturn(uri);
+            when(request.getHeader("X-Sidecar-Api-Key")).thenReturn(null);
+            when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+
+            filter.doFilter(request, response, chain);
+
+            verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            verify(chain, never()).doFilter(request, response);
+        }
+    }
 }

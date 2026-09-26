@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Set;
 
 /**
  * Round 4: every endpoint on this sidecar (/encrypt-for-session,
@@ -25,13 +26,14 @@ import java.security.MessageDigest;
  * Fails fast at startup if SIDECAR_API_KEY is unset, rather than silently
  * running with the door open - same convention as auth.ts's
  * MissingJwtSecretError and db.ts's DATABASE_URL check on the portal side.
- * /actuator/** stays open: docker-compose healthchecks and INSTALL.md's
+ * /actuator/health and /actuator/info stay open (exact paths): docker-compose healthchecks and INSTALL.md's
  * `curl localhost:8090/actuator/health` don't carry the key.
  */
 @Component
 public class SidecarApiKeyFilter extends OncePerRequestFilter {
 
     private static final String HEADER_NAME = "X-Sidecar-Api-Key";
+    private static final Set<String> UNAUTHENTICATED_PATHS = Set.of("/actuator/health", "/actuator/info");
 
     private final byte[] expectedApiKeyBytes;
 
@@ -48,7 +50,9 @@ public class SidecarApiKeyFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        if (request.getRequestURI().startsWith("/actuator")) {
+        // Exact match only: a prefix test also let un-normalized paths such as
+        // "/actuator/../x" through, relying on routing to reject them.
+        if (UNAUTHENTICATED_PATHS.contains(request.getRequestURI())) {
             chain.doFilter(request, response);
             return;
         }

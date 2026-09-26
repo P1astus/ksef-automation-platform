@@ -255,7 +255,7 @@ services:
       - KSEF_ENVIRONMENT=${KSEF_ENVIRONMENT:-test}
       # Round 4: this sidecar's crypto endpoints had no authentication at all
       # and are published on 0.0.0.0:8090 - now required on every request
-      # except /actuator/** (see SidecarApiKeyFilter). Refuses to start
+      # except /actuator/health and /actuator/info (see SidecarApiKeyFilter). Refuses to start
       # without it, same as the portal's JWT_SECRET requirement above.
       - "SIDECAR_API_KEY=${SIDECAR_API_KEY:?SIDECAR_API_KEY must be set in .env - generate with: openssl rand -hex 32}"
       # XAdES-BES signing of the MF JPK gateway's InitUpload metadata
