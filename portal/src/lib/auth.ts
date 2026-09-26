@@ -213,7 +213,7 @@ export async function logout() {
 // change), which signed the user out.
 const RENEW_WHEN_REMAINING_MS = 4 * 60 * 60 * 1000;
 
-export async function updateSession(request: NextRequest) {
+export async function updateSession(request: NextRequest, response: NextResponse = NextResponse.next()) {
     const session = request.cookies.get('session')?.value;
     if (!session) return;
 
@@ -221,11 +221,11 @@ export async function updateSession(request: NextRequest) {
         const parsed = await decrypt(session);
         const isPrefetch = request.headers.get('next-router-prefetch') !== null || request.headers.get('purpose') === 'prefetch';
         if (isPrefetch || typeof parsed.exp !== 'number' || parsed.exp * 1000 - Date.now() > RENEW_WHEN_REMAINING_MS) {
-            return NextResponse.next();
+            return response;
         }
         const expires = new Date(Date.now() + 8 * 60 * 60 * 1000);
         parsed.expires = expires;
-        const res = NextResponse.next();
+        const res = response;
         res.cookies.set({
             name: 'session',
             value: await encrypt(parsed),
@@ -239,8 +239,7 @@ export async function updateSession(request: NextRequest) {
     } catch (error) {
         if (error instanceof MissingJwtSecretError) throw error;
         // Stale or tampered cookie — clear it and continue
-        const res = NextResponse.next();
-        res.cookies.set({ name: 'session', value: '', expires: new Date(0), path: '/' });
-        return res;
+        response.cookies.set({ name: 'session', value: '', expires: new Date(0), path: '/' });
+        return response;
     }
 }

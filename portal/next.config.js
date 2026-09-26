@@ -3,7 +3,10 @@ const nextConfig = {
     output: 'standalone',
     async headers() {
         return [{
-            source: '/:path*',
+            // Pages get a per-request nonce policy from middleware (src/lib/csp.ts);
+            // two enforced policies would intersect and block Next.js scripts.
+            // API responses (JSON, and uploaded documents served inline) keep this one.
+            source: '/api/:path*',
             headers: [{
                 key: 'Content-Security-Policy',
                 value: [
@@ -18,7 +21,7 @@ const nextConfig = {
                     "manifest-src 'self'",
                     "media-src 'self'",
                     "object-src 'none'",
-                    "script-src 'self' 'unsafe-inline'",
+                    "script-src 'self'",
                     "style-src 'self' 'unsafe-inline'",
                     "worker-src 'self' blob:",
                 ].join('; '),

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUnchecked, updateSession } from '@/lib/auth';
 import { capabilities } from '@/lib/deployment';
+import { contentSecurityPolicy, newNonce } from '@/lib/csp';
 
 // Add paths that require authentication here
 const protectedPaths = ['/dashboard'];
@@ -17,8 +18,18 @@ export async function middleware(request: NextRequest) {
     // Check if path is protected
     const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path));
 
+    // Per-request nonce CSP. Next.js reads the forwarded request header and
+    // stamps the nonce on its own scripts; the root layout reads x-nonce.
+    const nonce = newNonce();
+    const csp = contentSecurityPolicy(nonce, process.env.NODE_ENV !== 'production');
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-nonce', nonce);
+    requestHeaders.set('content-security-policy', csp);
+    const base = NextResponse.next({ request: { headers: requestHeaders } });
+    base.headers.set('content-security-policy', csp);
+
     // Update session if it exists; also forward pathname as header for server components
-    const res = await updateSession(request);
+    const res = await updateSession(request, base);
     if (res) {
         res.headers.set('x-pathname', pathname);
     }
@@ -42,7 +53,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/dashboard', request.url));
     }
 
-    return res || NextResponse.next();
+    return res || base;
 }
 
 export const config = {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,11 +7,14 @@ export const metadata: Metadata = {
   description: "Platforma SaaS do automatycznego pobierania faktur z KSeF, generowania raportów JPK i zarządzania klientami dla biur rachunkowych.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Per-request CSP nonce from middleware. Reading it also renders every page
+  // dynamically, which a nonce requires (a prerendered page has no nonce).
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html lang="pl">
       <head>
@@ -28,7 +32,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="KSeF Auto" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <script dangerouslySetInnerHTML={{ __html: `
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
               navigator.serviceWorker.register('/sw.js').catch(() => {});
