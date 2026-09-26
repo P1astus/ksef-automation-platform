@@ -468,7 +468,7 @@
         "updatedAt": "2026-02-18T00:46:14.338Z",
         "createdAt": "2026-02-18T00:42:53.216Z",
         "id": "82yo94M2HLVa6k3U",
-        "name": "Antoni Potrykowski <antekpotrykowski@gmail.com>",
+        "name": "Workflow owner <alerts@example.invalid>",
         "type": "personal",
         "icon": null,
         "description": null,
@@ -913,7 +913,7 @@
         ]
       }
     },
-    "authors": "Antoni Potrykowski",
+    "authors": "Workflow owner",
     "name": null,
     "description": null,
     "autosaved": false,

@@ -137,8 +137,8 @@
         120
       ],
       "parameters": {
-        "fromEmail": "antekpotrykowski@gmail.com",
-        "toEmail": "antekpotrykowski@gmail.com",
+        "fromEmail": "alerts@example.invalid",
+        "toEmail": "alerts@example.invalid",
         "subject": "=[CRITICAL] KSeF: {{ $json.message.substring(0, 60) }}",
         "emailType": "text",
         "message": "=CRITICAL ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nThis alert requires IMMEDIATE attention.",
@@ -162,8 +162,8 @@
         340
       ],
       "parameters": {
-        "fromEmail": "antekpotrykowski@gmail.com",
-        "toEmail": "antekpotrykowski@gmail.com",
+        "fromEmail": "alerts@example.invalid",
+        "toEmail": "alerts@example.invalid",
         "subject": "=[WARNING] KSeF: {{ $json.message.substring(0, 60) }}",
         "emailType": "text",
         "message": "=WARNING ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nPlease review at your earliest convenience.",
@@ -533,7 +533,7 @@
         "updatedAt": "2026-02-18T00:46:14.338Z",
         "createdAt": "2026-02-18T00:42:53.216Z",
         "id": "82yo94M2HLVa6k3U",
-        "name": "Antoni Potrykowski <antekpotrykowski@gmail.com>",
+        "name": "Workflow owner <alerts@example.invalid>",
         "type": "personal",
         "icon": null,
         "description": null,
@@ -678,8 +678,8 @@
           120
         ],
         "parameters": {
-          "fromEmail": "antekpotrykowski@gmail.com",
-          "toEmail": "antekpotrykowski@gmail.com",
+          "fromEmail": "alerts@example.invalid",
+          "toEmail": "alerts@example.invalid",
           "subject": "=[CRITICAL] KSeF: {{ $json.message.substring(0, 60) }}",
           "emailType": "text",
           "message": "=CRITICAL ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nThis alert requires IMMEDIATE attention.",
@@ -703,8 +703,8 @@
           340
         ],
         "parameters": {
-          "fromEmail": "antekpotrykowski@gmail.com",
-          "toEmail": "antekpotrykowski@gmail.com",
+          "fromEmail": "alerts@example.invalid",
+          "toEmail": "alerts@example.invalid",
           "subject": "=[WARNING] KSeF: {{ $json.message.substring(0, 60) }}",
           "emailType": "text",
           "message": "=WARNING ALERT - KSeF Platform\n================================\n\nMessage: {{ $json.message }}\nNIP: {{ $json.client_nip || 'N/A' }}\nSource: {{ $json.workflow_name || 'N/A' }}\nTimestamp: {{ $json.timestamp }}\n\nPlease review at your earliest convenience.",
@@ -1051,7 +1051,7 @@
         ]
       }
     },
-    "authors": "Antoni Potrykowski",
+    "authors": "Workflow owner",
     "name": null,
     "description": null,
     "autosaved": false,
