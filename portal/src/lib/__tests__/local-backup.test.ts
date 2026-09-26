@@ -11,7 +11,7 @@ describe('local backup and restore proof', () => {
         for (const service of ['portal', 'nginx', 'ksef_db', 'ksef_migrate', 'ksef_worker', 'xades-sidecar', 'postgres', 'n8n']) {
             expect(compose).toMatch(new RegExp(`${service}:[\\s\\S]*?container_name: !reset null`));
         }
-        expect(read('nginx/nginx.local.conf')).toContain('server portal:3000;');
+        expect(read('nginx/nginx.local.conf')).toContain('set $portal_upstream http://portal:3000;');
     });
 
     it('backs up the local database, uploads, certificates, and environment through Compose services', () => {
