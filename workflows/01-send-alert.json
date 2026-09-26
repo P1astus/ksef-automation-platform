@@ -188,8 +188,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_critical', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-        "options": {}
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_critical', $2, $3::jsonb, true, NOW())",
+        "options": {
+          "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -210,8 +212,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_warning', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-        "options": {}
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_warning', $2, $3::jsonb, true, NOW())",
+        "options": {
+          "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -232,8 +236,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-        "options": {}
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_info', $2, $3::jsonb, true, NOW())",
+        "options": {
+          "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -254,8 +260,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-        "options": {}
+        "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_info', $2, $3::jsonb, true, NOW())",
+        "options": {
+          "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+        }
       },
       "credentials": {
         "postgres": {
@@ -721,8 +729,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_critical', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-          "options": {}
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_critical', $2, $3::jsonb, true, NOW())",
+          "options": {
+            "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -743,8 +753,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_warning', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-          "options": {}
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_warning', $2, $3::jsonb, true, NOW())",
+          "options": {
+            "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -765,8 +777,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-          "options": {}
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_info', $2, $3::jsonb, true, NOW())",
+          "options": {
+            "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+          }
         },
         "credentials": {
           "postgres": {
@@ -787,8 +801,10 @@
         ],
         "parameters": {
           "operation": "executeQuery",
-          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ('{{ $json.client_nip }}', 'alert_info', '{{ $json.workflow_name }}', '{{ JSON.stringify({message: $json.message, details: $json.details}) }}', true, NOW())",
-          "options": {}
+          "query": "=INSERT INTO audit_log (client_nip, action, workflow_name, details, success, created_at) VALUES ($1, 'alert_info', $2, $3::jsonb, true, NOW())",
+          "options": {
+            "queryReplacement": "={{ [$json.client_nip ?? null, $json.workflow_name ?? null, JSON.stringify({message: $json.message ?? null, details: $json.details ?? null})] }}"
+          }
         },
         "credentials": {
           "postgres": {
