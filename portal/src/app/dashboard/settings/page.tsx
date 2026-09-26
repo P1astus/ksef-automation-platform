@@ -67,7 +67,10 @@ export default function SettingsPage() {
         try {
             const res = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const d = await res.json();
-            setMsgs(m => ({ ...m, [msgKey]: { text: d.error || 'Zapisano zmiany', ok: res.ok } }));
+            const text = d.error || (d.pendingVerification
+                ? 'Wysłaliśmy link potwierdzający na nowy adres. Zmiana nastąpi po jego kliknięciu; obecny adres dostał powiadomienie.'
+                : 'Zapisano zmiany');
+            setMsgs(m => ({ ...m, [msgKey]: { text, ok: res.ok } }));
         } catch {
             setMsgs(m => ({ ...m, [msgKey]: { text: 'Błąd serwera', ok: false } }));
         } finally {
@@ -151,7 +154,7 @@ export default function SettingsPage() {
                         <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Obecne hasło</label>
                         <input type="password" value={emailPw} onChange={e => setEmailPw(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
                     </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0 0' }}>Po zmianie adresu wszystkie inne sesje zostaną wylogowane.</p>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0 0' }}>Nowy adres trzeba potwierdzić linkiem z e-maila; po potwierdzeniu wszystkie sesje zostaną wylogowane.</p>
                     <button onClick={() => patch('email', { action: 'update_email', new_email: newEmail, current_password: emailPw }, 'email')} className="btn-primary" style={{ marginTop: 16, opacity: loading['email'] ? 0.7 : 1 }}>
                         {loading['email'] ? 'Zapisywanie...' : 'Zmień e-mail'}
                     </button>

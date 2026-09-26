@@ -30,6 +30,7 @@ function RegisterForm() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [sentTo, setSentTo] = useState('');
     const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -44,6 +45,11 @@ function RegisterForm() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Błąd rejestracji');
+            // Hosted sign-up: the account works only after the e-mailed link is opened.
+            if (data.verifyEmail) {
+                setSentTo(email);
+                return;
+            }
             router.push(data.redirectUrl || '/dashboard/onboarding');
             router.refresh();
         } catch (err: unknown) {
@@ -52,6 +58,21 @@ function RegisterForm() {
             setLoading(false);
         }
     };
+
+    if (sentTo) {
+        return (
+            <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)', padding: 24 }}>
+                <div style={{ maxWidth: 440, textAlign: 'center', color: 'var(--text)' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
+                    <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 12px' }}>Sprawdź skrzynkę e-mail</h1>
+                    <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 20px' }}>
+                        Wysłaliśmy link potwierdzający na <strong>{sentTo}</strong>. Konto zacznie działać po kliknięciu linku (ważny 24 godziny).
+                    </p>
+                    <Link href="/login" style={{ color: 'var(--accent-hover)', fontWeight: 600, textDecoration: 'none' }}>Przejdź do logowania →</Link>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)' }}>

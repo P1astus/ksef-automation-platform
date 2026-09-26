@@ -19,6 +19,33 @@ export async function sendPasswordReset(email: string, resetUrl: string) {
     `);
 }
 
+export async function sendEmailVerification(email: string, verifyUrl: string, purpose: 'signup' | 'change' = 'signup') {
+    const intro = purpose === 'signup'
+        ? 'Potwierdź adres e-mail, aby aktywować konto w KSeF Auto.'
+        : 'Potwierdź ten adres jako nowy adres logowania do KSeF Auto.';
+    await send(email, 'Potwierdź adres e-mail — KSeF Auto', `
+        <h2>Potwierdzenie adresu e-mail</h2>
+        <p>${intro} Link jest ważny przez 24 godziny i działa jeden raz.</p>
+        <a href="${escapeHtml(verifyUrl)}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+            Potwierdź adres →
+        </a>
+        <p style="margin-top:24px;color:#94a3b8;font-size:13px;">
+            Jeśli to nie Ty, zignoruj tę wiadomość — bez potwierdzenia nic się nie zmieni.
+        </p>
+    `);
+}
+
+export async function sendEmailChangeNotice(oldEmail: string, newEmail: string) {
+    await send(oldEmail, 'Zmiana adresu logowania — KSeF Auto', `
+        <h2>Zmiana adresu logowania</h2>
+        <p>Poproszono o zmianę adresu logowania do Twojego konta KSeF Auto na <strong>${escapeHtml(newEmail)}</strong>.
+        Zmiana nastąpi dopiero po potwierdzeniu z nowego adresu.</p>
+        <p style="margin-top:24px;color:#94a3b8;font-size:13px;">
+            Jeśli to nie Ty, natychmiast zmień hasło — zmiana hasła kończy wszystkie aktywne sesje.
+        </p>
+    `);
+}
+
 export async function sendTeamInvite(email: string, firmName: string, inviteUrl: string) {
     await send(email, `Zaproszenie do ${firmName} w KSeF Auto`, `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">

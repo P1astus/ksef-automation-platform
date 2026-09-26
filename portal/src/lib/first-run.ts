@@ -66,8 +66,8 @@ export async function insertFirmInTransaction(
             const res = await tx.query(
                 `INSERT INTO firms
                     (firm_name, firm_nip, slug, admin_email, admin_password_hash,
-                     subscription_tier, subscription_status, max_clients, trial_expires_at, is_active)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, NULL, true)
+                     subscription_tier, subscription_status, max_clients, trial_expires_at, is_active, email_verified_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, NULL, true, NOW())
                  RETURNING id`,
                 [firm.firmName, firm.firmNip, slugFor(firm.firmName), firm.adminEmail, firm.passwordHash, firm.subscriptionTier, firm.maxClients]
             );

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
         // Find the firm by admin email — the owner login path.
         const result = await query(
-            'SELECT id, admin_password_hash, is_active, session_version FROM firms WHERE admin_email = $1',
+            'SELECT id, admin_password_hash, is_active, session_version, email_verified_at FROM firms WHERE admin_email = $1',
             [email]
         );
 
@@ -42,6 +42,14 @@ export async function POST(request: Request) {
                 return NextResponse.json(
                     { error: 'Invalid email or password' },
                     { status: 401 }
+                );
+            }
+
+            // Only after the password is right, so this reveals nothing to a guesser.
+            if (!firm.email_verified_at) {
+                return NextResponse.json(
+                    { error: 'Potwierdź adres e-mail - link wysłaliśmy przy rejestracji.', code: 'EMAIL_NOT_VERIFIED' },
+                    { status: 403 }
                 );
             }
 

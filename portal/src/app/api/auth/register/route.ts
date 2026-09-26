@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { query } from '@/lib/db';
 import { createSession } from '@/lib/auth';
-import { sendWelcome } from '@/lib/email';
 import { PLAN_MAX_CLIENTS } from '@/lib/plans';
 import pool from '@/lib/db';
 import { capabilities } from '@/lib/deployment';
 import { consumeRateLimit, rateLimitResponse, requestIp } from '@/lib/rate-limit';
+import { assertMailTransportConfigured } from '@/lib/mail-transport';
+import { appUrl } from '@/lib/app-url';
+import { issueEmailVerification } from '@/lib/email-verification';
 import { FirstRunClosedError, InvalidSetupTokenError, generateFirmSlug, registerFirstFirm } from '@/lib/first-run';
 
 export async function POST(request: Request) {
@@ -87,6 +89,26 @@ export async function POST(request: Request) {
         }
 
         // Check email uniqueness
+        // Hosted sign-up is only effective once the owner confirms the address
+        // from their inbox, so an account needs working mail to be created.
+        try {
+            assertMailTransportConfigured();
+        } catch {
+            return NextResponse.json({ error: 'Rejestracja jest chwilowo niedostępna (wysyłka e-mail nie jest skonfigurowana).' }, { status: 503 });
+        }
+        if (!appUrl()) {
+            return NextResponse.json({ error: 'Rejestracja jest chwilowo niedostępna (brak adresu portalu).' }, { status: 503 });
+        }
+
+        // An unconfirmed sign-up whose link has expired must not keep the
+        // address reserved: someone could otherwise squat another person's
+        // e-mail. It never signed in, so it holds no data.
+        await query(
+            `DELETE FROM firms WHERE admin_email = $1 AND email_verified_at IS NULL
+               AND (email_verify_expires_at IS NULL OR email_verify_expires_at < NOW())`,
+            [admin_email.toLowerCase()]
+        ).catch(() => undefined);
+
         const existing = await query(
             'SELECT id FROM firms WHERE admin_email = $1',
             [admin_email.toLowerCase()]
@@ -133,10 +155,16 @@ export async function POST(request: Request) {
 
         if (!firm) throw new Error('Failed to create account after retries');
 
-        await createSession(firm.id, admin_email.toLowerCase());
-        sendWelcome(admin_email.toLowerCase(), firm_name.trim()).catch(() => {}); // fire-and-forget
-
-        return NextResponse.json({ success: true, redirectUrl: '/dashboard/onboarding' });
+        try {
+            await issueEmailVerification(firm.id, admin_email.toLowerCase(), 'signup');
+        } catch (err) {
+            // Without the link the account could never be used: undo it so
+            // the owner can simply try again.
+            console.error('Sign-up verification e-mail failed:', err);
+            await query('DELETE FROM firms WHERE id = $1 AND email_verified_at IS NULL', [firm.id]).catch(() => undefined);
+            return NextResponse.json({ error: 'Nie udało się wysłać e-maila potwierdzającego. Spróbuj ponownie później.' }, { status: 502 });
+        }
+        return NextResponse.json({ success: true, verifyEmail: true });
 
     } catch (error) {
         console.error('Register error:', error);

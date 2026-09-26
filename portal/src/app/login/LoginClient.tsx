@@ -17,11 +17,26 @@ export default function LoginClient({ showRegister }: { showRegister: boolean })
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [unverified, setUnverified] = useState(false);
+    const [resendNote, setResendNote] = useState('');
     const router = useRouter();
+
+    const resendVerification = async () => {
+        setResendNote('');
+        const res = await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'resend', email }),
+        }).catch(() => null);
+        const data = res ? await res.json().catch(() => ({})) : {};
+        setResendNote(res?.ok ? (data.message || 'Wysłaliśmy nowy link.') : (data.error || 'Nie udało się wysłać linku.'));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setUnverified(false);
+        setResendNote('');
         setLoading(true);
         try {
             const res = await fetch('/api/auth/login', {
@@ -30,6 +45,7 @@ export default function LoginClient({ showRegister }: { showRegister: boolean })
                 body: JSON.stringify({ email, password }),
             });
             const data = await res.json();
+            if (data.code === 'EMAIL_NOT_VERIFIED') setUnverified(true);
             if (!res.ok) throw new Error(data.error || 'Błąd logowania');
             router.push(data.redirectUrl || '/dashboard');
             router.refresh();
@@ -173,6 +189,14 @@ export default function LoginClient({ showRegister }: { showRegister: boolean })
                             }}>
                                 <AlertCircle size={14} style={{ flexShrink: 0 }} />
                                 {error}
+                            </div>
+                        )}
+                        {unverified && (
+                            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                                <button type="button" onClick={resendVerification} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent-hover)', fontWeight: 600, cursor: 'pointer' }}>
+                                    Wyślij link potwierdzający ponownie
+                                </button>
+                                {resendNote && <div style={{ marginTop: 6 }}>{resendNote}</div>}
                             </div>
                         )}
 

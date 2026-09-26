@@ -7,14 +7,19 @@ import { resetDeploymentCache } from '../deployment';
 // POST /api/auth/register in both editions. The hosted branch must be exactly what it was; the local branch is
 // closed registration that only the holder of the one-time setup token can open, once.
 
-const h = vi.hoisted(() => ({ db: null as any, createSession: vi.fn(), sendWelcome: vi.fn() }));
+const h = vi.hoisted(() => ({ db: null as any, createSession: vi.fn(), sendWelcome: vi.fn(), sendEmailVerification: vi.fn() }));
 
 vi.mock('@/lib/db', () => ({
     query: (t: string, p?: any[]) => h.db.query(t, p),
     default: { connect: async () => ({ query: (t: string, p?: any[]) => h.db.query(t, p), release: () => {} }) },
 }));
 vi.mock('@/lib/auth', () => ({ createSession: (...a: unknown[]) => h.createSession(...a) }));
-vi.mock('@/lib/email', () => ({ sendWelcome: (...a: unknown[]) => h.sendWelcome(...a) }));
+vi.mock('@/lib/email', () => ({
+    sendWelcome: (...a: unknown[]) => h.sendWelcome(...a),
+    sendEmailVerification: (...a: unknown[]) => h.sendEmailVerification(...a),
+}));
+vi.mock('@/lib/mail-transport', () => ({ assertMailTransportConfigured: () => undefined }));
+vi.mock('@/lib/app-url', () => ({ appUrl: () => 'https://portal.example' }));
 
 import { POST } from '@/app/api/auth/register/route';
 
@@ -31,6 +36,7 @@ beforeEach(async () => {
     await applyCurrentSchema(h.db);
     h.createSession.mockReset();
     h.sendWelcome.mockReset().mockResolvedValue(undefined);
+    h.sendEmailVerification.mockReset().mockResolvedValue(undefined);
     delete process.env.DEPLOYMENT_MODE;
     delete process.env.STRIPE_SECRET_KEY;
     resetDeploymentCache();
@@ -40,15 +46,18 @@ afterEach(() => {
     resetDeploymentCache();
 });
 
-describe('hosted SaaS (default): unchanged', () => {
-    it('opens registration with a 14-day trial on the chosen plan, needs no token, and sends the welcome mail', async () => {
+describe('hosted SaaS (default)', () => {
+    it('opens registration with a 14-day trial on the chosen plan and no token, and signs in only after e-mail confirmation', async () => {
         const res = await POST(body({ plan: 'biznes' }));
         expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ verifyEmail: true });
         const [f] = await firms();
         expect(f).toMatchObject({ subscription_tier: 'biznes', subscription_status: 'trial', max_clients: 50 });
         expect(f.trial_expires_at).not.toBeNull();
-        expect(h.createSession).toHaveBeenCalledTimes(1);
-        expect(h.sendWelcome).toHaveBeenCalledTimes(1);
+        // No session and no welcome yet: both follow confirmation (api/auth/verify-email).
+        expect(h.createSession).not.toHaveBeenCalled();
+        expect(h.sendWelcome).not.toHaveBeenCalled();
+        expect(h.sendEmailVerification).toHaveBeenCalledTimes(1);
     });
 
     it('ignores a setup_token entirely and still allows a second firm', async () => {

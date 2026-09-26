@@ -29,7 +29,11 @@ vi.mock('next/headers', () => ({
 }));
 
 const resetUrls: string[] = [];
-vi.mock('@/lib/email', () => ({ sendPasswordReset: async (_to: string, url: string) => { resetUrls.push(url); } }));
+vi.mock('@/lib/email', () => ({
+    sendPasswordReset: async (_to: string, url: string) => { resetUrls.push(url); },
+    sendEmailVerification: async () => undefined,
+    sendEmailChangeNotice: async () => undefined,
+}));
 vi.mock('@/lib/mail-transport', () => ({ assertMailTransportConfigured: () => undefined }));
 
 process.env.JWT_SECRET = 'x'.repeat(64);
@@ -75,8 +79,8 @@ beforeEach(async () => {
     resetUrls.length = 0;
     await db.exec('DELETE FROM auth_rate_limits; DELETE FROM firm_users; DELETE FROM firms;');
     const firm = await db.query<{ id: number }>(
-        `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash, subscription_tier, subscription_status, is_active)
-         VALUES ('Biuro', 'biuro-' || floor(random()*1e9)::text, $1, $2, 'biznes', 'active', true) RETURNING id`,
+        `INSERT INTO firms (firm_name, slug, admin_email, admin_password_hash, subscription_tier, subscription_status, is_active, email_verified_at)
+         VALUES ('Biuro', 'biuro-' || floor(random()*1e9)::text, $1, $2, 'biznes', 'active', true, NOW()) RETURNING id`,
         [OWNER, bcrypt.hashSync('owner-pass-1', 4)]
     );
     await db.query(
@@ -105,16 +109,16 @@ describe('session revocation', () => {
         expect(await sessionFor(reissued)).not.toBeNull();
     });
 
-    it('changing the login e-mail needs the current password and revokes older sessions', async () => {
+    it('changing the login e-mail needs the current password and waits for the new address to confirm', async () => {
+        // Confirmation and the session revocation it triggers: email-verification.test.ts.
         const token = await login(OWNER, 'owner-pass-1');
         expect((await patchSettings(token, { action: 'update_email', new_email: 'new@example.test' })).status).toBe(400);
         expect((await patchSettings(token, { action: 'update_email', new_email: 'new@example.test', current_password: 'wrong-pass' })).status).toBe(401);
         const ok = await patchSettings(token, { action: 'update_email', new_email: 'new@example.test', current_password: 'owner-pass-1' });
         expect(ok.status).toBe(200);
-        const reissued = jar.get('session')!;
-        expect((await db.query<{ admin_email: string }>('SELECT admin_email FROM firms')).rows[0].admin_email).toBe('new@example.test');
-        expect(await sessionFor(token)).toBeNull();
-        expect(await sessionFor(reissued)).not.toBeNull();
+        expect(await ok.json()).toMatchObject({ pendingVerification: true });
+        expect((await db.query<{ admin_email: string; pending_email: string }>('SELECT admin_email, pending_email FROM firms')).rows[0])
+            .toEqual({ admin_email: OWNER, pending_email: 'new@example.test' });
     });
 
     it('logout revokes the token, not just the cookie in this browser', async () => {

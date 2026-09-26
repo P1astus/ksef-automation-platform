@@ -32,6 +32,10 @@
     {
       "version": "2026-09-26-session-version",
       "file": "2026-09-26-session-version.sql"
+    },
+    {
+      "version": "2026-09-27-email-verification",
+      "file": "2026-09-27-email-verification.sql"
     }
   ]
 }

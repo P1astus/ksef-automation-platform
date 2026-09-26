@@ -5,6 +5,10 @@ import { query } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { capabilities } from '@/lib/deployment';
 import { requireActiveSubscription } from '@/lib/entitlements';
+import { assertMailTransportConfigured } from '@/lib/mail-transport';
+import { appUrl } from '@/lib/app-url';
+import { issueEmailVerification } from '@/lib/email-verification';
+import { sendEmailChangeNotice } from '@/lib/email';
 
 export async function GET() {
     const session = await getSession();
@@ -80,7 +84,7 @@ export async function PATCH(request: Request) {
         if (!current_password) {
             return NextResponse.json({ error: 'Podaj obecne hasło, aby zmienić adres e-mail' }, { status: 400 });
         }
-        const owner = await query('SELECT admin_password_hash FROM firms WHERE id = $1', [session.firmId]);
+        const owner = await query('SELECT admin_password_hash, admin_email FROM firms WHERE id = $1', [session.firmId]);
         if (!await bcrypt.compare(String(current_password), owner.rows[0]?.admin_password_hash || '')) {
             return NextResponse.json({ error: 'Nieprawidłowe obecne hasło' }, { status: 401 });
         }
@@ -88,10 +92,30 @@ export async function PATCH(request: Request) {
         if (existing.rows.length > 0) {
             return NextResponse.json({ error: 'Ten adres e-mail jest już zajęty' }, { status: 409 });
         }
-        await query('UPDATE firms SET admin_email = $1 WHERE id = $2', [new_email.toLowerCase(), session.firmId]);
-        const version = await revokeSessions(session.firmId, null);
-        await createSession(session.firmId, new_email.toLowerCase(), 'owner', null, version);
-        return NextResponse.json({ success: true });
+        // The change takes effect only when the new address confirms it
+        // (api/auth/verify-email), which also ends every existing session.
+        // The current address is told, so a hijacked session cannot move the
+        // account quietly.
+        try {
+            assertMailTransportConfigured();
+        } catch {
+            return NextResponse.json({ error: 'Wysyłka e-mail nie jest skonfigurowana - nie można potwierdzić nowego adresu.' }, { status: 503 });
+        }
+        if (!appUrl()) {
+            return NextResponse.json({ error: 'Brak adresu portalu (NEXT_PUBLIC_APP_URL) - nie można potwierdzić nowego adresu.' }, { status: 503 });
+        }
+        const newEmail = new_email.toLowerCase();
+        await query('UPDATE firms SET pending_email = $1 WHERE id = $2', [newEmail, session.firmId]);
+        try {
+            await issueEmailVerification(session.firmId, newEmail, 'change');
+        } catch (err) {
+            console.error('E-mail change verification failed:', err);
+            await query('UPDATE firms SET pending_email = NULL, email_verify_token = NULL, email_verify_expires_at = NULL WHERE id = $1', [session.firmId]);
+            return NextResponse.json({ error: 'Nie udało się wysłać e-maila potwierdzającego na nowy adres.' }, { status: 502 });
+        }
+        await sendEmailChangeNotice(owner.rows[0].admin_email, newEmail)
+            .catch(err => console.error('E-mail change notice to the current address failed:', err));
+        return NextResponse.json({ success: true, pendingVerification: true });
     }
 
     // ── Change password ──────────────────────────────────────────────

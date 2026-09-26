@@ -114,7 +114,9 @@ export async function POST(request: Request) {
             const target = result.rows[0];
             if (target.account_type === 'owner') {
                 await query(
-                    `UPDATE firms SET admin_password_hash = $1, reset_token = NULL, reset_token_expires_at = NULL WHERE id = $2`,
+                    // Using the e-mailed reset link also proves control of the address.
+                    `UPDATE firms SET admin_password_hash = $1, reset_token = NULL, reset_token_expires_at = NULL,
+                         email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = $2`,
                     [hash, target.id]
                 );
                 await revokeSessions(target.id, null);
