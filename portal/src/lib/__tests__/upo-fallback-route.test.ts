@@ -99,4 +99,13 @@ describe('invoices/[id]/upo/route.ts — live fallback when upo_xml is missing',
         expect(res.status).toBe(404);
         expect(initInteractiveSessionMock).not.toHaveBeenCalled();
     });
+    it('never re-authenticates with a certificate client\'s stored bundle as if it were a token', async () => {
+        queryMock.mockResolvedValueOnce({
+            rows: [{ upo_xml: null, ksef_number: 'K-1', ksef_session_reference_number: 'SESSION-1', client_id: 3, nip: '1111111111', auth_method: 'certificate', ksef_token_encrypted: Buffer.from('{"cert":"x","password":"y"}').toString('base64') }],
+        });
+        const { GET } = await import('@/app/api/invoices/[id]/upo/route');
+        const res = await GET(req(), { params: Promise.resolve({ id: '1' }) });
+        expect(res.status).toBe(404);
+        expect(initInteractiveSessionMock).not.toHaveBeenCalled();
+    });
 });
